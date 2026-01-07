@@ -1,6 +1,6 @@
 [project]
 name = "flowschema"
-version = "0.1.0"
+version = "0.1.2"
 description = "FlowSchema is a data processing framework that allows you to process data in a declarative way."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -11,6 +11,8 @@ dependencies = [
 authors = [
     { name = "Alberto Daniel Badia", email = "alberto_badia@enlacepatagonia.com" },
 ]
+
+urls = {"Homepage" = "https://github.com/albertobadia/flowschema"}
 
 [dependency-groups]
 dev = [
