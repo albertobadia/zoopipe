@@ -1,7 +1,7 @@
 import abc
 import typing
 
-from schemaflow.models.core import EntryTypedDict
+from flowschema.models.core import EntryTypedDict
 
 
 class BaseExecutor(abc.ABC):

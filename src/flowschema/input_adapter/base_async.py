@@ -1,14 +1,16 @@
 import abc
+import typing
 
-from schemaflow.models.core import EntryTypedDict
+from flowschema.models.core import EntryTypedDict
 
 
-class BaseAsyncOutputAdapter(abc.ABC):
+class BaseAsyncInputAdapter(abc.ABC):
     _is_opened: bool = False
 
+    @property
     @abc.abstractmethod
-    async def write(self, entry: EntryTypedDict) -> None:
-        raise NotImplementedError("Subclasses must implement the write method")
+    def generator(self) -> typing.AsyncGenerator[EntryTypedDict]:
+        raise NotImplementedError("Subclasses must implement the generator property")
 
     async def open(self) -> None:
         self._is_opened = True
@@ -23,3 +25,8 @@ class BaseAsyncOutputAdapter(abc.ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
         return False
+
+    async def __aiter__(
+        self,
+    ) -> typing.AsyncGenerator[EntryTypedDict]:
+        return self.generator

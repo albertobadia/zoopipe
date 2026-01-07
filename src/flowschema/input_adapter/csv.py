@@ -3,8 +3,8 @@ import pathlib
 import typing
 import uuid
 
-from schemaflow.input_adapter.base import BaseInputAdapter
-from schemaflow.models.core import EntryStatus, EntryTypedDict
+from flowschema.input_adapter.base import BaseInputAdapter
+from flowschema.models.core import EntryStatus, EntryTypedDict
 
 
 class CSVInputAdapter(BaseInputAdapter):

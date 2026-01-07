@@ -2,8 +2,8 @@ import csv
 import pathlib
 import typing
 
-from schemaflow.models.core import EntryTypedDict
-from schemaflow.output_adapter.base import BaseOutputAdapter
+from flowschema.models.core import EntryTypedDict
+from flowschema.output_adapter.base import BaseOutputAdapter
 
 
 class CSVOutputAdapter(BaseOutputAdapter):

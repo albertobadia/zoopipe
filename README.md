@@ -1,8 +1,8 @@
-# SchemaFlow
+# FlowSchema
 
-**SchemaFlow** is a lightweight, declarative data processing framework for Python. It allows you to build robust data pipelines by defining your data schemas with Pydantic and plugging in various input and output adapters.
+**FlowSchema** is a lightweight, declarative data processing framework for Python. It allows you to build robust data pipelines by defining your data schemas with Pydantic and plugging in various input and output adapters.
 
-Whether you are migrating data, cleaning CSVs, or processing streams, SchemaFlow provides a structured way to handle validation, transformation, and error management.
+Whether you are migrating data, cleaning CSVs, or processing streams, FlowSchema provides a structured way to handle validation, transformation, and error management.
 
 ---
 
@@ -37,13 +37,13 @@ Whether you are migrating data, cleaning CSVs, or processing streams, SchemaFlow
 If you are using [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uv add schemaflow
+uv add flowschema
 ```
 
 Or using pip:
 
 ```bash
-pip install schemaflow
+pip install flowschema
 ```
 
 ### Basic Example
@@ -52,10 +52,10 @@ Here is how you can process a CSV file, validate it against a model, and save th
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from schemaflow.core import SchemaFlow
-from schemaflow.executor.sync_fifo import SyncFifoExecutor
-from schemaflow.input_adapter.csv import CSVInputAdapter
-from schemaflow.output_adapter.csv import CSVOutputAdapter
+from flowschema.core import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.csv import CSVInputAdapter
+from flowschema.output_adapter.csv import CSVOutputAdapter
 
 # 1. Define your schema
 class UserSchema(BaseModel):
@@ -65,7 +65,7 @@ class UserSchema(BaseModel):
     age: int
 
 # 2. Configure the flow
-schema_flow = SchemaFlow(
+schema_flow = FlowSchema(
     input_adapter=CSVInputAdapter("users.csv"),
     output_adapter=CSVOutputAdapter("processed_users.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"), # Optional: catch failures
@@ -93,7 +93,7 @@ Executors define *how* the data flows through the system.
 - `SyncFifoExecutor`: Processes entries one by one in a synchronous, first-in-first-out manner. It uses Pydantic to validate each entry against the provided schema.
 
 ### The Entry Object
-Every record in SchemaFlow is wrapped in an `EntryTypedDict`, which tracks its lifecycle:
+Every record in FlowSchema is wrapped in an `EntryTypedDict`, which tracks its lifecycle:
 - `id`: A unique `uuid.UUID` for the record.
 - `position`: The original index/line number in the source.
 - `status`: `PENDING`, `VALIDATED`, or `FAILED`.
@@ -108,8 +108,8 @@ Every record in SchemaFlow is wrapped in an `EntryTypedDict`, which tracks its l
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-repo/schemaflow.git
-   cd schemaflow
+   git clone https://github.com/your-repo/flowschema.git
+   cd flowschema
    ```
 
 2. Install dependencies:

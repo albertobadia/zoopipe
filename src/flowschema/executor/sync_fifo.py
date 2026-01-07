@@ -2,8 +2,8 @@ import typing
 
 from pydantic import BaseModel
 
-from schemaflow.executor.base import BaseExecutor
-from schemaflow.models.core import EntryStatus, EntryTypedDict
+from flowschema.executor.base import BaseExecutor
+from flowschema.models.core import EntryStatus, EntryTypedDict
 
 
 class SyncFifoExecutor(BaseExecutor):

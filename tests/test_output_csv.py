@@ -1,9 +1,9 @@
 from pydantic import BaseModel, ConfigDict
 
-from schemaflow.core import SchemaFlow
-from schemaflow.executor.sync_fifo import SyncFifoExecutor
-from schemaflow.input_adapter.csv import CSVInputAdapter
-from schemaflow.output_adapter.csv import CSVOutputAdapter
+from flowschema.core import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.csv import CSVInputAdapter
+from flowschema.output_adapter.csv import CSVOutputAdapter
 
 
 def test_csv_output_adapter(tmp_path):
@@ -21,7 +21,7 @@ def test_csv_output_adapter(tmp_path):
     output_adapter = CSVOutputAdapter(output_file)
     executor = SyncFifoExecutor(Person)
 
-    flow = SchemaFlow(
+    flow = FlowSchema(
         input_adapter=input_adapter, executor=executor, output_adapter=output_adapter
     )
 

@@ -1,12 +1,12 @@
 import typing
 
-from schemaflow.executor.base import BaseExecutor
-from schemaflow.input_adapter.base import BaseInputAdapter
-from schemaflow.models.core import EntryStatus, EntryTypedDict
-from schemaflow.output_adapter.base import BaseOutputAdapter
+from flowschema.executor.base import BaseExecutor
+from flowschema.input_adapter.base import BaseInputAdapter
+from flowschema.models.core import EntryStatus, EntryTypedDict
+from flowschema.output_adapter.base import BaseOutputAdapter
 
 
-class SchemaFlow:
+class FlowSchema:
     def __init__(
         self,
         input_adapter: BaseInputAdapter,
@@ -41,4 +41,4 @@ class SchemaFlow:
                 yield self._handle_entry(entry)
 
 
-__all__ = ["SchemaFlow"]
+__all__ = ["FlowSchema"]

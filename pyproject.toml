@@ -1,7 +1,7 @@
 [project]
-name = "schemaflow"
+name = "flowschema"
 version = "0.1.0"
-description = "SchemaFlow is a data processing framework that allows you to process data in a declarative way."
+description = "FlowSchema is a data processing framework that allows you to process data in a declarative way."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

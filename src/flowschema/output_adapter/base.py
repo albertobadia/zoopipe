@@ -1,6 +1,6 @@
 import abc
 
-from schemaflow.models.core import EntryTypedDict
+from flowschema.models.core import EntryTypedDict
 
 
 class BaseOutputAdapter(abc.ABC):
