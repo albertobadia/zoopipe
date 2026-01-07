@@ -1,11 +1,15 @@
 [project]
 name = "schemaflow"
 version = "0.1.0"
-description = "Add your description here"
+description = "SchemaFlow is a data processing framework that allows you to process data in a declarative way."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.12.5",
+]
+
+authors = [
+    { name = "Alberto Daniel Badia", email = "alberto_badia@enlacepatagonia.com" },
 ]
 
 [dependency-groups]
