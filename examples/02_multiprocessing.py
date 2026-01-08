@@ -16,16 +16,22 @@ def main():
         ),
     )
 
-    processed_count = 0
-    error_count = 0
+    print("Starting multiprocessing flow...")
+    report = schema_flow.run()
 
-    for entry in schema_flow.run():
-        if entry["status"].value == "validated":
-            processed_count += 1
-        else:
-            error_count += 1
+    # We can do other things while the flow runs
+    while not report.is_finished:
+        print(f"Still working... Progress: {report.total_processed}")
+        import time
 
-    print(f"Processed: {processed_count}, Errors: {error_count}")
+        time.sleep(0.5)
+
+    report.wait()  # Ensure it's fully done
+
+    print("\nFlow finished!")
+    print(f"Total Processed: {report.total_processed}")
+    print(f"Success: {report.success_count}")
+    print(f"Errors: {report.error_count}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
+import contextlib
 import enum
 import itertools
 import logging
-import typing
+import threading
 import uuid
 
 import lz4.frame
@@ -13,6 +14,7 @@ from flowschema.input_adapter.base import BaseInputAdapter
 from flowschema.logger import get_logger
 from flowschema.models.core import EntryStatus, EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
+from flowschema.report import FlowReport, FlowStatus
 
 
 class FlowSchema:
@@ -34,6 +36,8 @@ class FlowSchema:
         self.pre_validation_hooks = pre_validation_hooks or []
         self.post_validation_hooks = post_validation_hooks or []
         self.logger = logger or get_logger()
+        self._report: FlowReport | None = None
+        self._run_lock = threading.Lock()
         self._setup_logger()
 
     def _setup_logger(self) -> None:
@@ -43,57 +47,83 @@ class FlowSchema:
         if self.error_output_adapter:
             self.error_output_adapter.set_logger(self.logger)
 
-    def _handle_entry(self, entry: EntryTypedDict) -> None:
+    def _handle_entry(self, entry: EntryTypedDict, report: FlowReport) -> None:
+        report.total_processed += 1
         if entry["status"] == EntryStatus.FAILED:
+            report.error_count += 1
             self.error_entries.append(entry)
             if self.error_output_adapter:
-                with self.error_output_adapter as error_output_adapter:
-                    error_output_adapter.write(entry)
-            return entry
+                self.error_output_adapter.write(entry)
+            return
 
+        report.success_count += 1
         self.output_adapter.write(entry)
-        return entry
 
-    def run(self) -> typing.Generator[EntryTypedDict, None, None]:
-        with (
-            self.input_adapter as input_adapter,
-            self.output_adapter,
-        ):
-            chunksize = getattr(self.executor, "_chunksize", 1)
-            if chunksize < 1:
-                chunksize = 1
+    def run(self) -> FlowReport:
+        with self._run_lock:
+            if self._report and self._report.status == FlowStatus.RUNNING:
+                raise RuntimeError("Flow is already running")
 
-            chunks = itertools.batched(input_adapter.generator, chunksize)
+            self.error_entries = []
+            self._report = FlowReport()
 
-            if self.executor.do_binary_pack:
+        thread = threading.Thread(
+            target=self._run_background, args=(self._report,), daemon=True
+        )
+        thread.start()
 
-                def _packer_default(obj):
-                    if isinstance(obj, uuid.UUID):
-                        return str(obj)
-                    if isinstance(obj, enum.Enum):
-                        return obj.value
-                    return obj
+        return self._report
 
-                data_iterator = (
-                    msgpack.packb(list(chunk), default=_packer_default)
-                    for chunk in chunks
-                )
+    def _run_background(self, report: FlowReport) -> None:
+        report._mark_running()
+        try:
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(self.input_adapter)
+                stack.enter_context(self.output_adapter)
+                if self.error_output_adapter:
+                    stack.enter_context(self.error_output_adapter)
 
-                if self.executor.compression_algorithm == "lz4":
+                input_adapter = self.input_adapter
+                chunksize = getattr(self.executor, "_chunksize", 1)
+                if chunksize < 1:
+                    chunksize = 1
+
+                chunks = itertools.batched(input_adapter.generator, chunksize)
+
+                if self.executor.do_binary_pack:
+
+                    def _packer_default(obj):
+                        if isinstance(obj, uuid.UUID):
+                            return str(obj)
+                        if isinstance(obj, enum.Enum):
+                            return obj.value
+                        return obj
+
                     data_iterator = (
-                        lz4.frame.compress(chunk) for chunk in data_iterator
+                        msgpack.packb(list(chunk), default=_packer_default)
+                        for chunk in chunks
                     )
-            else:
-                data_iterator = (list(chunk) for chunk in chunks)
 
-            self.executor.set_hooks(
-                pre_validation=self.pre_validation_hooks,
-                post_validation=self.post_validation_hooks,
-            )
-            self.executor.set_upstream_iterator(data_iterator)
+                    if self.executor.compression_algorithm == "lz4":
+                        data_iterator = (
+                            lz4.frame.compress(chunk) for chunk in data_iterator
+                        )
+                else:
+                    data_iterator = (list(chunk) for chunk in chunks)
 
-            for entry in self.executor.generator:
-                yield self._handle_entry(entry)
+                self.executor.set_hooks(
+                    pre_validation=self.pre_validation_hooks,
+                    post_validation=self.post_validation_hooks,
+                )
+                self.executor.set_upstream_iterator(data_iterator)
+
+                for entry in self.executor.generator:
+                    self._handle_entry(entry, report)
+
+                report._mark_completed()
+        except Exception as e:
+            self.logger.exception("Error during background execution")
+            report._mark_failed(e)
 
 
 __all__ = ["FlowSchema"]

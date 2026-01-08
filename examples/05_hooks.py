@@ -6,6 +6,7 @@ from flowschema.hooks import FieldMapperHook, TimestampHook
 from flowschema.hooks.base import BaseHook
 from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.models.core import EntryTypedDict
+from flowschema.output_adapter.generator import GeneratorOutputAdapter
 from flowschema.output_adapter.json import JSONOutputAdapter
 
 
@@ -22,18 +23,19 @@ class UppercaseNameHook(BaseHook):
 def example_timestamp_hook():
     hooks = [TimestampHook(field_name="processed_at")]
 
+    output_adapter = GeneratorOutputAdapter()
     schema_flow = FlowSchema(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
-        output_adapter=JSONOutputAdapter(
-            "examples/output_data/output_with_hooks.json", indent=2
-        ),
+        output_adapter=output_adapter,
         executor=SyncFifoExecutor(UserSchema),
         pre_validation_hooks=hooks,
     )
 
-    for entry in schema_flow.run():
+    report = schema_flow.run()
+    for entry in output_adapter:
         if entry["status"].value == "validated":
             print(f"Processed at: {entry['metadata'].get('processed_at')}")
+    report.wait()
 
 
 def example_field_mapper():
@@ -53,24 +55,28 @@ def example_field_mapper():
         pre_validation_hooks=hooks,
     )
 
-    for entry in schema_flow.run():
-        print(f"Row {entry['position']}")
+    report = schema_flow.run()
+    report.wait()
+    print(f"Total processed: {report.total_processed}")
 
 
 def example_custom_hook():
     hooks = [UppercaseNameHook(), TimestampHook(field_name="processed_at")]
 
+    output_adapter = GeneratorOutputAdapter()
     schema_flow = FlowSchema(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
-        output_adapter=JSONOutputAdapter("examples/output_data/output.json", indent=2),
+        output_adapter=output_adapter,
         executor=SyncFifoExecutor(UserSchema),
         pre_validation_hooks=hooks,
     )
 
-    for entry in schema_flow.run():
+    report = schema_flow.run()
+    for entry in output_adapter:
         if entry["status"].value == "validated":
             print(f"Name: {entry['raw_data'].get('name')}")
             print(f"Processed at: {entry['metadata'].get('processed_at')}")
+    report.wait()
 
 
 if __name__ == "__main__":

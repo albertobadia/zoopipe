@@ -20,8 +20,9 @@ def example_json_array():
         executor=SyncFifoExecutor(UserSchema),
     )
 
-    for entry in schema_flow.run():
-        print(f"Processed {entry['position']}")
+    report = schema_flow.run()
+    report.wait()
+    print(f"Processed {report.total_processed} items")
 
 
 def example_jsonl():
@@ -38,8 +39,9 @@ def example_jsonl():
         executor=SyncFifoExecutor(UserSchema),
     )
 
-    for entry in schema_flow.run():
-        print(f"Processed {entry['position']}")
+    report = schema_flow.run()
+    report.wait()
+    print(f"Processed {report.total_processed} items")
 
 
 if __name__ == "__main__":

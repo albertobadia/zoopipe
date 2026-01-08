@@ -10,6 +10,7 @@ from flowschema.core import FlowSchema
 from flowschema.executor.ray import RayExecutor
 from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.csv import CSVOutputAdapter
+from flowschema.output_adapter.memory import MemoryOutputAdapter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,13 +39,16 @@ def test_ray_executor_lz4():
     try:
         executor = RayExecutor(InputModel, compression="lz4")
 
+        memory_adapter = MemoryOutputAdapter()
         schema_flow = FlowSchema(
             input_adapter=CSVInputAdapter(sample_csv),
-            output_adapter=CSVOutputAdapter("test_ray_output.csv"),
+            output_adapter=memory_adapter,
             error_output_adapter=CSVOutputAdapter("test_ray_errors.csv"),
             executor=executor,
         )
-        output_data = list(schema_flow.run())
+        report = schema_flow.run()
+        report.wait()
+        output_data = memory_adapter.results
 
         assert len(output_data) == 3
         assert output_data[0]["status"].value == "validated"

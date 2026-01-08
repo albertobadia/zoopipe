@@ -1,3 +1,4 @@
+import multiprocessing
 import typing
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
@@ -58,7 +59,8 @@ class MultiProcessingExecutor(BaseExecutor):
             self._process_chunk, self._schema_model, self._compression
         )
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as pool:
+        ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=self._max_workers, mp_context=ctx) as pool:
             results_iterator = pool.map(process_func, self._upstream_iterator)
             for batch_result in results_iterator:
                 yield from batch_result

@@ -14,8 +14,13 @@ def main():
         executor=RayExecutor(UserSchema, compression="lz4"),
     )
 
-    for entry in schema_flow.run():
-        print(f"Processed transaction {entry['position']}")
+    print("Executing with Ray...")
+    report = schema_flow.run()
+    report.wait()
+
+    print(f"Finished! Processed {report.total_processed} transactions.")
+    print(f"{report.success_count=}")
+    print(f"{report.error_count=}")
 
 
 if __name__ == "__main__":

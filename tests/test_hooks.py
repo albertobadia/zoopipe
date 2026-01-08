@@ -6,7 +6,7 @@ from flowschema.hooks.base import BaseHook, HookStore
 from flowschema.hooks.builtin import FieldMapperHook, TimestampHook
 from flowschema.input_adapter.json import JSONInputAdapter
 from flowschema.models.core import EntryStatus, EntryTypedDict
-from flowschema.output_adapter.json import JSONOutputAdapter
+from flowschema.output_adapter.memory import MemoryOutputAdapter
 
 
 class UserSchema(BaseModel):
@@ -106,7 +106,6 @@ def test_hook_with_setup_teardown():
 
 def test_hooks_integration_with_flowschema(tmp_path):
     input_file = tmp_path / "input.json"
-    output_file = tmp_path / "output.json"
 
     input_file.write_text('[{"name": "Alice", "age": 30}]')
 
@@ -118,9 +117,10 @@ def test_hooks_integration_with_flowschema(tmp_path):
             store.processed_count[0] += 1
             return {"hook_count": store.processed_count[0]}
 
+    memory_adapter = MemoryOutputAdapter()
     flow = FlowSchema(
         input_adapter=JSONInputAdapter(input_file, format="array"),
-        output_adapter=JSONOutputAdapter(output_file, format="array"),
+        output_adapter=memory_adapter,
         executor=SyncFifoExecutor(UserSchema),
         post_validation_hooks=[
             CounterHook(),
@@ -128,7 +128,9 @@ def test_hooks_integration_with_flowschema(tmp_path):
         ],
     )
 
-    entries = list(flow.run())
+    report = flow.run()
+    report.wait()
+    entries = memory_adapter.results
 
     assert len(entries) == 1
     assert entries[0]["status"] == EntryStatus.VALIDATED

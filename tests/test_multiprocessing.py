@@ -7,6 +7,7 @@ from flowschema.core import FlowSchema
 from flowschema.executor.multiprocessing import MultiProcessingExecutor
 from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.csv import CSVOutputAdapter
+from flowschema.output_adapter.generator import GeneratorOutputAdapter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,13 +29,16 @@ def test_multiprocessing_executor():
         f.write("Charlie,Brown,35,Manager\n")
 
     try:
+        gen_adapter = GeneratorOutputAdapter()
         schema_flow = FlowSchema(
             input_adapter=CSVInputAdapter(sample_csv),
-            output_adapter=CSVOutputAdapter("test_mp_output.csv"),
+            output_adapter=gen_adapter,
             error_output_adapter=CSVOutputAdapter("test_mp_errors.csv"),
             executor=MultiProcessingExecutor(InputModel, max_workers=2, chunksize=2),
         )
-        output_data = list(schema_flow.run())
+        report = schema_flow.run()
+        output_data = list(gen_adapter)
+        report.wait()
 
         assert len(output_data) == 3
         assert output_data[0]["status"].value == "validated"

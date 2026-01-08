@@ -22,9 +22,11 @@ def test_csv_output_adapter(tmp_path):
         input_adapter=input_adapter, executor=executor, output_adapter=output_adapter
     )
 
-    results = list(flow.run())
+    report = flow.run()
+    report.wait()
+    results_count = report.total_processed
 
-    assert len(results) > 0
+    assert results_count > 0
     assert output_file.exists()
 
     import csv
@@ -32,7 +34,7 @@ def test_csv_output_adapter(tmp_path):
     with open(output_file, "r") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
-        assert len(rows) == len(results)
+        assert len(rows) == results_count
         if len(rows) > 0:
             assert "name" in rows[0]
             assert "age" in rows[0]

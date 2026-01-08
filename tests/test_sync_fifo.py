@@ -7,6 +7,7 @@ from flowschema.core import FlowSchema
 from flowschema.executor.sync_fifo import SyncFifoExecutor
 from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.csv import CSVOutputAdapter
+from flowschema.output_adapter.memory import MemoryOutputAdapter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,13 +29,16 @@ def test_sync_fifo_executor():
         f.write("Charlie,Brown,35,Manager\n")
 
     try:
+        memory_adapter = MemoryOutputAdapter()
         schema_flow = FlowSchema(
             input_adapter=CSVInputAdapter(sample_csv),
-            output_adapter=CSVOutputAdapter("test_sync_output.csv"),
+            output_adapter=memory_adapter,
             error_output_adapter=CSVOutputAdapter("test_sync_errors.csv"),
             executor=SyncFifoExecutor(InputModel),
         )
-        output_data = list(schema_flow.run())
+        report = schema_flow.run()
+        report.wait()
+        output_data = memory_adapter.results
 
         assert len(output_data) == 3
         assert output_data[0]["status"].value == "validated"
