@@ -1,40 +1,27 @@
 # FlowSchema
 
-**FlowSchema** is a lightweight, declarative data processing framework for Python. It allows you to build robust data pipelines by defining your data schemas with Pydantic and plugging in various input and output adapters.
+**FlowSchema** is a lightweight, high-performance data processing framework for Python that combines the simplicity of Pydantic validation with the power of parallel processing.
 
-Whether you are migrating data, cleaning CSVs, or processing streams, FlowSchema provides a structured way to handle validation, transformation, and error management.
-
----
-
-## 📑 Table of Contents
-
-- [✨ Features](#-features)
-- [🚀 Quick Start](#-quick-start)
-  - [Installation](#installation)
-  - [Basic Example](#basic-example)
-- [🧩 Core Concepts](#-core-concepts)
-  - [Adapters](#adapters)
-  - [Executors](#executors)
-  - [The Entry Object](#the-entry-object)
-- [🛠 Development](#-development)
-- [📄 License](#-license)
+Whether you're migrating data, cleaning CSVs, or processing streams, FlowSchema provides a structured way to handle validation, transformation, and error management without the complexity of big data frameworks.
 
 ---
 
-## ✨ Features
+## ✨ Key Features
 
-- **Declarative Validation**: Use [Pydantic](https://docs.pydantic.dev/) models to define and validate your data structures.
-- **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors.
-- **Built-in CSV Support**: Direct support for reading from and writing to CSV files with customizable encoding, delimiters, and row limits.
-- **Automated Error Handling**: Configure a dedicated error output adapter to capture records that fail validation.
-- **Async Ready**: Designed with async support in mind (Base adapters provided for async implementations).
-- **Type Safe**: Fully type-hinted for a better developer experience.
+- 🔍 **Declarative Validation**: Use [Pydantic](https://docs.pydantic.dev/) models to define and validate your data structures
+- 🔌 **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors
+- ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor` and `RayExecutor`
+- 🗜️ **High-Performance Serialization**: Uses msgpack and optional LZ4 compression for efficient inter-process communication
+- 📊 **Built-in CSV Support**: Direct support for reading from and writing to CSV files
+- 🚨 **Automated Error Handling**: Dedicated error output adapter to capture records that fail validation
+- 🔄 **Async Ready**: Base adapters provided for async implementations
+- 🛡️ **Type Safe**: Fully type-hinted for a better developer experience
+
+---
 
 ## 🚀 Quick Start
 
 ### Installation
-
-If you are using [uv](https://github.com/astral-sh/uv):
 
 ```bash
 uv add flowschema
@@ -46,9 +33,7 @@ Or using pip:
 pip install flowschema
 ```
 
-### Basic Example
-
-Here is how you can process a CSV file, validate it against a model, and save the results:
+### Simple Example
 
 ```python
 from pydantic import BaseModel, ConfigDict
@@ -57,72 +42,133 @@ from flowschema.executor.sync_fifo import SyncFifoExecutor
 from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.csv import CSVOutputAdapter
 
-# 1. Define your schema
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
     name: str
     last_name: str
     age: int
 
-# 2. Configure the flow
 schema_flow = FlowSchema(
     input_adapter=CSVInputAdapter("users.csv"),
     output_adapter=CSVOutputAdapter("processed_users.csv"),
-    error_output_adapter=CSVOutputAdapter("errors.csv"), # Optional: catch failures
+    error_output_adapter=CSVOutputAdapter("errors.csv"),
     executor=SyncFifoExecutor(UserSchema),
 )
 
-# 3. Run it!
 for entry in schema_flow.run():
     status = entry['status'].value
-    print(f"[{status.upper()}] Row {entry['position']}: {entry['id']}")
+    print(f"[{status.upper()}] Row {entry['position']}")
 ```
 
-## 🧩 Core Concepts
+---
 
-### Adapters
-Adapters handle the communication with external data sources and sinks.
-- **Input Adapter**: Responsible for fetching data from a source (CSV, API, Database, etc.).
-  - `CSVInputAdapter`: Supports `encoding`, `delimiter`, `skip_rows`, `max_rows`, and `fieldnames`.
-- **Output Adapter**: Responsible for persisting processed data to a destination.
-  - `CSVOutputAdapter`: Efficiently writes entries to a CSV file.
-- **Error Output Adapter**: (Optional) A specialized output adapter for records that failed validation or processing.
+## 📚 Documentation
 
-### Executors
-Executors define *how* the data flows through the system.
-- `SyncFifoExecutor`: Processes entries one by one in a synchronous, first-in-first-out manner. It uses Pydantic to validate each entry against the provided schema.
+### Getting Started
+- [**Installation & First Steps**](docs/getting-started.md) - Get up and running quickly
 
-### The Entry Object
-Every record in FlowSchema is wrapped in an `EntryTypedDict`, which tracks its lifecycle:
-- `id`: A unique `uuid.UUID` for the record.
-- `position`: The original index/line number in the source.
-- `status`: `PENDING`, `VALIDATED`, or `FAILED`.
-- `raw_data`: The original dictionary extracted from the input.
-- `validated_data`: The data after being parsed and dumped by your Pydantic model.
-- `errors`: A list of validation errors (if any).
-- `metadata`: A place to store additional context.
+### Core Concepts
+- [**Executors**](docs/executors.md) - Learn about SyncFifoExecutor, MultiprocessingExecutor, and RayExecutor
+- [**Adapters**](docs/adapters.md) - Input and Output adapters for various data sources
+- [**Examples**](docs/examples.md) - Practical examples for common use cases
+
+### Architecture
+- [**RFC: Design & Architecture**](docs/RFC.md) - Deep dive into FlowSchema's architecture and design decisions
+
+---
+
+## 🎯 Use Cases
+
+FlowSchema excels at:
+
+- **Legacy Data Migrations**: Moving data between heterogeneous databases with validation
+- **ETL Pipelines**: Extract, Transform, Load workflows with error handling
+- **Data Cleaning**: Processing manually generated files (Excel/CSV) with inconsistent formats
+- **Quality Filters**: Acting as a validation layer before loading data into Data Lakes or ML models
+- **Batch Processing**: Processing large datasets with parallel execution
+
+---
+
+## 🧩 Architecture
+
+FlowSchema uses a decoupled architecture based on four components:
+
+```
+┌─────────────────┐      ┌──────────────┐      ┌─────────────────┐
+│  Input Adapter  │─────▶│   Executor   │─────▶│ Output Adapter  │
+│   (CSV, DB,     │      │ (Validation  │      │  (CSV, DB,      │
+│    API, etc)    │      │  & Transform)│      │   API, etc)     │
+└─────────────────┘      └──────────────┘      └─────────────────┘
+                                │
+                                │ (errors)
+                                ▼
+                         ┌──────────────┐
+                         │ Error Output │
+                         │   Adapter    │
+                         └──────────────┘
+```
+
+- **Input Adapter**: Reads data from sources (CSV, SQL, Parquet, API)
+- **Executor**: Validates with Pydantic and processes data (sequential or parallel)
+- **Output Adapter**: Persists validated data
+- **Error Output Adapter**: Captures failed validations (Dead Letter Queue)
+
+Learn more in the [Architecture RFC](docs/RFC.md).
+
+---
+
+## 🔧 Executors
+
+FlowSchema provides three execution strategies:
+
+| Executor | Best For | Parallelism |
+|----------|----------|-------------|
+| `SyncFifoExecutor` | Small datasets, debugging | Single-threaded |
+| `MultiprocessingExecutor` | Large datasets on single machine | Multi-process (CPU cores) |
+| `RayExecutor` | Massive datasets, distributed | Ray cluster |
+
+See the [Executors documentation](docs/executors.md) for detailed information.
+
+---
 
 ## 🛠 Development
 
 ### Setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-repo/flowschema.git
-   cd flowschema
-   ```
-
-2. Install dependencies:
-   ```bash
-   uv sync
-   ```
+```bash
+git clone https://github.com/albertobadia/flowschema.git
+cd flowschema
+uv sync
+```
 
 ### Running Tests
 
 ```bash
-pytest
+uv run pytest -v
 ```
+
+### Linting
+
+```bash
+./lint.sh
+```
+
+---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+
+## 📧 Contact
+
+**Alberto Daniel Badia**  
+Email: alberto_badia@enlacepatagonia.com  
+GitHub: [@albertobadia](https://github.com/albertobadia)
