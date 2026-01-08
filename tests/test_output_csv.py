@@ -14,9 +14,6 @@ def test_csv_output_adapter(tmp_path):
 
     output_file = tmp_path / "output.csv"
 
-    # Simple input adapter using the real sample_data.csv if it has name/age
-    # Or just use the first few lines of sample_data.csv
-
     input_adapter = CSVInputAdapter("sample_data.csv", max_rows=5)
     output_adapter = CSVOutputAdapter(output_file)
     executor = SyncFifoExecutor(Person)
@@ -30,7 +27,6 @@ def test_csv_output_adapter(tmp_path):
     assert len(results) > 0
     assert output_file.exists()
 
-    # Read output and verify
     import csv
 
     with open(output_file, "r") as f:

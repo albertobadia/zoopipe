@@ -1,4 +1,10 @@
+import enum
+import itertools
 import typing
+import uuid
+
+import lz4.frame
+import msgpack
 
 from flowschema.executor.base import BaseExecutor
 from flowschema.input_adapter.base import BaseInputAdapter
@@ -36,7 +42,35 @@ class FlowSchema:
             self.input_adapter as input_adapter,
             self.output_adapter,
         ):
-            self.executor.add_raw_data_entries(input_adapter.generator)
+            chunksize = getattr(self.executor, "_chunksize", 1)
+            if chunksize < 1:
+                chunksize = 1
+
+            chunks = itertools.batched(input_adapter.generator, chunksize)
+
+            if self.executor.do_binary_pack:
+
+                def _packer_default(obj):
+                    if isinstance(obj, uuid.UUID):
+                        return str(obj)
+                    if isinstance(obj, enum.Enum):
+                        return obj.value
+                    return obj
+
+                data_iterator = (
+                    msgpack.packb(list(chunk), default=_packer_default)
+                    for chunk in chunks
+                )
+
+                if self.executor.compression_algorithm == "lz4":
+                    data_iterator = (
+                        lz4.frame.compress(chunk) for chunk in data_iterator
+                    )
+            else:
+                data_iterator = (list(chunk) for chunk in chunks)
+
+            self.executor.set_upstream_iterator(data_iterator)
+
             for entry in self.executor.generator:
                 yield self._handle_entry(entry)
 

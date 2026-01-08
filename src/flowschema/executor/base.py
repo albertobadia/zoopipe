@@ -5,19 +5,18 @@ from flowschema.models.core import EntryTypedDict
 
 
 class BaseExecutor(abc.ABC):
-    _raw_data_entries: list[EntryTypedDict] = None
+    _upstream_iterator: typing.Iterator[typing.Any] = None
 
     @property
-    def raw_data_entries(self) -> list[EntryTypedDict]:
-        if self._raw_data_entries is None:
-            self._raw_data_entries = []
-        return self._raw_data_entries
+    def compression_algorithm(self) -> str | None:
+        return None
 
-    def add_raw_data_entries(
-        self, tasks: typing.Generator[EntryTypedDict, None, None]
-    ) -> None:
-        for task in tasks:
-            self.raw_data_entries.append(task)
+    @property
+    def do_binary_pack(self) -> bool:
+        return False
+
+    def set_upstream_iterator(self, iterator: typing.Iterator[typing.Any]) -> None:
+        self._upstream_iterator = iterator
 
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:

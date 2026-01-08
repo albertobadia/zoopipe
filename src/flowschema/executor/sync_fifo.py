@@ -18,16 +18,14 @@ class SyncFifoExecutor(BaseExecutor):
 
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
-        for raw_data_entry in self._raw_data_entries:
-            validated_entry = validate_entry(self._schema_model, raw_data_entry)
-            self._position += 1
-            yield validated_entry
+        if not self._upstream_iterator:
+            return
 
-    def add_raw_data_entries(
-        self, raw_data_entries: typing.Generator[EntryTypedDict, None, None]
-    ) -> None:
-        for raw_data_entry in raw_data_entries:
-            self.raw_data_entries.append(raw_data_entry)
+        for chunk in self._upstream_iterator:
+            for raw_data_entry in chunk:
+                validated_entry = validate_entry(self._schema_model, raw_data_entry)
+                self._position += 1
+                yield validated_entry
 
 
 __all__ = ["SyncFifoExecutor"]

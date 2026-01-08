@@ -1,9 +1,8 @@
 import typing
-from concurrent.futures import ProcessPoolExecutor
-from functools import partial
 
 import lz4.frame
 import msgpack
+import ray
 from pydantic import BaseModel
 
 from flowschema.executor.base import BaseExecutor
@@ -11,18 +10,16 @@ from flowschema.models.core import EntryTypedDict
 from flowschema.utils import validate_entry
 
 
-class MultiProcessingExecutor(BaseExecutor):
+class RayExecutor(BaseExecutor):
     def __init__(
         self,
         schema_model: type[BaseModel],
-        max_workers: int | None = None,
-        chunksize: int = 1,
+        address: str | None = None,
         compression: str | None = None,
     ) -> None:
         super().__init__()
         self._schema_model = schema_model
-        self._max_workers = max_workers
-        self._chunksize = chunksize
+        self._address = address
         self._compression = compression
 
     @property
@@ -34,7 +31,7 @@ class MultiProcessingExecutor(BaseExecutor):
         return self._compression
 
     @staticmethod
-    def _process_chunk(
+    def _process_chunk_logic(
         schema_model: type[BaseModel],
         compression: str | None,
         compressed_chunk: bytes,
@@ -54,14 +51,36 @@ class MultiProcessingExecutor(BaseExecutor):
         if not self._upstream_iterator:
             return
 
-        process_func = partial(
-            self._process_chunk, self._schema_model, self._compression
-        )
+        if not ray.is_initialized():
+            runtime_env = {"py_modules": ["src/flowschema"]}
+            ray.init(address=self._address, runtime_env=runtime_env)
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as pool:
-            results_iterator = pool.map(process_func, self._upstream_iterator)
-            for batch_result in results_iterator:
-                yield from batch_result
+        @ray.remote
+        def process_task(chunk, model, comp):
+            return RayExecutor._process_chunk_logic(model, comp, chunk)
+
+        max_inflight = 20
+        inflight_futures = []
+
+        def submit_tasks(count: int):
+            for _ in range(count):
+                try:
+                    chunk = next(self._upstream_iterator)
+                    future = process_task.remote(
+                        chunk, self._schema_model, self._compression
+                    )
+                    inflight_futures.append(future)
+                except StopIteration:
+                    break
+
+        submit_tasks(max_inflight)
+
+        while inflight_futures:
+            future = inflight_futures.pop(0)
+            batch_result = ray.get(future)
+            submit_tasks(1)
+
+            yield from batch_result
 
 
-__all__ = ["MultiProcessingExecutor"]
+__all__ = ["RayExecutor"]

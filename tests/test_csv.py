@@ -11,13 +11,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def test_csv_input_adapter():
-    class InputModel(BaseModel):
-        model_config = ConfigDict(extra="ignore")
-        name: str
-        last_name: str
-        age: int
+class InputModel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    last_name: str
+    age: int
 
+
+def test_csv_input_adapter():
     schema_flow = FlowSchema(
         input_adapter=CSVInputAdapter("sample_data.csv"),
         output_adapter=CSVOutputAdapter("output.csv"),
