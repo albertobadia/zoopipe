@@ -1,6 +1,6 @@
 # Adapters
 
-Adapters handle the communication with external data sources and sinks in FlowSchema. They provide a pluggable interface for reading from and writing to various data formats.
+Adapters handle communication with external data sources and sinks in FlowSchema. They provide a pluggable interface for reading from and writing to various data formats.
 
 ## Architecture
 
@@ -16,94 +16,23 @@ FlowSchema uses three types of adapters:
 
 Input adapters are responsible for reading data from various sources and converting them into a stream of entries.
 
-### CSVInputAdapter
+### [CSV Input Adapter](adapters/csv-input.md)
 
 Reads data from CSV files with extensive configuration options.
 
-#### Features
+**Features:** Configurable encoding, custom delimiters, skip rows, field mapping
 
-- Configurable encoding
-- Custom delimiters
-- Skip rows (e.g., headers)
-- Limit number of rows to process
-- Custom field names
+**[View Documentation →](adapters/csv-input.md)**
 
-#### Usage
+---
 
-```python
-from flowschema.input_adapter.csv import CSVInputAdapter
+### [JSON Input Adapter](adapters/json-input.md)
 
-input_adapter = CSVInputAdapter(
-    filepath="data.csv",
-    encoding="utf-8",
-    delimiter=",",
-    skip_rows=0,
-    max_rows=None,
-    fieldnames=None
-)
-```
+Reads data from JSON files in both array and JSONL formats.
 
-#### Parameters
+**Features:** Streaming parsing, multiple formats (array/JSONL), memory-efficient
 
-- `filepath` (required): Path to the CSV file
-- `encoding` (optional): File encoding. Default: `"utf-8"`
-- `delimiter` (optional): CSV delimiter character. Default: `","`
-- `skip_rows` (optional): Number of rows to skip from the beginning. Default: `0`
-- `max_rows` (optional): Maximum number of rows to read. `None` means all rows. Default: `None`
-- `fieldnames` (optional): Custom field names for the CSV. If `None`, uses the first row. Default: `None`
-
-#### Example: Custom Configuration
-
-```python
-adapter = CSVInputAdapter(
-    filepath="data.csv",
-    delimiter=";",
-    skip_rows=1,
-    max_rows=1000,
-    encoding="latin-1"
-)
-```
-
-### BaseInputAdapter
-
-Abstract base class for creating custom input adapters.
-
-#### Creating a Custom Input Adapter
-
-```python
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.models.core import EntryTypedDict
-import typing
-
-class MyCustomInputAdapter(BaseInputAdapter):
-    def __init__(self, source_config):
-        self.source_config = source_config
-    
-    @property
-    def generator(self) -> typing.Generator[dict[str, typing.Any], None, None]:
-        for raw_data in self._fetch_data():
-            yield raw_data
-    
-    def _fetch_data(self):
-        pass
-```
-
-### BaseAsyncInputAdapter
-
-Abstract base class for creating async input adapters.
-
-```python
-from flowschema.input_adapter.base_async import BaseAsyncInputAdapter
-
-class MyAsyncInputAdapter(BaseAsyncInputAdapter):
-    @property
-    async def generator(self):
-        async for raw_data in self._fetch_data_async():
-            yield raw_data
-    
-    async def _fetch_data_async(self):
-        pass
-```
+**[View Documentation →](adapters/json-input.md)**
 
 ---
 
@@ -111,80 +40,54 @@ class MyAsyncInputAdapter(BaseAsyncInputAdapter):
 
 Output adapters are responsible for persisting processed data to various destinations.
 
-### CSVOutputAdapter
+### [CSV Output Adapter](adapters/csv-output.md)
 
 Writes validated entries to a CSV file.
 
-#### Features
+**Features:** Automatic CSV writing, custom delimiters, efficient buffering
 
-- Automatic CSV writing
-- Configurable encoding
-- Custom delimiters
-- Handles Entry objects automatically
-- Efficient buffered writing
+**[View Documentation →](adapters/csv-output.md)**
 
-#### Usage
+---
 
-```python
-from flowschema.output_adapter.csv import CSVOutputAdapter
+### [JSON Output Adapter](adapters/json-output.md)
 
-output_adapter = CSVOutputAdapter(
-    filepath="output.csv",
-    encoding="utf-8",
-    delimiter=","
-)
-```
+Writes validated entries to JSON files in array or JSONL format.
 
-#### Parameters
+**Features:** Pretty-printing, metadata inclusion, handles UUIDs/Enums
 
-- `filepath` (required): Path to the output CSV file
-- `encoding` (optional): File encoding. Default: `"utf-8"`
-- `delimiter` (optional): CSV delimiter character. Default: `","`
+**[View Documentation →](adapters/json-output.md)**
 
-#### Example: Error Output
+---
 
-```python
-error_adapter = CSVOutputAdapter(
-    filepath="errors.csv",
-    delimiter="|"
-)
-```
+## Hooks System
 
-### BaseOutputAdapter
+### [Hooks Documentation](adapters/hooks.md)
 
-Abstract base class for creating custom output adapters.
+Transform and enrich data at various pipeline stages.
 
-#### Creating a Custom Output Adapter
+**Built-in Hooks:**
+- **TimestampHook**: Add timestamps to data
+- **FieldMapperHook**: Rename/map fields
+- **Custom Hooks**: Create your own transformations
 
-```python
-from flowschema.output_adapter.base import BaseOutputAdapter
-from flowschema.models.core import EntryTypedDict
+**[View Documentation →](adapters/hooks.md)**
 
-class MyCustomOutputAdapter(BaseOutputAdapter):
-    def __init__(self, destination_config):
-        self.destination_config = destination_config
-    
-    def write(self, entry: EntryTypedDict) -> None:
-        pass
-    
-    def close(self) -> None:
-        pass
-```
+---
 
-### BaseAsyncOutputAdapter
+## Custom Adapters
 
-Abstract base class for creating async output adapters.
+### [Creating Custom Adapters](adapters/custom-adapters.md)
 
-```python
-from flowschema.output_adapter.base_async import BaseAsyncOutputAdapter
+Learn how to build your own input and output adapters for specialized data sources.
 
-class MyAsyncOutputAdapter(BaseAsyncOutputAdapter):
-    async def write(self, entry: EntryTypedDict) -> None:
-        pass
-    
-    async def close(self) -> None:
-        pass
-```
+**Base Classes:**
+- `BaseInputAdapter` - Synchronous input
+- `BaseAsyncInputAdapter` - Async input
+- `BaseOutputAdapter` - Synchronous output
+- `BaseAsyncOutputAdapter` - Async output
+
+**[View Documentation →](adapters/custom-adapters.md)**
 
 ---
 
@@ -230,9 +133,9 @@ graph LR
 
 ---
 
-## Adapter Configuration Patterns
+## Quick Examples
 
-### Basic Pattern: CSV to CSV
+### CSV Processing
 
 ```python
 from flowschema.core import FlowSchema
@@ -243,34 +146,37 @@ from flowschema.executor.sync_fifo import SyncFifoExecutor
 flow = FlowSchema(
     input_adapter=CSVInputAdapter("input.csv"),
     output_adapter=CSVOutputAdapter("output.csv"),
-    executor=SyncFifoExecutor(YourSchema)
-)
-```
-
-### With Error Handling
-
-```python
-flow = FlowSchema(
-    input_adapter=CSVInputAdapter("input.csv"),
-    output_adapter=CSVOutputAdapter("output.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"),
     executor=SyncFifoExecutor(YourSchema)
 )
 ```
 
-### Custom Delimiters
+### JSON Processing
 
 ```python
+from flowschema.input_adapter.json import JSONInputAdapter
+from flowschema.output_adapter.json import JSONOutputAdapter
+
 flow = FlowSchema(
-    input_adapter=CSVInputAdapter(
-        "input.tsv",
-        delimiter="\t"
-    ),
-    output_adapter=CSVOutputAdapter(
-        "output.tsv",
-        delimiter="\t"
-    ),
+    input_adapter=JSONInputAdapter("input.json", format="array"),
+    output_adapter=JSONOutputAdapter("output.json", indent=2),
     executor=SyncFifoExecutor(YourSchema)
+)
+```
+
+### With Hooks
+
+```python
+from flowschema.hooks import HookStore, TimestampHook
+
+hook_store = HookStore()
+hook_store.register(TimestampHook())
+
+flow = FlowSchema(
+    input_adapter=input_adapter,
+    output_adapter=output_adapter,
+    executor=executor,
+    hooks=hook_store
 )
 ```
 
@@ -282,7 +188,6 @@ The following adapters are planned for future releases:
 
 - **ParquetInputAdapter / ParquetOutputAdapter**: For Apache Parquet files
 - **SQLInputAdapter / SQLOutputAdapter**: For database connections
-- **JSONInputAdapter / JSONOutputAdapter**: For JSON files and streams
 - **API adapters**: For REST API integration
 - **KafkaInputAdapter / KafkaOutputAdapter**: For Apache Kafka streams
 

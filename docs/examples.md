@@ -1,358 +1,118 @@
 # Examples
 
-This document contains practical examples of using FlowSchema for various data processing scenarios.
+FlowSchema includes executable examples demonstrating various data processing scenarios. All examples are located in the [`examples/`](../examples/) directory.
 
----
+## Running Examples
 
-## Table of Contents
+From the project root directory:
 
-- [Basic CSV Processing](#basic-csv-processing)
-- [Parallel Processing with Multiprocessing](#parallel-processing-with-multiprocessing)
-- [Distributed Processing with Ray](#distributed-processing-with-ray)
-- [Custom Validation Logic](#custom-validation-logic)
-- [Handling Errors](#handling-errors)
-- [Processing Large Files](#processing-large-files)
-- [Custom Adapters](#custom-adapters)
-
----
-
-## Basic CSV Processing
-
-Simple example of reading a CSV, validating it, and writing the results.
-
-```python
-from pydantic import BaseModel, ConfigDict
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
-
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    last_name: str
-    age: int
-
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("users.csv"),
-    output_adapter=CSVOutputAdapter("processed_users.csv"),
-    error_output_adapter=CSVOutputAdapter("errors.csv"),
-    executor=SyncFifoExecutor(UserSchema),
-)
-
-for entry in schema_flow.run():
-    status = entry['status'].value
-    print(f"[{status.upper()}] Row {entry['position']}: {entry['id']}")
+```bash
+uv run examples/01_basic_csv.py
 ```
 
 ---
 
-## Parallel Processing with Multiprocessing
+## Available Examples
 
-Process a large CSV file using multiple CPU cores.
+### [01_basic_csv.py](../examples/01_basic_csv.py)
 
-```python
-from pydantic import BaseModel
-from flowschema.core import FlowSchema
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+Basic CSV processing with validation and error handling.
 
-class SalesRecord(BaseModel):
-    order_id: str
-    customer_id: str
-    amount: float
-    date: str
+**Demonstrates:**
+- Reading from CSV files
+- Schema validation with Pydantic
+- Writing validated data to output
+- Separating errors into dedicated file
 
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("sales_data.csv"),
-    output_adapter=CSVOutputAdapter("processed_sales.csv"),
-    error_output_adapter=CSVOutputAdapter("sales_errors.csv"),
-    executor=MultiProcessingExecutor(
-        SalesRecord,
-        max_workers=4,
-        chunksize=100,
-        compression="lz4"
-    ),
-)
-
-processed_count = 0
-error_count = 0
-
-for entry in schema_flow.run():
-    if entry['status'].value == 'validated':
-        processed_count += 1
-    else:
-        error_count += 1
-
-print(f"Processed: {processed_count}, Errors: {error_count}")
+**Run:**
+```bash
+uv run examples/01_basic_csv.py
 ```
 
 ---
 
-## Distributed Processing with Ray
+### [02_multiprocessing.py](../examples/02_multiprocessing.py)
 
-Process a massive dataset using Ray for distributed computing.
+Parallel processing using multiple CPU cores with MultiprocessingExecutor.
 
-```python
-from pydantic import BaseModel
-from flowschema.core import FlowSchema
-from flowschema.executor.ray import RayExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+**Demonstrates:**
+- Multi-core parallel processing
+- Configurable worker count
+- Chunk-based data processing
+- LZ4 compression for efficient IPC
 
-class TransactionSchema(BaseModel):
-    transaction_id: str
-    user_id: str
-    amount: float
-    currency: str
-    timestamp: str
-
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("massive_transactions.csv"),
-    output_adapter=CSVOutputAdapter("processed_transactions.csv"),
-    error_output_adapter=CSVOutputAdapter("transaction_errors.csv"),
-    executor=RayExecutor(
-        TransactionSchema,
-        address="auto",
-        compression="lz4"
-    ),
-)
-
-for entry in schema_flow.run():
-    print(f"Processed transaction {entry['position']}")
-```
-
-### Connecting to Remote Ray Cluster
-
-```python
-executor = RayExecutor(
-    TransactionSchema,
-    address="ray://cluster.example.com:10001",
-    compression="lz4"
-)
+**Run:**
+```bash
+uv run examples/02_multiprocessing.py
 ```
 
 ---
 
-## Custom Validation Logic
+### [03_ray_executor.py](../examples/03_ray_executor.py)
 
-Use Pydantic validators for custom validation logic.
+Distributed processing using Ray for massive datasets across clusters.
 
-```python
-from pydantic import BaseModel, field_validator, ValidationError
-from datetime import datetime
+**Demonstrates:**
+- Ray-based distributed computing
+- Cluster support (local or remote)
+- LZ4 compression for network efficiency
+- Scalable data processing
 
-class OrderSchema(BaseModel):
-    order_id: str
-    customer_email: str
-    order_date: str
-    total_amount: float
-    
-    @field_validator('customer_email')
-    @classmethod
-    def validate_email(cls, v):
-        if '@' not in v:
-            raise ValueError('Invalid email format')
-        return v.lower()
-    
-    @field_validator('order_date')
-    @classmethod
-    def validate_date(cls, v):
-        try:
-            datetime.strptime(v, '%Y-%m-%d')
-        except ValueError:
-            raise ValueError('Date must be in YYYY-MM-DD format')
-        return v
-    
-    @field_validator('total_amount')
-    @classmethod
-    def validate_amount(cls, v):
-        if v <= 0:
-            raise ValueError('Amount must be positive')
-        return v
-
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("orders.csv"),
-    output_adapter=CSVOutputAdapter("valid_orders.csv"),
-    error_output_adapter=CSVOutputAdapter("invalid_orders.csv"),
-    executor=SyncFifoExecutor(OrderSchema),
-)
-
-for entry in schema_flow.run():
-    if entry['status'].value == 'failed':
-        print(f"Row {entry['position']} failed: {entry['errors']}")
+**Run:**
+```bash
+uv run examples/03_ray_executor.py
 ```
 
 ---
 
-## Handling Errors
+### [04_json_processing.py](../examples/04_json_processing.py)
 
-Detailed error handling and logging.
+Working with JSON files in both array and JSONL formats.
 
-```python
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
-import logging
+**Demonstrates:**
+- Reading JSON arrays
+- Reading JSONL (JSON Lines) format
+- Writing to formatted JSON
+- JSON to JSON transformations
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("data.csv"),
-    output_adapter=CSVOutputAdapter("output.csv"),
-    error_output_adapter=CSVOutputAdapter("errors.csv"),
-    executor=SyncFifoExecutor(YourSchema),
-)
-
-statistics = {
-    'total': 0,
-    'validated': 0,
-    'failed': 0
-}
-
-for entry in schema_flow.run():
-    statistics['total'] += 1
-    
-    if entry['status'].value == 'validated':
-        statistics['validated'] += 1
-        logger.info(f"Row {entry['position']}: OK")
-    else:
-        statistics['failed'] += 1
-        logger.error(f"Row {entry['position']}: {entry['errors']}")
-
-logger.info(f"Summary: {statistics}")
+**Run:**
+```bash
+uv run examples/04_json_processing.py
 ```
 
 ---
 
-## Processing Large Files
+### [05_hooks.py](../examples/05_hooks.py)
 
-Efficiently process large files with progress tracking.
+Using the Hooks system to transform and enrich data.
 
-```python
-from flowschema.core import FlowSchema
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
-from tqdm import tqdm
+**Demonstrates:**
+- TimestampHook for adding timestamps
+- FieldMapperHook for field renaming
+- Creating custom hooks
+- Combining multiple hooks in a pipeline
 
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("large_file.csv"),
-    output_adapter=CSVOutputAdapter("processed.csv"),
-    error_output_adapter=CSVOutputAdapter("errors.csv"),
-    executor=MultiProcessingExecutor(
-        YourSchema,
-        max_workers=8,
-        chunksize=1000,
-        compression="lz4"
-    ),
-)
-
-with tqdm(desc="Processing") as pbar:
-    for entry in schema_flow.run():
-        pbar.update(1)
+**Run:**
+```bash
+uv run examples/05_hooks.py
 ```
 
 ---
 
-## Custom Adapters
+## Sample Data
 
-Create custom input and output adapters.
+All examples use the sample data files located in the project root:
 
-### Custom JSON Input Adapter
-
-```python
-import json
-import typing
-from flowschema.input_adapter.base import BaseInputAdapter
-
-class JSONInputAdapter(BaseInputAdapter):
-    def __init__(self, filepath: str):
-        self.filepath = filepath
-    
-    @property
-    def generator(self) -> typing.Generator[dict[str, typing.Any], None, None]:
-        with open(self.filepath, 'r') as f:
-            data = json.load(f)
-            for item in data:
-                yield item
-
-schema_flow = FlowSchema(
-    input_adapter=JSONInputAdapter("data.json"),
-    output_adapter=CSVOutputAdapter("output.csv"),
-    executor=SyncFifoExecutor(YourSchema),
-)
-```
-
-### Custom Database Output Adapter
-
-```python
-from flowschema.output_adapter.base import BaseOutputAdapter
-from flowschema.models.core import EntryTypedDict
-
-class DatabaseOutputAdapter(BaseOutputAdapter):
-    def __init__(self, connection_string: str, table_name: str):
-        self.connection_string = connection_string
-        self.table_name = table_name
-        self.connection = None
-    
-    def write(self, entry: EntryTypedDict) -> None:
-        if entry['status'].value == 'validated':
-            data = entry['validated_data']
-        
-    def close(self) -> None:
-        if self.connection:
-            self.connection.close()
-
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("data.csv"),
-    output_adapter=DatabaseOutputAdapter("postgresql://...", "users"),
-    executor=SyncFifoExecutor(YourSchema),
-)
-```
+- `sample_data.csv` - Sample CSV data
+- `sample_data.json` - Sample JSON array
+- `sample_data.jsonl` - Sample JSONL data
 
 ---
 
-## Advanced: Custom Processing Logic
+## Additional Resources
 
-Process entries with custom business logic.
+For more detailed information, see:
 
-```python
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
-
-schema_flow = FlowSchema(
-    input_adapter=CSVInputAdapter("transactions.csv"),
-    output_adapter=CSVOutputAdapter("processed.csv"),
-    error_output_adapter=CSVOutputAdapter("errors.csv"),
-    executor=SyncFifoExecutor(TransactionSchema),
-)
-
-high_value_transactions = []
-
-for entry in schema_flow.run():
-    if entry['status'].value == 'validated':
-        validated_data = entry['validated_data']
-        
-        if validated_data['amount'] > 10000:
-            high_value_transactions.append(validated_data)
-        
-        validated_data['processed_at'] = datetime.now().isoformat()
-
-print(f"Found {len(high_value_transactions)} high-value transactions")
-```
-
----
-
-## More Examples
-
-For more advanced examples and use cases, check out:
-
-- [Executors Documentation](executors.md)
-- [Adapters Documentation](adapters.md)
-- [RFC: Architecture and Design](RFC.md)
+- [Executors Documentation](executors.md) - Learn about different execution strategies
+- [Adapters Documentation](adapters.md) - Input and output adapter reference
+- [RFC: Architecture and Design](RFC.md) - Deep dive into FlowSchema's architecture

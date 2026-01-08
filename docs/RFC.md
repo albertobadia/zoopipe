@@ -59,8 +59,10 @@ Unlike other systems that count "messages", FlowSchema measures `len(msgpack_pay
 | **Schema Validation** | Pydantic V2 |
 | **Internal Serialization** | Msgpack |
 | **Compression Algorithm** | LZ4 |
-| **Parallelism** | Multiprocessing (Worker Pool) |
-| **Supported Formats** | Parquet, CSV, SQL, JSON (via Adapters) |
+| **Parallelism** | Multiprocessing (Worker Pool) / Ray (Distributed) |
+| **Supported Formats** | CSV, JSON (Array & JSONL) |
+| **Extensibility** | Hooks System for data transformation |
+
 
 ---
 

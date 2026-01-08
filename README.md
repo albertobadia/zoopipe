@@ -12,10 +12,12 @@ Whether you're migrating data, cleaning CSVs, or processing streams, FlowSchema 
 - 🔌 **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors
 - ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor` and `RayExecutor`
 - 🗜️ **High-Performance Serialization**: Uses msgpack and optional LZ4 compression for efficient inter-process communication
-- 📊 **Built-in CSV Support**: Direct support for reading from and writing to CSV files
+- 📊 **Built-in CSV & JSON Support**: Direct support for reading from and writing to CSV and JSON files (array & JSONL formats)
 - 🚨 **Automated Error Handling**: Dedicated error output adapter to capture records that fail validation
+- 🪝 **Hooks System**: Transform and enrich data at various pipeline stages with built-in and custom hooks
 - 🔄 **Async Ready**: Base adapters provided for async implementations
 - 🛡️ **Type Safe**: Fully type-hinted for a better developer experience
+
 
 ---
 
