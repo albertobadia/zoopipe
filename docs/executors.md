@@ -103,7 +103,8 @@ from flowschema.executor.ray import RayExecutor
 
 executor = RayExecutor(
     schema_model=YourSchema,
-    compression="lz4"
+    compression="lz4",
+    max_inflight=20
 )
 ```
 
@@ -135,13 +136,14 @@ executor = RayExecutor(
   - `"auto"`: Auto-discover Ray cluster
   - `"ray://host:port"`: Connect to specific cluster
 - `compression` (optional): Compression algorithm. Options: `"lz4"` or `None`. Default: `None`
+- `max_inflight` (optional): Maximum number of concurrent tasks in flight. Default: `20`
 
 ### Performance Tips
 
 - Use Ray when processing very large datasets (>1GB)
 - Connect to a Ray cluster for distributed processing
 - Use `compression="lz4"` to reduce network overhead in distributed scenarios
-- The executor maintains 20 in-flight tasks by default for optimal throughput
+- Adjust `max_inflight` based on your cluster capacity (default is 20 for optimal throughput)
 
 ---
 

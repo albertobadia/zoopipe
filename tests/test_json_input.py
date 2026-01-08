@@ -14,7 +14,9 @@ class UserSchema(BaseModel):
 
 
 def test_json_input_adapter_array():
-    sample_file = pathlib.Path(__file__).parent.parent / "sample_data.json"
+    sample_file = (
+        pathlib.Path(__file__).parent.parent / "examples" / "data" / "sample_data.json"
+    )
 
     adapter = JSONInputAdapter(sample_file, format="array")
 
@@ -33,7 +35,9 @@ def test_json_input_adapter_array():
 
 
 def test_json_input_adapter_jsonl():
-    sample_file = pathlib.Path(__file__).parent.parent / "sample_data.jsonl"
+    sample_file = (
+        pathlib.Path(__file__).parent.parent / "examples" / "data" / "sample_data.jsonl"
+    )
 
     adapter = JSONInputAdapter(sample_file, format="jsonl")
 
@@ -52,7 +56,9 @@ def test_json_input_adapter_jsonl():
 
 
 def test_json_input_adapter_max_items():
-    sample_file = pathlib.Path(__file__).parent.parent / "sample_data.json"
+    sample_file = (
+        pathlib.Path(__file__).parent.parent / "examples" / "data" / "sample_data.json"
+    )
 
     adapter = JSONInputAdapter(sample_file, format="array", max_items=3)
 

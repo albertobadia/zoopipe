@@ -18,12 +18,17 @@ class InputModel(BaseModel):
     age: int
 
 
-def test_csv_input_adapter():
+def test_csv_input_adapter(tmp_path):
+    output_file = tmp_path / "output.csv"
+    error_file = tmp_path / "errors.csv"
     schema_flow = FlowSchema(
-        input_adapter=CSVInputAdapter("sample_data.csv"),
-        output_adapter=CSVOutputAdapter("output.csv"),
-        error_output_adapter=CSVOutputAdapter("errors.csv"),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        output_adapter=CSVOutputAdapter(output_file),
+        error_output_adapter=CSVOutputAdapter(error_file),
         executor=SyncFifoExecutor(InputModel),
     )
     output_data = list(schema_flow.run())
+    assert len(output_data) > 0
+    assert output_file.exists()
+    assert error_file.exists()
     print(output_data)

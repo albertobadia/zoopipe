@@ -1,4 +1,5 @@
 import csv
+import json
 import pathlib
 import typing
 
@@ -68,8 +69,6 @@ class CSVOutputAdapter(BaseOutputAdapter):
             )
 
         record = entry.get("validated_data") or entry.get("raw_data") or {}
-
-        import json
 
         data = {
             "id": str(entry["id"]),

@@ -48,16 +48,18 @@ Using the Hooks system. Demonstrates:
 
 ## Sample Data
 
-Examples use the sample data files in the project root:
-- `sample_data.csv`
-- `sample_data.json`
-- `sample_data.jsonl`
+Examples use the sample data files in `examples/data/`:
+- `sample_data.csv` - Sample CSV with user records
+- `sample_data.json` - Sample JSON array
+- `sample_data.jsonl` - Sample JSONL data
 
 ## Output Files
 
-Running the examples will create output files in the project root:
-- `output.csv`
-- `output.json`
-- `output.jsonl`
-- `errors.csv`
-- `errors.json`
+Running the examples will create output files in `examples/output_data/`:
+- `output.csv` - Validated CSV output
+- `output.json` - JSON output
+- `output.jsonl` - JSONL output
+- `output_with_hooks.json` - JSON output with hook metadata
+- `errors.csv` - CSV validation errors
+- `errors.json` - JSON validation errors
+- `errors.jsonl` - JSONL validation errors

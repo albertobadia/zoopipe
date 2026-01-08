@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from models import UserSchema
 
 from flowschema.core import FlowSchema
 from flowschema.executor.sync_fifo import SyncFifoExecutor
@@ -6,18 +6,11 @@ from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.csv import CSVOutputAdapter
 
 
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    last_name: str
-    age: int
-
-
 def main():
     schema_flow = FlowSchema(
-        input_adapter=CSVInputAdapter("sample_data.csv"),
-        output_adapter=CSVOutputAdapter("output.csv"),
-        error_output_adapter=CSVOutputAdapter("errors.csv"),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        output_adapter=CSVOutputAdapter("examples/output_data/output.csv"),
+        error_output_adapter=CSVOutputAdapter("examples/output_data/errors.csv"),
         executor=SyncFifoExecutor(UserSchema),
     )
 

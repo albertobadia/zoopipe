@@ -1,19 +1,12 @@
-from pydantic import BaseModel, ConfigDict
+from models import UserSchema
 
 from flowschema.core import FlowSchema
 from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.hooks import FieldMapperHook, HookStore, TimestampHook
+from flowschema.hooks import FieldMapperHook, TimestampHook
 from flowschema.hooks.base import BaseHook
 from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.models.core import EntryTypedDict
 from flowschema.output_adapter.json import JSONOutputAdapter
-
-
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    last_name: str
-    age: int
 
 
 class UppercaseNameHook(BaseHook):
@@ -27,32 +20,37 @@ class UppercaseNameHook(BaseHook):
 
 
 def example_timestamp_hook():
-    hook_store = HookStore()
-    hook_store.register(TimestampHook(field_name="processed_at"))
+    hooks = [TimestampHook(field_name="processed_at")]
 
     schema_flow = FlowSchema(
-        input_adapter=CSVInputAdapter("sample_data.csv"),
-        output_adapter=JSONOutputAdapter("output_with_hooks.json", indent=2),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        output_adapter=JSONOutputAdapter(
+            "examples/output_data/output_with_hooks.json", indent=2
+        ),
         executor=SyncFifoExecutor(UserSchema),
-        hooks=hook_store,
+        pre_validation_hooks=hooks,
     )
 
     for entry in schema_flow.run():
         if entry["status"].value == "validated":
-            print(f"Processed at: {entry['validated_data'].get('processed_at')}")
+            print(f"Processed at: {entry['metadata'].get('processed_at')}")
 
 
 def example_field_mapper():
-    hook_store = HookStore()
-    hook_store.register(
-        FieldMapperHook(mapping={"name": "first_name", "last_name": "surname"})
-    )
+    hooks = [
+        FieldMapperHook(
+            field_mapping={
+                "first_name": lambda e, s: e["raw_data"].get("name"),
+                "surname": lambda e, s: e["raw_data"].get("last_name"),
+            }
+        )
+    ]
 
     schema_flow = FlowSchema(
-        input_adapter=CSVInputAdapter("sample_data.csv"),
-        output_adapter=JSONOutputAdapter("output.json", indent=2),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        output_adapter=JSONOutputAdapter("examples/output_data/output.json", indent=2),
         executor=SyncFifoExecutor(UserSchema),
-        hooks=hook_store,
+        pre_validation_hooks=hooks,
     )
 
     for entry in schema_flow.run():
@@ -60,20 +58,19 @@ def example_field_mapper():
 
 
 def example_custom_hook():
-    hook_store = HookStore()
-    hook_store.register(UppercaseNameHook())
-    hook_store.register(TimestampHook(field_name="processed_at"))
+    hooks = [UppercaseNameHook(), TimestampHook(field_name="processed_at")]
 
     schema_flow = FlowSchema(
-        input_adapter=CSVInputAdapter("sample_data.csv"),
-        output_adapter=JSONOutputAdapter("output.json", indent=2),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        output_adapter=JSONOutputAdapter("examples/output_data/output.json", indent=2),
         executor=SyncFifoExecutor(UserSchema),
-        hooks=hook_store,
+        pre_validation_hooks=hooks,
     )
 
     for entry in schema_flow.run():
         if entry["status"].value == "validated":
-            print(f"Name: {entry['validated_data'].get('name')}")
+            print(f"Name: {entry['raw_data'].get('name')}")
+            print(f"Processed at: {entry['metadata'].get('processed_at')}")
 
 
 if __name__ == "__main__":

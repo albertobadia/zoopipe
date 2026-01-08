@@ -1,5 +1,6 @@
 import enum
 import itertools
+import logging
 import typing
 import uuid
 
@@ -9,6 +10,7 @@ import msgpack
 from flowschema.executor.base import BaseExecutor
 from flowschema.hooks.base import BaseHook
 from flowschema.input_adapter.base import BaseInputAdapter
+from flowschema.logger import get_logger
 from flowschema.models.core import EntryStatus, EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
 
@@ -22,6 +24,7 @@ class FlowSchema:
         error_output_adapter: BaseOutputAdapter | None = None,
         pre_validation_hooks: list[BaseHook] | None = None,
         post_validation_hooks: list[BaseHook] | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
@@ -30,6 +33,15 @@ class FlowSchema:
         self.error_entries: list[EntryTypedDict] = []
         self.pre_validation_hooks = pre_validation_hooks or []
         self.post_validation_hooks = post_validation_hooks or []
+        self.logger = logger or get_logger()
+        self._setup_logger()
+
+    def _setup_logger(self) -> None:
+        self.input_adapter.set_logger(self.logger)
+        self.output_adapter.set_logger(self.logger)
+        self.executor.set_logger(self.logger)
+        if self.error_output_adapter:
+            self.error_output_adapter.set_logger(self.logger)
 
     def _handle_entry(self, entry: EntryTypedDict) -> None:
         if entry["status"] == EntryStatus.FAILED:

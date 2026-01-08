@@ -11,7 +11,7 @@ from flowschema.utils import validate_entry
 class SyncFifoExecutor(BaseExecutor):
     def __init__(
         self,
-        schema_model: BaseModel,
+        schema_model: type[BaseModel],
     ) -> None:
         super().__init__()
         self._schema_model = schema_model

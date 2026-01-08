@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from models import UserSchema
 
 from flowschema.core import FlowSchema
 from flowschema.executor.sync_fifo import SyncFifoExecutor
@@ -6,21 +6,16 @@ from flowschema.input_adapter.json import JSONInputAdapter
 from flowschema.output_adapter.json import JSONOutputAdapter
 
 
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    last_name: str
-    age: int
-
-
 def example_json_array():
     schema_flow = FlowSchema(
-        input_adapter=JSONInputAdapter(source="sample_data.json", format="array"),
+        input_adapter=JSONInputAdapter(
+            source="examples/data/sample_data.json", format="array"
+        ),
         output_adapter=JSONOutputAdapter(
-            output="output.json", format="array", indent=2
+            output="examples/output_data/output.json", format="array", indent=2
         ),
         error_output_adapter=JSONOutputAdapter(
-            output="errors.json", format="array", indent=2
+            output="examples/output_data/errors.json", format="array", indent=2
         ),
         executor=SyncFifoExecutor(UserSchema),
     )
@@ -31,9 +26,15 @@ def example_json_array():
 
 def example_jsonl():
     schema_flow = FlowSchema(
-        input_adapter=JSONInputAdapter(source="sample_data.jsonl", format="jsonl"),
-        output_adapter=JSONOutputAdapter(output="output.jsonl", format="jsonl"),
-        error_output_adapter=JSONOutputAdapter(output="errors.jsonl", format="jsonl"),
+        input_adapter=JSONInputAdapter(
+            source="examples/data/sample_data.jsonl", format="jsonl"
+        ),
+        output_adapter=JSONOutputAdapter(
+            output="examples/output_data/output.jsonl", format="jsonl"
+        ),
+        error_output_adapter=JSONOutputAdapter(
+            output="examples/output_data/errors.jsonl", format="jsonl"
+        ),
         executor=SyncFifoExecutor(UserSchema),
     )
 

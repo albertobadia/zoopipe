@@ -14,7 +14,7 @@ def test_csv_output_adapter(tmp_path):
 
     output_file = tmp_path / "output.csv"
 
-    input_adapter = CSVInputAdapter("sample_data.csv", max_rows=5)
+    input_adapter = CSVInputAdapter("examples/data/sample_data.csv", max_rows=5)
     output_adapter = CSVOutputAdapter(output_file)
     executor = SyncFifoExecutor(Person)
 

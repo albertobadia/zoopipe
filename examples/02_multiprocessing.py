@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from models import UserSchema
 
 from flowschema.core import FlowSchema
 from flowschema.executor.multiprocessing import MultiProcessingExecutor
@@ -6,20 +6,13 @@ from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.csv import CSVOutputAdapter
 
 
-class SalesRecord(BaseModel):
-    order_id: str
-    customer_id: str
-    amount: float
-    date: str
-
-
 def main():
     schema_flow = FlowSchema(
-        input_adapter=CSVInputAdapter("sample_data.csv"),
-        output_adapter=CSVOutputAdapter("output.csv"),
-        error_output_adapter=CSVOutputAdapter("errors.csv"),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        output_adapter=CSVOutputAdapter("examples/output_data/output.csv"),
+        error_output_adapter=CSVOutputAdapter("examples/output_data/errors.csv"),
         executor=MultiProcessingExecutor(
-            SalesRecord, max_workers=4, chunksize=100, compression="lz4"
+            UserSchema, max_workers=4, chunksize=100, compression="lz4"
         ),
     )
 

@@ -1,10 +1,15 @@
 import abc
+import logging
 
 from flowschema.models.core import EntryTypedDict
 
 
 class BaseOutputAdapter(abc.ABC):
     _is_opened: bool = False
+    logger: logging.Logger | None = None
+
+    def set_logger(self, logger: logging.Logger) -> None:
+        self.logger = logger
 
     @abc.abstractmethod
     def write(self, entry: EntryTypedDict) -> None:

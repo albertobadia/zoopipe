@@ -1,4 +1,5 @@
 import abc
+import logging
 import typing
 
 from flowschema.hooks.base import BaseHook, HookStore
@@ -6,7 +7,11 @@ from flowschema.models.core import EntryTypedDict
 
 
 class BaseExecutor(abc.ABC):
-    _upstream_iterator: typing.Iterator[typing.Any] = None
+    _upstream_iterator: typing.Iterator[typing.Any] | None = None
+    logger: logging.Logger | None = None
+
+    def set_logger(self, logger: logging.Logger) -> None:
+        self.logger = logger
 
     def __init__(self):
         self._pre_validation_hooks: list[BaseHook] = []

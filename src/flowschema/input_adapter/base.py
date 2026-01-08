@@ -1,9 +1,14 @@
 import abc
+import logging
 import typing
 
 
 class BaseInputAdapter(abc.ABC):
     _is_opened: bool = False
+    logger: logging.Logger | None = None
+
+    def set_logger(self, logger: logging.Logger) -> None:
+        self.logger = logger
 
     @property
     @abc.abstractmethod

@@ -16,11 +16,13 @@ class RayExecutor(BaseExecutor):
         schema_model: type[BaseModel],
         address: str | None = None,
         compression: str | None = None,
+        max_inflight: int = 20,
     ) -> None:
         super().__init__()
         self._schema_model = schema_model
         self._address = address
         self._compression = compression
+        self._max_inflight = max_inflight
 
     @property
     def do_binary_pack(self) -> bool:
@@ -59,7 +61,7 @@ class RayExecutor(BaseExecutor):
         def process_task(chunk, model, comp):
             return RayExecutor._process_chunk_logic(model, comp, chunk)
 
-        max_inflight = 20
+        max_inflight = self._max_inflight
         inflight_futures = []
 
         def submit_tasks(count: int):

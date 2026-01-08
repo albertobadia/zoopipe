@@ -101,11 +101,13 @@ uv run examples/05_hooks.py
 
 ## Sample Data
 
-All examples use the sample data files located in the project root:
+All examples use the sample data files located in [`examples/data/`](../examples/data/):
 
-- `sample_data.csv` - Sample CSV data
-- `sample_data.json` - Sample JSON array
-- `sample_data.jsonl` - Sample JSONL data
+- `sample_data.csv` - Sample CSV data with user information
+- `sample_data.json` - Sample JSON array format
+- `sample_data.jsonl` - Sample JSONL (JSON Lines) format
+
+Output files are created in the [`examples/output_data/`](../examples/output_data/) directory after running examples.
 
 ---
 
