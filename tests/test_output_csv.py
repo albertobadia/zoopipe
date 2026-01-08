@@ -36,3 +36,7 @@ def test_csv_output_adapter(tmp_path):
         if len(rows) > 0:
             assert "name" in rows[0]
             assert "age" in rows[0]
+            assert "id" in rows[0]
+            assert "status" in rows[0]
+            assert "position" in rows[0]
+            assert "metadata" in rows[0]

@@ -7,6 +7,7 @@ import lz4.frame
 import msgpack
 
 from flowschema.executor.base import BaseExecutor
+from flowschema.hooks.base import BaseHook
 from flowschema.input_adapter.base import BaseInputAdapter
 from flowschema.models.core import EntryStatus, EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
@@ -19,12 +20,16 @@ class FlowSchema:
         output_adapter: BaseOutputAdapter,
         executor: BaseExecutor,
         error_output_adapter: BaseOutputAdapter | None = None,
+        pre_validation_hooks: list[BaseHook] | None = None,
+        post_validation_hooks: list[BaseHook] | None = None,
     ) -> None:
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
         self.executor = executor
         self.error_output_adapter = error_output_adapter
         self.error_entries: list[EntryTypedDict] = []
+        self.pre_validation_hooks = pre_validation_hooks or []
+        self.post_validation_hooks = post_validation_hooks or []
 
     def _handle_entry(self, entry: EntryTypedDict) -> None:
         if entry["status"] == EntryStatus.FAILED:
@@ -69,6 +74,10 @@ class FlowSchema:
             else:
                 data_iterator = (list(chunk) for chunk in chunks)
 
+            self.executor.set_hooks(
+                pre_validation=self.pre_validation_hooks,
+                post_validation=self.post_validation_hooks,
+            )
             self.executor.set_upstream_iterator(data_iterator)
 
             for entry in self.executor.generator:

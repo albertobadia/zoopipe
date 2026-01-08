@@ -3,6 +3,7 @@ import typing
 from pydantic import BaseModel
 
 from flowschema.executor.base import BaseExecutor
+from flowschema.hooks.base import HookStore
 from flowschema.models.core import EntryTypedDict
 from flowschema.utils import validate_entry
 
@@ -21,11 +22,29 @@ class SyncFifoExecutor(BaseExecutor):
         if not self._upstream_iterator:
             return
 
-        for chunk in self._upstream_iterator:
-            for raw_data_entry in chunk:
-                validated_entry = validate_entry(self._schema_model, raw_data_entry)
-                self._position += 1
-                yield validated_entry
+        store = HookStore()
+
+        for hook in self._pre_validation_hooks + self._post_validation_hooks:
+            hook.setup(store)
+
+        try:
+            for chunk in self._upstream_iterator:
+                for raw_data_entry in chunk:
+                    self._execute_hooks(
+                        raw_data_entry, self._pre_validation_hooks, store
+                    )
+
+                    validated_entry = validate_entry(self._schema_model, raw_data_entry)
+
+                    self._execute_hooks(
+                        validated_entry, self._post_validation_hooks, store
+                    )
+
+                    self._position += 1
+                    yield validated_entry
+        finally:
+            for hook in self._pre_validation_hooks + self._post_validation_hooks:
+                hook.teardown(store)
 
 
 __all__ = ["SyncFifoExecutor"]

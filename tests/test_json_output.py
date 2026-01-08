@@ -21,6 +21,7 @@ def test_json_output_adapter_array():
                 position=0,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
             EntryTypedDict(
                 id=uuid.uuid4(),
@@ -29,6 +30,7 @@ def test_json_output_adapter_array():
                 position=1,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
         ]
 
@@ -40,10 +42,10 @@ def test_json_output_adapter_array():
             result = json.load(f)
 
         assert len(result) == 2
-        assert result[0]["name"] == "Alice"
-        assert result[0]["age"] == 30
-        assert result[1]["name"] == "Bob"
-        assert result[1]["age"] == 25
+        assert result[0]["data"]["name"] == "Alice"
+        assert result[0]["data"]["age"] == 30
+        assert result[1]["data"]["name"] == "Bob"
+        assert result[1]["data"]["age"] == 25
 
 
 def test_json_output_adapter_jsonl():
@@ -60,6 +62,7 @@ def test_json_output_adapter_jsonl():
                 position=0,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
             EntryTypedDict(
                 id=uuid.uuid4(),
@@ -68,6 +71,7 @@ def test_json_output_adapter_jsonl():
                 position=1,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
         ]
 
@@ -82,10 +86,10 @@ def test_json_output_adapter_jsonl():
         obj1 = json.loads(lines[0])
         obj2 = json.loads(lines[1])
 
-        assert obj1["name"] == "Alice"
-        assert obj1["age"] == 30
-        assert obj2["name"] == "Bob"
-        assert obj2["age"] == 25
+        assert obj1["data"]["name"] == "Alice"
+        assert obj1["data"]["age"] == 30
+        assert obj2["data"]["name"] == "Bob"
+        assert obj2["data"]["age"] == 25
 
 
 def test_json_output_adapter_with_metadata():
@@ -103,6 +107,7 @@ def test_json_output_adapter_with_metadata():
                 position=0,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
         ]
 
@@ -114,11 +119,12 @@ def test_json_output_adapter_with_metadata():
             result = json.load(f)
 
         assert len(result) == 1
-        assert result[0]["name"] == "Alice"
-        assert result[0]["age"] == 30
-        assert result[0]["__id"] == str(entry_id)
-        assert result[0]["__status"] == "validated"
-        assert result[0]["__position"] == 0
+        assert result[0]["data"]["name"] == "Alice"
+        assert result[0]["data"]["age"] == 30
+        assert result[0]["id"] == str(entry_id)
+        assert result[0]["status"] == "validated"
+        assert result[0]["position"] == 0
+        assert "metadata" in result[0]
 
 
 def test_json_output_adapter_round_trip():
@@ -137,6 +143,7 @@ def test_json_output_adapter_round_trip():
                 position=0,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
             EntryTypedDict(
                 id=uuid.uuid4(),
@@ -145,6 +152,7 @@ def test_json_output_adapter_round_trip():
                 position=1,
                 status=EntryStatus.VALIDATED,
                 errors=[],
+                metadata={},
             ),
         ]
 
@@ -158,5 +166,6 @@ def test_json_output_adapter_round_trip():
             read_entries = list(read_adapter.generator)
 
         assert len(read_entries) == 2
-        assert read_entries[0]["raw_data"]["name"] == "Alice"
-        assert read_entries[1]["raw_data"]["name"] == "Bob"
+        # Because we read back the envelope, raw_data is the envelope dict
+        assert read_entries[0]["raw_data"]["data"]["name"] == "Alice"
+        assert read_entries[1]["raw_data"]["data"]["name"] == "Bob"

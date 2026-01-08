@@ -67,19 +67,21 @@ class CSVOutputAdapter(BaseOutputAdapter):
                 "Use 'with adapter:' or call adapter.open()"
             )
 
-        # Determine data to write
-        # Priority: validated_data > raw_data
-        data = entry.get("validated_data") or entry.get("raw_data") or {}
+        record = entry.get("validated_data") or entry.get("raw_data") or {}
 
-        if self.include_metadata:
-            # Flatten or include specific metadata if needed
-            # For now, let's just include id and status
-            data["__id"] = str(entry["id"])
-            data["__status"] = entry["status"].value
+        import json
+
+        data = {
+            "id": str(entry["id"]),
+            "status": entry["status"].value,
+            "position": entry["position"],
+            "metadata": json.dumps(entry["metadata"]),
+        }
+        data.update(record)
 
         if self._csv_writer is None:
-            # Initialize writer with keys from the first entry
-            self.fieldnames = list(data.keys())
+            record_keys = list(record.keys())
+            self.fieldnames = ["id", "status", "position", "metadata"] + record_keys
             self._csv_writer = csv.DictWriter(
                 self._file_handle,
                 fieldnames=self.fieldnames,

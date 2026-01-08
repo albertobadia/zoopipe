@@ -72,13 +72,14 @@ class JSONOutputAdapter(BaseOutputAdapter):
                 "Use 'with adapter:' or call adapter.open()"
             )
 
-        data = entry.get("validated_data") or entry.get("raw_data") or {}
-
-        if self.include_metadata:
-            data = dict(data)
-            data["__id"] = str(entry["id"])
-            data["__status"] = entry["status"].value
-            data["__position"] = entry["position"]
+        record = entry.get("validated_data") or entry.get("raw_data") or {}
+        data = {
+            "id": entry["id"],
+            "status": entry["status"],
+            "position": entry["position"],
+            "metadata": entry["metadata"],
+            "data": record,
+        }
 
         json_str = json.dumps(data, cls=JSONEncoder, indent=self.indent)
 
