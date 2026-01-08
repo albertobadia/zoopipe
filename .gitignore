@@ -16,3 +16,6 @@ wheels/
 .vscode/
 .idea/
 .DS_Store
+
+# Test files
+*.csv
