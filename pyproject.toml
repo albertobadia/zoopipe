@@ -5,6 +5,7 @@ description = "FlowSchema is a data processing framework that allows you to proc
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "ijson>=3.4.0",
     "lz4>=4.4.5",
     "msgpack>=1.1.2",
     "pydantic>=2.12.5",

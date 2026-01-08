@@ -86,6 +86,7 @@ class CSVInputAdapter(BaseInputAdapter):
                     position=row_num - 1,
                     status=EntryStatus.PENDING,
                     errors=[],
+                    metadata={},
                 )
 
         except csv.Error as e:
