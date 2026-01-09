@@ -9,6 +9,7 @@ from flowschema.exceptions import (
 from flowschema.executor.multiprocessing import MultiProcessingExecutor
 from flowschema.executor.ray import RayExecutor
 from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.executor.thread import ThreadExecutor
 from flowschema.hooks.base import BaseHook, HookStore
 from flowschema.hooks.partitioned import PartitionedReaderHook
 from flowschema.input_adapter.base import BaseInputAdapter
@@ -36,6 +37,7 @@ __all__ = [
     "SyncFifoExecutor",
     "MultiProcessingExecutor",
     "RayExecutor",
+    "ThreadExecutor",
     "FlowReport",
     "FlowStatus",
     "BaseInputAdapter",

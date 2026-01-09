@@ -145,6 +145,22 @@ uv run examples/08_file_partitioning.py
 
 ---
 
+### [12_threads_io_bound.py](../examples/12_threads_io_bound.py)
+
+Concurrent processing of IO-bound tasks using ThreadExecutor.
+
+**Demonstrates:**
+- Using `ThreadExecutor` for concurrent operations
+- Simulating slow IO operations (API calls) in hooks
+- Comparing concurrent performance vs sequential expectation
+
+**Run:**
+```bash
+uv run examples/12_threads_io_bound.py
+```
+
+---
+
 ## Sample Data
 
 All examples use the sample data files located in [`examples/data/`](../examples/data/):

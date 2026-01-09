@@ -10,6 +10,7 @@ FlowSchema provides three types of executors:
 |----------|----------|-------------|----------|
 | `SyncFifoExecutor` | Simple processing | None | Small datasets, debugging |
 | `MultiprocessingExecutor` | CPU-bound tasks | Multiple processes | Large datasets on single machine |
+| `ThreadExecutor` | IO-bound tasks | Multiple threads | Network requests, DB queries, high concurrency |
 | `RayExecutor` | Distributed processing | Ray cluster | Very large datasets, multiple machines |
 
 ---
@@ -78,6 +79,37 @@ executor = MultiProcessingExecutor(
 - Increase `chunksize` for better throughput (reduces overhead)
 - Use `compression="lz4"` if your data is large and memory is a concern
 - Balance between `max_workers` and `chunksize` based on your data size
+
+---
+
+## ThreadExecutor
+
+Uses a thread pool for concurrent execution. This is lighter than multiprocessing as threads share memory.
+
+### Features
+
+- **Concurrent Processing**: Utilizes multiple threads
+- **Low Overhead**: No need for data serialization (msgpack) or inter-process communication
+- **IO-Bound Optimized**: Ideal for tasks waiting on network or disk (e.g., calling APIs in hooks)
+- **No GIL Release**: Not suitable for CPU-heavy Python code (due to GIL), but great for Pydantic (which releases GIL) or IO.
+
+### Usage
+
+```python
+from flowschema.executor.thread import ThreadExecutor
+
+executor = ThreadExecutor(
+    schema_model=YourSchema,
+    max_workers=10,
+    chunksize=1
+)
+```
+
+### Parameters
+
+- `schema_model` (required): Your Pydantic model class
+- `max_workers` (optional): Number of threads. Defaults to `None` (based on CPU count * 5)
+- `chunksize` (optional): Number of entries per task. usually `1` is fine for threads.
 
 ---
 
@@ -236,7 +268,9 @@ graph TD
     
     E --> I{CPU Bound?}
     I -->|Yes| E
-    I -->|No| J[Consider RayExecutor]
+    I -->|No| J{IO Bound?}
+    J -->|Yes| M[ThreadExecutor]
+    J -->|No| N[Consider RayExecutor]
     
     F --> K{Have Ray Cluster?}
     K -->|Yes| F
@@ -250,6 +284,7 @@ graph TD
 | Small CSV validation | `SyncFifoExecutor` | Simple, no overhead |
 | Large CSV processing | `MultiprocessingExecutor` | Parallel on single machine |
 | ETL from database | `MultiprocessingExecutor` | CPU-bound transformations |
+| API Enrichment | `ThreadExecutor` | IO-bound (waiting for network) |
 | Massive data migration | `RayExecutor` | Distributed processing |
 | Real-time streaming | `SyncFifoExecutor` | Low latency |
 | Batch processing pipeline | `MultiprocessingExecutor` or `RayExecutor` | Throughput optimization |
