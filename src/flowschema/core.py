@@ -12,6 +12,7 @@ from flowschema.logger import get_logger
 from flowschema.models.core import EntryStatus, EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
 from flowschema.output_adapter.base_async import BaseAsyncOutputAdapter
+from flowschema.output_adapter.dummy import DummyOutputAdapter
 from flowschema.report import FlowReport, FlowStatus
 from flowschema.utils import AsyncInputBridge, AsyncOutputBridge
 
@@ -20,8 +21,8 @@ class FlowSchema:
     def __init__(
         self,
         input_adapter: BaseInputAdapter,
-        output_adapter: BaseOutputAdapter,
         executor: BaseExecutor,
+        output_adapter: BaseOutputAdapter | None = None,
         error_output_adapter: BaseOutputAdapter | None = None,
         pre_validation_hooks: list[BaseHook] | None = None,
         post_validation_hooks: list[BaseHook] | None = None,
@@ -29,6 +30,9 @@ class FlowSchema:
         max_bytes_in_flight: int | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
+        if output_adapter is None:
+            output_adapter = DummyOutputAdapter()
+
         if isinstance(input_adapter, BaseAsyncInputAdapter):
             input_adapter = AsyncInputBridge(input_adapter, loop=loop)
 

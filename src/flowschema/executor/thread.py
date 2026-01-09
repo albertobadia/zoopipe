@@ -11,7 +11,7 @@ from flowschema.models.core import EntryTypedDict
 class ThreadExecutor(BaseExecutor):
     def __init__(
         self,
-        schema_model: type[BaseModel],
+        schema_model: type[BaseModel] | None = None,
         max_workers: int | None = None,
         chunksize: int = 1,
     ) -> None:

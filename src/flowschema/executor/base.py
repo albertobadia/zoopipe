@@ -16,7 +16,7 @@ from flowschema.utils import validate_entry
 
 @dataclass
 class WorkerContext:
-    schema_model: type[BaseModel]
+    schema_model: type[BaseModel] | None
     do_binary_pack: bool
     compression_algorithm: str | None
     pre_hooks: list[BaseHook] | None = None

@@ -25,8 +25,13 @@ class JSONEncoder(json.JSONEncoder):
 
 
 def validate_entry(
-    schema_model: type[BaseModel], entry: EntryTypedDict
+    schema_model: type[BaseModel] | None, entry: EntryTypedDict
 ) -> EntryTypedDict:
+    if schema_model is None:
+        entry["validated_data"] = entry["raw_data"].copy()
+        entry["status"] = EntryStatus.VALIDATED
+        return entry
+
     try:
         validated_data = schema_model.model_validate(entry["raw_data"])
         entry["validated_data"] = validated_data.model_dump()

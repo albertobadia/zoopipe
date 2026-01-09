@@ -11,7 +11,7 @@ from flowschema.models.core import EntryTypedDict
 class DaskExecutor(BaseExecutor):
     def __init__(
         self,
-        schema_model: type[BaseModel],
+        schema_model: type[BaseModel] | None = None,
         address: str | None = None,
         compression: str | None = None,
         max_inflight: int = 20,

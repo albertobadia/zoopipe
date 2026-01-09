@@ -9,7 +9,7 @@ from flowschema.models.core import EntryTypedDict
 class SyncFifoExecutor(BaseExecutor):
     def __init__(
         self,
-        schema_model: type[BaseModel],
+        schema_model: type[BaseModel] | None = None,
     ) -> None:
         super().__init__()
         self._schema_model = schema_model
