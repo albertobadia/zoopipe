@@ -1,7 +1,6 @@
 import json
 import pathlib
 import typing
-import uuid
 
 import ijson
 
@@ -17,8 +16,9 @@ class JSONInputAdapter(BaseInputAdapter):
         prefix: str = "item",
         encoding: str = "utf-8",
         max_items: int | None = None,
+        id_generator: typing.Callable[[], typing.Any] | None = None,
     ):
-        super().__init__()
+        super().__init__(id_generator=id_generator)
 
         self.source_path = pathlib.Path(source)
         self.format = format
@@ -78,7 +78,7 @@ class JSONInputAdapter(BaseInputAdapter):
                 break
 
             yield EntryTypedDict(
-                id=uuid.uuid4(),
+                id=self.id_generator(),
                 raw_data=item,
                 validated_data=None,
                 position=self._item_count,
@@ -100,7 +100,7 @@ class JSONInputAdapter(BaseInputAdapter):
             try:
                 item = json.loads(line)
                 yield EntryTypedDict(
-                    id=uuid.uuid4(),
+                    id=self.id_generator(),
                     raw_data=item,
                     validated_data=None,
                     position=self._item_count,

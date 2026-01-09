@@ -90,11 +90,10 @@ class BaseExecutor(abc.ABC):
 
         chunk_size = max_hook_chunk_size or len(entries)
 
-        with store.lock_context():
-            for i in range(0, len(entries), chunk_size):
-                sub_batch = entries[i : i + chunk_size]
-                for hook in hooks:
-                    BaseExecutor._execute_hook_safe(sub_batch, hook, store)
+        for i in range(0, len(entries), chunk_size):
+            sub_batch = entries[i : i + chunk_size]
+            for hook in hooks:
+                BaseExecutor._execute_hook_safe(sub_batch, hook, store)
         return entries
 
     @staticmethod
@@ -105,7 +104,7 @@ class BaseExecutor(abc.ABC):
         entries = BaseExecutor._unpack_data(
             data, context.do_binary_pack, context.compression_algorithm
         )
-        store = HookStore()
+        store = {}
         all_hooks = (context.pre_hooks or []) + (context.post_hooks or [])
 
         for hook in all_hooks:

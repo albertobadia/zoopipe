@@ -1,6 +1,5 @@
 import enum
 import typing
-import uuid
 
 
 class EntryStatus(enum.Enum):
@@ -10,10 +9,10 @@ class EntryStatus(enum.Enum):
 
 
 class EntryTypedDict(typing.TypedDict):
-    id: uuid.UUID
+    id: typing.Any
     position: int | None
     status: EntryStatus
     raw_data: dict[str, typing.Any]
-    validated_data: dict[str, typing.Any]
+    validated_data: dict[str, typing.Any] | None
     errors: list[dict[str, typing.Any]]
     metadata: dict[str, typing.Any]

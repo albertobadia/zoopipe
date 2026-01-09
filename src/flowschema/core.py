@@ -3,6 +3,7 @@ import contextlib
 import itertools
 import logging
 import threading
+import typing
 
 from flowschema.executor.base import BaseExecutor
 from flowschema.hooks.base import BaseHook
@@ -57,6 +58,12 @@ class FlowSchema:
         self._report: FlowReport | None = None
         self._run_lock = threading.Lock()
         self._setup_logger()
+
+    def __repr__(self) -> str:
+        return (
+            f"<FlowSchema input={self.input_adapter} "
+            f"output={self.output_adapter} executor={self.executor}>"
+        )
 
     def _setup_logger(self) -> None:
         self.input_adapter.set_logger(self.logger)
@@ -185,7 +192,11 @@ class FlowSchema:
 
     @staticmethod
     @contextlib.contextmanager
-    def _enter_adapters(input_adapter, output_adapter, error_output_adapter):
+    def _enter_adapters(
+        input_adapter: BaseInputAdapter,
+        output_adapter: BaseOutputAdapter,
+        error_output_adapter: BaseOutputAdapter | None,
+    ) -> typing.Generator[contextlib.ExitStack, None, None]:
         with contextlib.ExitStack() as stack:
             stack.enter_context(input_adapter)
             stack.enter_context(output_adapter)
@@ -195,19 +206,19 @@ class FlowSchema:
 
     @staticmethod
     def _execute_main_loop(
-        report,
-        input_adapter,
-        output_adapter,
-        error_output_adapter,
-        executor,
-        ctx,
-        pre_hooks,
-        post_hooks,
-        max_hook_chunk_size,
-    ):
+        report: FlowReport,
+        input_adapter: BaseInputAdapter,
+        output_adapter: BaseOutputAdapter,
+        error_output_adapter: BaseOutputAdapter | None,
+        executor: BaseExecutor,
+        ctx: "_FlowRunContext",
+        pre_hooks: list[BaseHook],
+        post_hooks: list[BaseHook],
+        max_hook_chunk_size: int | None,
+    ) -> None:
         chunks = itertools.batched(input_adapter.generator, ctx.executor_chunksize)
 
-        def _get_data_iterator():
+        def _get_data_iterator() -> typing.Generator[typing.Any, None, None]:
             for chunk in chunks:
                 yield FlowSchema._prepare_chunk(chunk, executor, ctx)
 
@@ -233,14 +244,22 @@ class FlowSchema:
         FlowSchema._clear_backpressure(ctx)
 
     @staticmethod
-    def _prepare_chunk(chunk, executor, ctx):
+    def _prepare_chunk(
+        chunk: tuple[dict[str, typing.Any], ...],
+        executor: BaseExecutor,
+        ctx: "_FlowRunContext",
+    ) -> typing.Any:
         packed_chunk = executor.pack_chunk(list(chunk))
         if ctx.max_bytes_in_flight:
             FlowSchema._apply_backpressure(chunk, packed_chunk, ctx)
         return packed_chunk
 
     @staticmethod
-    def _apply_backpressure(chunk, packed_chunk, ctx):
+    def _apply_backpressure(
+        chunk: tuple[dict[str, typing.Any], ...],
+        packed_chunk: typing.Any,
+        ctx: "_FlowRunContext",
+    ) -> None:
         chunk_size = len(packed_chunk) if isinstance(packed_chunk, bytes) else 0
         size_per_entry = chunk_size / len(chunk)
         for entry in chunk:
@@ -252,14 +271,14 @@ class FlowSchema:
             ctx.bytes_in_flight[0] += chunk_size
 
     @staticmethod
-    def _clear_backpressure(ctx):
+    def _clear_backpressure(ctx: "_FlowRunContext") -> None:
         with ctx.backpressure_condition:
             ctx.bytes_in_flight[0] = 0
             ctx.chunk_sizes.clear()
             ctx.backpressure_condition.notify_all()
 
     @staticmethod
-    def _finalize_report(report):
+    def _finalize_report(report: FlowReport) -> None:
         if report.is_stopped:
             report._mark_stopped()
         else:
@@ -276,8 +295,8 @@ class _FlowRunContext:
 
     def __repr__(self) -> str:
         return (
-            f"<FlowSchema input={self.input_adapter} "
-            f"output={self.output_adapter} executor={self.executor}>"
+            f"<_FlowRunContext bytes_in_flight={self.bytes_in_flight[0]} "
+            f"max_bytes_in_flight={self.max_bytes_in_flight}>"
         )
 
 

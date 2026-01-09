@@ -1,13 +1,18 @@
 import os
-import uuid
-from typing import Iterator
+from typing import Any, Callable, Iterator
 
 from flowschema.input_adapter.base import BaseInputAdapter
 from flowschema.models.core import EntryStatus
 
 
 class FilePartitioner(BaseInputAdapter):
-    def __init__(self, file_path: str, num_partitions: int):
+    def __init__(
+        self,
+        file_path: str,
+        num_partitions: int,
+        id_generator: Callable[[], Any] | None = None,
+    ):
+        super().__init__(id_generator=id_generator)
         self.file_path = file_path
         self.num_partitions = num_partitions
 
@@ -28,7 +33,7 @@ class FilePartitioner(BaseInputAdapter):
             end = file_size if i == actual_partitions - 1 else (i + 1) * partition_size
 
             yield {
-                "id": uuid.uuid4(),
+                "id": self.id_generator(),
                 "position": i,
                 "status": EntryStatus.PENDING,
                 "raw_data": {

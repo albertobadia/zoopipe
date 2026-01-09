@@ -1,6 +1,5 @@
 import pathlib
 import typing
-import uuid
 
 import pyarrow.dataset as ds
 
@@ -16,9 +15,10 @@ class ArrowInputAdapter(BaseInputAdapter):
         partitioning: str | ds.Partitioning | None = None,
         columns: list[str] | None = None,
         filter: ds.Expression | None = None,
+        id_generator: typing.Callable[[], typing.Any] | None = None,
         **dataset_options,
     ):
-        super().__init__()
+        super().__init__(id_generator=id_generator)
 
         self.source = source
         self.format = format
@@ -61,7 +61,7 @@ class ArrowInputAdapter(BaseInputAdapter):
             rows = batch.to_pylist()
             for row in rows:
                 yield EntryTypedDict(
-                    id=uuid.uuid4(),
+                    id=self.id_generator(),
                     raw_data=row,
                     validated_data=None,
                     position=row_num,

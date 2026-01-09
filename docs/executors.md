@@ -11,7 +11,6 @@ FlowSchema provides three types of executors:
 | `SyncFifoExecutor` | Simple processing | None | Small datasets, debugging |
 | `MultiprocessingExecutor` | CPU-bound tasks | Multiple processes | Large datasets on single machine |
 | `ThreadExecutor` | IO-bound tasks | Multiple threads | Network requests, DB queries, high concurrency |
-| `ThreadExecutor` | IO-bound tasks | Multiple threads | Network requests, DB queries, high concurrency |
 | `DaskExecutor` | ETL, Dataframe-style workflows | Dask cluster | Data transformations, existing Dask infra |
 | `RayExecutor` | Distributed processing | Ray cluster | Very large datasets, multiple machines |
 

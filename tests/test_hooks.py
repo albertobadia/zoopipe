@@ -20,7 +20,7 @@ class UserSchema(BaseModel):
 
 def test_timestamp_hook():
     hook = TimestampHook(field_name="processed_at")
-    store = HookStore()
+    store = {}
 
     entry = EntryTypedDict(
         id=uuid.uuid4(),
@@ -46,7 +46,7 @@ def test_field_mapper_hook():
             ),
         }
     )
-    store = HookStore()
+    store = {}
 
     entry = EntryTypedDict(
         id=uuid.uuid4(),
@@ -64,13 +64,13 @@ def test_field_mapper_hook():
 
 
 def test_hook_store():
-    store = HookStore()
+    store = {}
 
-    store.db_conn = "mock_connection"
-    store.cache = {}
+    store["db_conn"] = "mock_connection"
+    store["cache"] = {}
 
-    assert store.db_conn == "mock_connection"
-    assert store.cache == {}
+    assert store["db_conn"] == "mock_connection"
+    assert store["cache"] == {}
     assert "db_conn" in store
     assert "cache" in store
     assert "nonexistent" not in store
@@ -84,36 +84,36 @@ def test_hook_store():
 def test_hook_with_setup_teardown():
     class CustomHook(BaseHook):
         def setup(self, store: HookStore):
-            store.counter = 0
+            store["counter"] = 0
 
         def execute(
             self, entries: list[EntryTypedDict], store: HookStore
         ) -> list[EntryTypedDict]:
             for entry in entries:
-                store.counter += 1
-                entry["metadata"]["count"] = store.counter
+                store["counter"] += 1
+                entry["metadata"]["count"] = store["counter"]
             return entries
 
         def teardown(self, store: HookStore):
-            store.counter = None
+            store["counter"] = None
 
     hook = CustomHook()
-    store = HookStore()
+    store = {}
 
     hook.setup(store)
-    assert store.counter == 0
+    assert store["counter"] == 0
 
     entry1 = {"metadata": {}}
     result1 = hook.execute([entry1], store)
     assert result1[0]["metadata"]["count"] == 1
-    assert store.counter == 1
+    assert store["counter"] == 1
 
     entry2 = {"metadata": {}}
     result2 = hook.execute([entry2], store)
     assert result2[0]["metadata"]["count"] == 2
 
     hook.teardown(store)
-    assert store.counter is None
+    assert store["counter"] is None
 
 
 def test_hooks_integration_with_flowschema(tmp_path):
@@ -123,14 +123,14 @@ def test_hooks_integration_with_flowschema(tmp_path):
 
     class CounterHook(BaseHook):
         def setup(self, store: HookStore):
-            store.processed_count = [0]
+            store["processed_count"] = [0]
 
         def execute(
             self, entries: list[EntryTypedDict], store: HookStore
         ) -> list[EntryTypedDict]:
             for entry in entries:
-                store.processed_count[0] += 1
-                entry["metadata"]["hook_count"] = store.processed_count[0]
+                store["processed_count"][0] += 1
+                entry["metadata"]["hook_count"] = store["processed_count"][0]
             return entries
 
     memory_adapter = MemoryOutputAdapter()
@@ -158,16 +158,16 @@ def test_hooks_integration_with_flowschema(tmp_path):
 def test_max_hook_chunk_size():
     class BatchCounterHook(BaseHook):
         def setup(self, store: HookStore):
-            store.batch_calls = [0]
+            store["batch_calls"] = [0]
 
         def execute(
             self, entries: list[EntryTypedDict], store: HookStore
         ) -> list[EntryTypedDict]:
-            store.batch_calls[0] += 1
+            store["batch_calls"][0] += 1
             return entries
 
     hook = BatchCounterHook()
-    store = HookStore()
+    store = {}
     hook.setup(store)
 
     entries = [
@@ -178,4 +178,63 @@ def test_max_hook_chunk_size():
     # Test with max_hook_chunk_size = 3. Should result in 4 calls (3, 3, 3, 1)
     BaseExecutor.run_hooks(entries, [hook], store, max_hook_chunk_size=3)
 
-    assert store.batch_calls[0] == 4
+    assert store["batch_calls"][0] == 4
+
+def test_hook_store_mutability():
+    class MutableHook(BaseHook):
+        def execute(
+            self, entries: list[EntryTypedDict], store: HookStore
+        ) -> list[EntryTypedDict]:
+            if "counter" not in store:
+                store["counter"] = 0
+            store["counter"] += 1
+            return entries
+
+    class ReaderHook(BaseHook):
+        def execute(
+            self, entries: list[EntryTypedDict], store: HookStore
+        ) -> list[EntryTypedDict]:
+            for entry in entries:
+                entry["metadata"]["seen_counter"] = store["counter"]
+            return entries
+
+    store = {}
+    writer = MutableHook()
+    reader = ReaderHook()
+
+    entries = [
+        {"id": 1, "metadata": {}, "status": "PENDING"},
+        {"id": 2, "metadata": {}, "status": "PENDING"},
+    ]
+
+    writer.setup(store)
+    reader.setup(store)
+
+    BaseExecutor.run_hooks(entries, [writer], store)
+    assert store["counter"] == 1
+
+    BaseExecutor.run_hooks(entries, [reader], store)
+
+    assert entries[0]["metadata"]["seen_counter"] == 1
+    assert entries[1]["metadata"]["seen_counter"] == 1
+
+
+def test_hook_store_sequential_updates():
+    class MutableHook(BaseHook):
+        def execute(
+            self, entries: list[EntryTypedDict], store: HookStore
+        ) -> list[EntryTypedDict]:
+            if "counter" not in store:
+                store["counter"] = 0
+            store["counter"] += 1
+            return entries
+
+    store = {}
+    writer = MutableHook()
+
+    entries = [{"id": 1, "metadata": {}, "status": "PENDING"}]
+
+    BaseExecutor.run_hooks(entries, [writer], store)
+    assert store["counter"] == 1
+    BaseExecutor.run_hooks(entries, [writer], store)
+    assert store["counter"] == 2

@@ -1,7 +1,6 @@
 import asyncio
 import queue
 import typing
-import uuid
 
 from flowschema.input_adapter.base import BaseInputAdapter
 from flowschema.input_adapter.base_async import BaseAsyncInputAdapter
@@ -13,8 +12,9 @@ class AsyncQueueInputAdapter(BaseAsyncInputAdapter):
         self,
         queue: asyncio.Queue,
         sentinel: typing.Any = None,
+        id_generator: typing.Callable[[], typing.Any] | None = None,
     ):
-        super().__init__()
+        super().__init__(id_generator=id_generator)
         self.queue = queue
         self.sentinel = sentinel
         self._item_count = 0
@@ -34,7 +34,7 @@ class AsyncQueueInputAdapter(BaseAsyncInputAdapter):
                 break
 
             yield EntryTypedDict(
-                id=uuid.uuid4(),
+                id=self.id_generator(),
                 raw_data=item,
                 validated_data=None,
                 position=self._item_count,
@@ -50,8 +50,9 @@ class QueueInputAdapter(BaseInputAdapter):
         self,
         queue: queue.Queue,
         sentinel: typing.Any = None,
+        id_generator: typing.Callable[[], typing.Any] | None = None,
     ):
-        super().__init__()
+        super().__init__(id_generator=id_generator)
         self.queue = queue
         self.sentinel = sentinel
         self._item_count = 0
@@ -65,7 +66,7 @@ class QueueInputAdapter(BaseInputAdapter):
                 break
 
             yield EntryTypedDict(
-                id=uuid.uuid4(),
+                id=self.id_generator(),
                 raw_data=item,
                 validated_data=None,
                 position=self._item_count,

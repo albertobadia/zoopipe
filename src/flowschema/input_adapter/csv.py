@@ -17,9 +17,10 @@ class CSVInputAdapter(BaseInputAdapter):
         skip_rows: int = 0,
         max_rows: int | None = None,
         fieldnames: list[str] | None = None,
+        id_generator: typing.Callable[[], typing.Any] | None = None,
         **csv_options,
     ):
-        super().__init__()
+        super().__init__(id_generator=id_generator)
 
         self.source_path = pathlib.Path(source)
         self.encoding = encoding
@@ -28,6 +29,7 @@ class CSVInputAdapter(BaseInputAdapter):
         self.skip_rows = skip_rows
         self.max_rows = max_rows
         self.fieldnames = fieldnames
+        self.id_generator = id_generator or uuid.uuid4
         self.csv_options = csv_options
 
         self._file_handle = None
@@ -80,7 +82,7 @@ class CSVInputAdapter(BaseInputAdapter):
 
                 data = dict(row)
                 yield EntryTypedDict(
-                    id=uuid.uuid4(),
+                    id=self.id_generator(),
                     raw_data=data,
                     validated_data=None,
                     position=row_num - 1,

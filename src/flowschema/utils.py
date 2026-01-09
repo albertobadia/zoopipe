@@ -28,7 +28,6 @@ def validate_entry(
     schema_model: type[BaseModel] | None, entry: EntryTypedDict
 ) -> EntryTypedDict:
     if schema_model is None:
-        entry["validated_data"] = entry["raw_data"].copy()
         entry["status"] = EntryStatus.VALIDATED
         return entry
 

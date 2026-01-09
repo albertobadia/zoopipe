@@ -1,13 +1,18 @@
 import abc
 import logging
 import typing
+import uuid
 
 from flowschema.models.core import EntryTypedDict
 
 
 class BaseAsyncInputAdapter(abc.ABC):
-    _is_opened: bool = False
-    logger: logging.Logger | None = None
+    def __init__(
+        self, id_generator: typing.Callable[[], typing.Any] | None = None
+    ) -> None:
+        self.id_generator = id_generator or uuid.uuid4
+        self._is_opened: bool = False
+        self.logger: logging.Logger | None = None
 
     def set_logger(self, logger: logging.Logger) -> None:
         self.logger = logger
