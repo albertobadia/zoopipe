@@ -89,11 +89,9 @@ Used for standard multi-threaded applications.
 
 **Example (Async):**
 ```python
-from flowschema import (
-    AsyncQueueInputAdapter, 
-    AsyncQueueOutputAdapter, 
-    FlowSchema
-)
+from flowschema import FlowSchema
+from flowschema.input_adapter.queue import AsyncQueueInputAdapter
+from flowschema.output_adapter.queue import AsyncQueueOutputAdapter
 
 flow = FlowSchema(
     input_adapter=AsyncQueueInputAdapter(input_queue),
@@ -104,11 +102,9 @@ flow = FlowSchema(
 
 **Example (Sync):**
 ```python
-from flowschema import (
-    QueueInputAdapter, 
-    QueueOutputAdapter, 
-    FlowSchema
-)
+from flowschema import FlowSchema
+from flowschema.input_adapter.queue import QueueInputAdapter
+from flowschema.output_adapter.queue import QueueOutputAdapter
 
 flow = FlowSchema(
     input_adapter=QueueInputAdapter(input_queue),
@@ -130,6 +126,7 @@ A no-op output adapter for cases where hooks handle all output.
 
 **Example:**
 ```python
+from flowschema import FlowSchema
 from flowschema.output_adapter.dummy import DummyOutputAdapter
 
 flow = FlowSchema(
@@ -219,12 +216,10 @@ graph LR
 ### CSV Processing
 
 ```python
-from flowschema import (
-    FlowSchema,
-    CSVInputAdapter,
-    CSVOutputAdapter,
-    SyncFifoExecutor
-)
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.csv import CSVInputAdapter
+from flowschema.output_adapter.csv import CSVOutputAdapter
 
 flow = FlowSchema(
     input_adapter=CSVInputAdapter("input.csv"),
@@ -237,11 +232,10 @@ flow = FlowSchema(
 ### JSON Processing
 
 ```python
-from flowschema import (
-    JSONInputAdapter, 
-    JSONOutputAdapter, 
-    SyncFifoExecutor
-)
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.json import JSONInputAdapter
+from flowschema.output_adapter.json import JSONOutputAdapter
 
 flow = FlowSchema(
     input_adapter=JSONInputAdapter("input.json", format="array"),

@@ -163,35 +163,52 @@ name = "flowschema"
 version = "2026.1.9"
 source = { virtual = "." }
 dependencies = [
-    { name = "dask", extra = ["distributed"] },
     { name = "ijson" },
     { name = "lz4" },
     { name = "msgpack" },
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "dask", extra = ["distributed"] },
+    { name = "ray" },
+]
+dask = [
+    { name = "dask", extra = ["distributed"] },
+]
+ray = [
     { name = "ray" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "dask", extra = ["distributed"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "ray" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "dask", extras = ["distributed"], specifier = ">=2025.12.0" },
+    { name = "dask", extras = ["distributed"], marker = "extra == 'all'", specifier = ">=2025.12.0" },
+    { name = "dask", extras = ["distributed"], marker = "extra == 'dask'", specifier = ">=2025.12.0" },
     { name = "ijson", specifier = ">=3.4.0" },
     { name = "lz4", specifier = ">=4.4.5" },
     { name = "msgpack", specifier = ">=1.1.2" },
     { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "ray", specifier = ">=2.53.0" },
+    { name = "ray", marker = "extra == 'all'", specifier = ">=2.53.0" },
+    { name = "ray", marker = "extra == 'ray'", specifier = ">=2.53.0" },
 ]
+provides-extras = ["ray", "dask", "all"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "dask", extras = ["distributed"], specifier = ">=2025.12.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "ray", specifier = ">=2.53.0" },
     { name = "ruff", specifier = ">=0.14.10" },
 ]
 

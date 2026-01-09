@@ -39,12 +39,10 @@ pip install flowschema
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from flowschema import (
-    FlowSchema, 
-    SyncFifoExecutor, 
-    CSVInputAdapter, 
-    CSVOutputAdapter
-)
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.csv import CSVInputAdapter
+from flowschema.output_adapter.csv import CSVOutputAdapter
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")

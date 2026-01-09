@@ -1,11 +1,9 @@
 from models import UserSchema
 
-from flowschema import (
-    CSVInputAdapter,
-    CSVOutputAdapter,
-    FlowSchema,
-    SyncFifoExecutor,
-)
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.csv import CSVInputAdapter
+from flowschema.output_adapter.csv import CSVOutputAdapter
 from flowschema.output_adapter.generator import GeneratorOutputAdapter
 
 

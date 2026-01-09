@@ -1,14 +1,12 @@
 from models import UserSchema
 
-from flowschema import (
-    BaseHook,
-    CSVInputAdapter,
-    FlowSchema,
-    JSONOutputAdapter,
-    SyncFifoExecutor,
-)
-from flowschema.hooks import FieldMapperHook, TimestampHook
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.hooks.base import BaseHook
+from flowschema.hooks.builtin import FieldMapperHook, TimestampHook
+from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.generator import GeneratorOutputAdapter
+from flowschema.output_adapter.json import JSONOutputAdapter
 
 
 class UppercaseNameHook(BaseHook):

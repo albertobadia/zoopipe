@@ -8,9 +8,9 @@ from flowschema import (
     EntryTypedDict,
     FlowSchema,
     HookStore,
-    JSONInputAdapter,
-    SyncFifoExecutor,
 )
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.json import JSONInputAdapter
 from flowschema.output_adapter.dummy import DummyOutputAdapter
 
 

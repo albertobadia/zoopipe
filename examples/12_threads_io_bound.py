@@ -6,12 +6,12 @@ from models import UserSchema
 
 from flowschema import (
     BaseHook,
-    CSVInputAdapter,
     EntryTypedDict,
     FlowSchema,
     HookStore,
-    ThreadExecutor,
 )
+from flowschema.executor.thread import ThreadExecutor
+from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.generator import GeneratorOutputAdapter
 
 # Configure logging to see thread information

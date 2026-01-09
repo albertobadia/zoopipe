@@ -4,12 +4,10 @@ import time
 
 from pydantic import BaseModel
 
-from flowschema import (
-    FlowSchema,
-    QueueInputAdapter,
-    QueueOutputAdapter,
-    SyncFifoExecutor,
-)
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.queue import QueueInputAdapter
+from flowschema.output_adapter.queue import QueueOutputAdapter
 
 
 class UserSchema(BaseModel):

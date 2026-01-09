@@ -3,11 +3,11 @@ import os
 from pydantic import BaseModel
 
 from flowschema import (
-    FilePartitioner,
     FlowSchema,
-    MultiProcessingExecutor,
     PartitionedReaderHook,
 )
+from flowschema.executor.multiprocessing import MultiProcessingExecutor
+from flowschema.input_adapter.partitioner import FilePartitioner
 from flowschema.output_adapter.memory import MemoryOutputAdapter
 
 

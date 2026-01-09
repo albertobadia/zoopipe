@@ -4,12 +4,10 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from flowschema import (
-    AsyncQueueInputAdapter,
-    AsyncQueueOutputAdapter,
-    FlowSchema,
-    SyncFifoExecutor,
-)
+from flowschema import FlowSchema
+from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema.input_adapter.queue import AsyncQueueInputAdapter
+from flowschema.output_adapter.queue import AsyncQueueOutputAdapter
 
 
 class SensorData(BaseModel):

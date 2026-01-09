@@ -7,11 +7,11 @@ from flowschema import (
     BaseHook,
     FlowSchema,
     HookStore,
-    MemoryOutputAdapter,
-    MultiProcessingExecutor,
 )
+from flowschema.executor.multiprocessing import MultiProcessingExecutor
 from flowschema.input_adapter.base import BaseInputAdapter
 from flowschema.models.core import EntryStatus, EntryTypedDict
+from flowschema.output_adapter.memory import MemoryOutputAdapter
 
 
 # 1. Real Schema for the data we want to process
