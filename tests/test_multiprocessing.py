@@ -48,7 +48,6 @@ def test_multiprocessing_executor(tmp_path):
 
 
 if __name__ == "__main__":
-    # For running as script, use a local temp dir or pytest
     import pytest
 
     pytest.main([__file__])

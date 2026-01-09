@@ -11,6 +11,8 @@ FlowSchema provides three types of executors:
 | `SyncFifoExecutor` | Simple processing | None | Small datasets, debugging |
 | `MultiprocessingExecutor` | CPU-bound tasks | Multiple processes | Large datasets on single machine |
 | `ThreadExecutor` | IO-bound tasks | Multiple threads | Network requests, DB queries, high concurrency |
+| `ThreadExecutor` | IO-bound tasks | Multiple threads | Network requests, DB queries, high concurrency |
+| `DaskExecutor` | ETL, Dataframe-style workflows | Dask cluster | Data transformations, existing Dask infra |
 | `RayExecutor` | Distributed processing | Ray cluster | Very large datasets, multiple machines |
 
 ---
@@ -110,6 +112,38 @@ executor = ThreadExecutor(
 - `schema_model` (required): Your Pydantic model class
 - `max_workers` (optional): Number of threads. Defaults to `None` (based on CPU count * 5)
 - `chunksize` (optional): Number of entries per task. usually `1` is fine for threads.
+
+---
+
+## DaskExecutor
+
+Uses Dask for distributed parallel processing. Ideal for ETL workflows or if you already have a Dask cluster (e.g., Coiled, Saturn Cloud).
+
+### Features
+
+- **Distributed Processing**: Scales across Dask clusters
+- **Lazy Execution**: Uses Dask futures for efficient task scheduling
+- **Binary Packing**: Uses msgpack for efficient transfer
+- **ETL Friendly**: Matches the "Big Pandas" mental model
+
+### Usage
+
+```python
+from flowschema.executor.dask import DaskExecutor
+
+# Connect to a local cluster (auto-created) or existing scheduler
+executor = DaskExecutor(
+    schema_model=YourSchema,
+    address="tcp://scheduler-address:8786",  # Optional
+    compression="lz4" # Optional
+)
+```
+
+### Parameters
+
+- `schema_model` (required): Your Pydantic model class
+- `address` (optional): Dask scheduler address. If `None`, creates a `dask.distributed.Client` (which might start a local cluster).
+- `compression` (optional): Compression algorithm (`"lz4"` or `None`).
 
 ---
 
@@ -270,7 +304,9 @@ graph TD
     I -->|Yes| E
     I -->|No| J{IO Bound?}
     J -->|Yes| M[ThreadExecutor]
-    J -->|No| N[Consider RayExecutor]
+    J -->|No| N{Ray or Dask?}
+    N -->|Ray| O[RayExecutor]
+    N -->|Dask| P[DaskExecutor]
     
     F --> K{Have Ray Cluster?}
     K -->|Yes| F

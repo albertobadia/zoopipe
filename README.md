@@ -10,7 +10,7 @@ Whether you're migrating data, cleaning CSVs, or processing streams, FlowSchema 
 
 - 🔍 **Declarative Validation**: Use [Pydantic](https://docs.pydantic.dev/) models to define and validate your data structures
 - 🔌 **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors
-- ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor`, `ThreadExecutor` and `RayExecutor`
+- ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor`, `ThreadExecutor`, `DaskExecutor` and `RayExecutor`
 - 🗜️ **High-Performance Serialization**: Uses msgpack and optional LZ4 compression for efficient inter-process communication
 - 📊 **Built-in CSV & JSON Support**: Direct support for reading from and writing to CSV and JSON files (array & JSONL formats)
 - 🚨 **Automated Error Handling**: Dedicated error output adapter to capture records that fail validation
@@ -59,11 +59,10 @@ schema_flow = FlowSchema(
     executor=SyncFifoExecutor(UserSchema),
 )
 
-# Start the flow
-report = schema_flow.start()
-
-# Wait for completion
-report.wait()
+# Start the flow with context manager to ensure cleanup
+with schema_flow:
+    report = schema_flow.start()
+    report.wait()
 
 print(f"Finished! Processed {report.total_processed} items.")
 ```
@@ -76,7 +75,7 @@ print(f"Finished! Processed {report.total_processed} items.")
 - [**Installation & First Steps**](docs/getting-started.md) - Get up and running quickly
 
 ### Core Concepts
-- [**Executors**](docs/executors.md) - Learn about SyncFifoExecutor, MultiprocessingExecutor, ThreadExecutor and RayExecutor
+- [**Executors**](docs/executors.md) - Learn about SyncFifoExecutor, MultiprocessingExecutor, ThreadExecutor, DaskExecutor and RayExecutor
 - [**Adapters**](docs/adapters.md) - Input and Output adapters for various data sources
 - [**Examples**](docs/examples.md) - Practical examples for common use cases
 
@@ -130,6 +129,7 @@ FlowSchema provides three execution strategies:
 | `SyncFifoExecutor` | Small datasets, debugging | Single-threaded |
 | `MultiprocessingExecutor` | Large datasets on single machine | Multi-process (CPU cores) |
 | `ThreadExecutor` | IO-bound tasks (network/DB) | Multi-thread |
+| `DaskExecutor` | ETL pipelines, Dask users | Dask cluster |
 | `RayExecutor` | Massive datasets, distributed | Ray cluster |
 
 See the [Executors documentation](docs/executors.md) for detailed information.

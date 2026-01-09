@@ -63,7 +63,6 @@ def test_background_run_with_generator_adapter():
     results = []
     for entry in output_adapter:
         results.append(entry)
-        # Check report while iterating
         assert (
             report.status == FlowStatus.RUNNING or report.status == FlowStatus.COMPLETED
         )

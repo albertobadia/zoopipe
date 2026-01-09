@@ -31,7 +31,6 @@ def test_sync_queue_flow():
     input_q.put(None)
 
     results = []
-    # Collect results
     while len(results) < 2:
         entry = output_q.get()
         results.append(entry)

@@ -1,10 +1,11 @@
 [project]
 name = "flowschema"
-version = "0.1.6"
+version = "2026.01.09"
 description = "FlowSchema is a data processing framework that allows you to process data in a declarative way."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "dask[distributed]>=2025.12.0",
     "ijson>=3.4.0",
     "lz4>=4.4.5",
     "msgpack>=1.1.2",

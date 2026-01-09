@@ -6,6 +6,7 @@ from flowschema.exceptions import (
     FlowSchemaError,
     HookExecutionError,
 )
+from flowschema.executor.dask import DaskExecutor
 from flowschema.executor.multiprocessing import MultiProcessingExecutor
 from flowschema.executor.ray import RayExecutor
 from flowschema.executor.sync_fifo import SyncFifoExecutor
@@ -38,6 +39,7 @@ __all__ = [
     "MultiProcessingExecutor",
     "RayExecutor",
     "ThreadExecutor",
+    "DaskExecutor",
     "FlowReport",
     "FlowStatus",
     "BaseInputAdapter",

@@ -126,6 +126,10 @@ class BaseExecutor(abc.ABC):
     def set_upstream_iterator(self, iterator: typing.Iterator[typing.Any]) -> None:
         self._upstream_iterator = iterator
 
+    def shutdown(self) -> None:
+        """Cleanup resources used by the executor."""
+        pass
+
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
         raise NotImplementedError

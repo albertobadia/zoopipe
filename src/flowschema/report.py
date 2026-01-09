@@ -8,6 +8,7 @@ class FlowStatus(enum.Enum):
     PENDING = "pending"
     RUNNING = "running"
     STOPPED = "stopped"
+    CANCELLED = "cancelled"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -60,6 +61,13 @@ class FlowReport:
     def stop(self) -> None:
         with self._stop_condition:
             self.status = FlowStatus.STOPPED
+
+    def abort(self) -> None:
+        with self._stop_condition:
+            self.status = FlowStatus.CANCELLED
+            self.end_time = datetime.now()
+            self._finished_event.set()
+            self._stop_condition.notify_all()
 
     def continue_(self) -> None:
         with self._stop_condition:

@@ -160,6 +160,5 @@ def test_json_output_adapter_round_trip(tmp_path):
         read_entries = list(read_adapter.generator)
 
     assert len(read_entries) == 2
-    # Because we read back the envelope, raw_data is the envelope dict
     assert read_entries[0]["raw_data"]["data"]["name"] == "Alice"
     assert read_entries[1]["raw_data"]["data"]["name"] == "Bob"

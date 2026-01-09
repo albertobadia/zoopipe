@@ -38,7 +38,6 @@ class UserSchema(BaseModel):
     last_name: str
     age: int
 
-schema_flow = FlowSchema(
 flow = FlowSchema(
     input_adapter=CSVInputAdapter("users.csv"),
     output_adapter=CSVOutputAdapter("processed_users.csv"),
@@ -47,8 +46,9 @@ flow = FlowSchema(
 )
 
 # Wait for completion
-report = flow.start()
-report.wait()
+with flow:
+    report = flow.start()
+    report.wait()
 
 print(f"Processed: {report.total_processed}")
 print(f"Success: {report.success_count}")
@@ -56,8 +56,17 @@ print(f"Errors: {report.error_count}")
 print(f"Duration: {report.duration:.2f}s")
 ```
 
-## Next Steps
+## Lifecycle Management
+It is recommended to use the `FlowSchema` instance as a context manager (using `with`). This ensures that resources (background threads, executors) are properly cleaned up even if an error occurs. (However, if you forget, FlowSchema will also try to shut down gracefully when the object is deleted).
 
+```python
+with FlowSchema(...) as flow:
+    report = flow.start()
+    report.wait()
+# Resources are automatically cleaned up here
+```
+
+## Next Steps
 - Learn about [different executors](executors.md) for parallel processing
 - Explore [input and output adapters](adapters.md)
 - Check out more [examples](examples.md)

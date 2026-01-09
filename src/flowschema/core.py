@@ -48,9 +48,6 @@ class FlowSchema:
         self.post_validation_hooks = post_validation_hooks or []
         self.logger = logger or get_logger()
         self.max_bytes_in_flight = max_bytes_in_flight
-        self._bytes_in_flight = 0
-        self._backpressure_condition = threading.Condition()
-        self._chunk_sizes: dict[str, float] = {}
         self._report: FlowReport | None = None
         self._run_lock = threading.Lock()
         self._setup_logger()
@@ -62,23 +59,6 @@ class FlowSchema:
         if self.error_output_adapter:
             self.error_output_adapter.set_logger(self.logger)
 
-    def _handle_entry(self, entry: EntryTypedDict, report: FlowReport) -> None:
-        report.total_processed += 1
-        if entry["status"] == EntryStatus.FAILED:
-            report.error_count += 1
-            if self.error_output_adapter:
-                self.error_output_adapter.write(entry)
-        else:
-            report.success_count += 1
-            self.output_adapter.write(entry)
-
-        if self.max_bytes_in_flight:
-            entry_id = str(entry["id"])
-            if entry_id in self._chunk_sizes:
-                with self._backpressure_condition:
-                    self._bytes_in_flight -= self._chunk_sizes.pop(entry_id)
-                    self._backpressure_condition.notify_all()
-
     def start(self) -> FlowReport:
         with self._run_lock:
             if self._report and self._report.status == FlowStatus.RUNNING:
@@ -87,32 +67,101 @@ class FlowSchema:
             self._report = FlowReport()
 
         thread = threading.Thread(
-            target=self._run_background, args=(self._report,), daemon=True
+            target=self._run_background_static,
+            kwargs={
+                "report": self._report,
+                "input_adapter": self.input_adapter,
+                "output_adapter": self.output_adapter,
+                "error_output_adapter": self.error_output_adapter,
+                "executor": self.executor,
+                "logger": self.logger,
+                "max_bytes_in_flight": self.max_bytes_in_flight,
+                "pre_validation_hooks": self.pre_validation_hooks,
+                "post_validation_hooks": self.post_validation_hooks,
+            },
+            daemon=True,
         )
         thread.start()
 
         return self._report
 
-    def _run_background(self, report: FlowReport) -> None:
+    def __del__(self) -> None:
+        if self._report and not self._report.is_finished:
+            self.logger.warning("FlowSchema object collected while running. Stopping flow...")
+            self._report.abort()
+
+    def __enter__(self) -> "FlowSchema":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._report and not self._report.is_finished:
+            self._report.abort()
+            # If an exception happened, we might want to wait briefly or just let it shut down async
+            # But typically context managers cleaning up resources should try to be clean.
+            # However, waiting might hang if something is stuck.
+            # For now, just signaling stop is safe.
+
+    @staticmethod
+    def _handle_entry_static(
+        entry: EntryTypedDict,
+        report: FlowReport,
+        output_adapter: BaseOutputAdapter,
+        error_output_adapter: BaseOutputAdapter | None,
+        max_bytes_in_flight: int | None,
+        chunk_sizes: dict[str, float],
+        backpressure_condition: threading.Condition,
+        bytes_in_flight_container: list[int],
+    ) -> None:
+        report.total_processed += 1
+        if entry["status"] == EntryStatus.FAILED:
+            report.error_count += 1
+            if error_output_adapter:
+                error_output_adapter.write(entry)
+        else:
+            report.success_count += 1
+            output_adapter.write(entry)
+
+        if max_bytes_in_flight:
+            entry_id = str(entry["id"])
+            if entry_id in chunk_sizes:
+                with backpressure_condition:
+                    bytes_in_flight_container[0] -= chunk_sizes.pop(entry_id)
+                    backpressure_condition.notify_all()
+
+    @staticmethod
+    def _run_background_static(
+        report: FlowReport,
+        input_adapter: BaseInputAdapter,
+        output_adapter: BaseOutputAdapter,
+        error_output_adapter: BaseOutputAdapter | None,
+        executor: BaseExecutor,
+        logger: logging.Logger,
+        max_bytes_in_flight: int | None,
+        pre_validation_hooks: list[BaseHook],
+        post_validation_hooks: list[BaseHook],
+    ) -> None:
+        # Internal state for backpressure
+        chunk_sizes: dict[str, float] = {}
+        bytes_in_flight_container = [0]  # mutable container
+        backpressure_condition = threading.Condition()
+
         report._mark_running()
         try:
             with contextlib.ExitStack() as stack:
-                stack.enter_context(self.input_adapter)
-                stack.enter_context(self.output_adapter)
-                if self.error_output_adapter:
-                    stack.enter_context(self.error_output_adapter)
+                stack.enter_context(input_adapter)
+                stack.enter_context(output_adapter)
+                if error_output_adapter:
+                    stack.enter_context(error_output_adapter)
 
-                input_adapter = self.input_adapter
-                chunksize = getattr(self.executor, "_chunksize", 1)
-                if chunksize < 1:
-                    chunksize = 1
+                exec_chunksize = getattr(executor, "_chunksize", 1)
+                chunksize = max(1, exec_chunksize)
 
                 chunks = itertools.batched(input_adapter.generator, chunksize)
 
                 def _get_data_iterator():
                     for chunk in chunks:
-                        packed_chunk = self.executor.pack_chunk(list(chunk))
-                        if self.max_bytes_in_flight:
+                        packed_chunk = executor.pack_chunk(list(chunk))
+                        if max_bytes_in_flight:
                             chunk_size = (
                                 len(packed_chunk)
                                 if isinstance(packed_chunk, bytes)
@@ -120,43 +169,59 @@ class FlowSchema:
                             )
                             size_per_entry = chunk_size / len(chunk)
                             for entry in chunk:
-                                self._chunk_sizes[str(entry["id"])] = size_per_entry
+                                chunk_sizes[str(entry["id"])] = size_per_entry
 
-                            with self._backpressure_condition:
+                            with backpressure_condition:
                                 while (
-                                    self._bytes_in_flight + chunk_size
-                                    > self.max_bytes_in_flight
+                                    bytes_in_flight_container[0] + chunk_size
+                                    > max_bytes_in_flight
                                 ):
-                                    self._backpressure_condition.wait()
-                                self._bytes_in_flight += chunk_size
+                                    backpressure_condition.wait()
+                                bytes_in_flight_container[0] += chunk_size
 
                         yield packed_chunk
 
                 data_iterator = _get_data_iterator()
-                self.executor.set_hooks(
-                    pre_validation=self.pre_validation_hooks,
-                    post_validation=self.post_validation_hooks,
+                executor.set_hooks(
+                    pre_validation=pre_validation_hooks,
+                    post_validation=post_validation_hooks,
                 )
-                self.executor.set_upstream_iterator(data_iterator)
+                executor.set_upstream_iterator(data_iterator)
 
-                for entry in self.executor.generator:
+                for entry in executor.generator:
+                    if report.status == FlowStatus.CANCELLED:
+                        break
+
                     if report.is_stopped:
                         report._wait_if_stopped()
+                        if report.status == FlowStatus.CANCELLED:
+                            break
 
-                    self._handle_entry(entry, report)
+                    FlowSchema._handle_entry_static(
+                        entry=entry,
+                        report=report,
+                        output_adapter=output_adapter,
+                        error_output_adapter=error_output_adapter,
+                        max_bytes_in_flight=max_bytes_in_flight,
+                        chunk_sizes=chunk_sizes,
+                        backpressure_condition=backpressure_condition,
+                        bytes_in_flight_container=bytes_in_flight_container,
+                    )
 
-                with self._backpressure_condition:
-                    self._bytes_in_flight = 0
-                    self._chunk_sizes.clear()
-                    self._backpressure_condition.notify_all()
+                with backpressure_condition:
+                    bytes_in_flight_container[0] = 0
+                    chunk_sizes.clear()
+                    backpressure_condition.notify_all()
 
                 if report.is_stopped:
                     report._mark_stopped()
                 else:
                     report._mark_completed()
         except Exception as e:
-            self.logger.exception("Error during background execution")
+            logger.exception("Error during background execution")
             report._mark_failed(e)
+        finally:
+            executor.shutdown()
 
     def __repr__(self) -> str:
         return (

@@ -16,7 +16,7 @@ class FailingHook(BaseHook):
 def test_hook_failure_marks_entry_failed():
     input_q = queue.Queue()
     input_q.put({"foo": "bar"})
-    input_q.put(None)  # Sentinel
+    input_q.put(None)
 
     input_adapter = QueueInputAdapter(input_q)
     output_adapter = MemoryOutputAdapter()

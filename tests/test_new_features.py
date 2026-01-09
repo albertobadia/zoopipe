@@ -40,12 +40,11 @@ class TrackingHook(BaseHook):
 
 
 def test_backpressure_logic():
-    # This is a bit hard to test deterministically without many mocks
-    # But we can verify that everything still runs and produces results
     adapter = SlowInputAdapter(count=20)
     output = MemoryOutputAdapter()
 
-    # Very small limit to trigger backpressure frequently
+    output = MemoryOutputAdapter()
+
     flow = FlowSchema(
         input_adapter=adapter,
         output_adapter=output,

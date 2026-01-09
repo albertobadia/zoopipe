@@ -23,7 +23,6 @@ class ThreadExecutor(BaseExecutor):
 
     @property
     def do_binary_pack(self) -> bool:
-        # Threads share memory, so we don't need to pack/unpack
         return False
 
     @staticmethod
