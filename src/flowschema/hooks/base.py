@@ -14,6 +14,16 @@ class HookStore:
     def _unlock(self) -> None:
         self._read_only = False
 
+    import contextlib
+
+    @contextlib.contextmanager
+    def lock_context(self) -> typing.Iterator[None]:
+        self._lock()
+        try:
+            yield
+        finally:
+            self._unlock()
+
     def __setattr__(self, name: str, value: typing.Any) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
@@ -41,10 +51,8 @@ class BaseHook:
     def setup(self, store: HookStore) -> None:
         pass
 
-    def execute(
-        self, entry: EntryTypedDict, store: HookStore
-    ) -> dict[str, typing.Any] | None:
-        raise NotImplementedError("Subclasses must implement execute()")
+    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
+        return entry
 
     def teardown(self, store: HookStore) -> None:
         pass

@@ -1,9 +1,11 @@
 from models import UserSchema
 
-from flowschema.core import FlowSchema
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from flowschema import (
+    CSVInputAdapter,
+    CSVOutputAdapter,
+    FlowSchema,
+    MultiProcessingExecutor,
+)
 
 
 def main():

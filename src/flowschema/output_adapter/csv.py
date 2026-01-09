@@ -5,6 +5,7 @@ import typing
 
 from flowschema.models.core import EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
+from flowschema.utils import JSONEncoder
 
 
 class CSVOutputAdapter(BaseOutputAdapter):
@@ -74,7 +75,7 @@ class CSVOutputAdapter(BaseOutputAdapter):
             "id": str(entry["id"]),
             "status": entry["status"].value,
             "position": entry["position"],
-            "metadata": json.dumps(entry["metadata"]),
+            "metadata": json.dumps(entry["metadata"], cls=JSONEncoder),
         }
         data.update(record)
 

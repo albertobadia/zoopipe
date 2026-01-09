@@ -39,10 +39,12 @@ pip install flowschema
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from flowschema import (
+    FlowSchema, 
+    SyncFifoExecutor, 
+    CSVInputAdapter, 
+    CSVOutputAdapter
+)
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -57,9 +59,13 @@ schema_flow = FlowSchema(
     executor=SyncFifoExecutor(UserSchema),
 )
 
-for entry in schema_flow.start():
-    status = entry['status'].value
-    print(f"[{status.upper()}] Row {entry['position']}")
+# Start the flow
+report = schema_flow.start()
+
+# Wait for completion
+report.wait()
+
+print(f"Finished! Processed {report.total_processed} items.")
 ```
 
 ---

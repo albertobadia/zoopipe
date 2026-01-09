@@ -1,19 +1,21 @@
 from models import UserSchema
 
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema import (
+    BaseHook,
+    CSVInputAdapter,
+    FlowSchema,
+    JSONOutputAdapter,
+    SyncFifoExecutor,
+)
 from flowschema.hooks import FieldMapperHook, TimestampHook
-from flowschema.hooks.base import BaseHook
-from flowschema.input_adapter.csv import CSVInputAdapter
 from flowschema.output_adapter.generator import GeneratorOutputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
 
 
 class UppercaseNameHook(BaseHook):
-    def execute(self, entry: dict, store) -> dict | None:
-        if "name" in entry:
-            entry["name"] = entry["name"].upper()
-        return None
+    def execute(self, entry, store):
+        if "name" in entry["raw_data"]:
+            entry["raw_data"]["name"] = entry["raw_data"]["name"].upper()
+        return entry
 
 
 def example_timestamp_hook():

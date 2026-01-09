@@ -97,6 +97,52 @@ Using the Hooks system to transform and enrich data.
 uv run examples/05_hooks.py
 ```
 
+### [06_dummy_output_with_hooks.py](../examples/06_dummy_output_with_hooks.py)
+
+Advanced use of hooks for custom persistence (e.g., SQLite) while skipping standard output.
+
+**Demonstrates:**
+- Custom persistence hooks (SQLite)
+- Using `DummyOutputAdapter` when output is handled by hooks
+- Hook session management (`setup` and `teardown`)
+
+**Run:**
+```bash
+uv run examples/06_dummy_output_with_hooks.py
+```
+
+---
+
+### [07_distributed_file_reading.py](../examples/07_distributed_file_reading.py)
+
+"JIT Ingestion" pattern: the coordinator only sends light metadata, and workers fetch the actual data.
+
+**Demonstrates:**
+- Zero-copy data ingestion pattern
+- Using hooks to fetch data on demand in parallel workers
+- Efficient handling of large metadata-only input streams
+
+**Run:**
+```bash
+uv run examples/07_distributed_file_reading.py
+```
+
+---
+
+### [08_file_partitioning.py](../examples/08_file_partitioning.py)
+
+Parallel file reading using byte-ranges and the `FilePartitioner`.
+
+**Demonstrates:**
+- `FilePartitioner` for splitting large files into byte-range chunks
+- `PartitionedReaderHook` for parallel distributed file reading
+- Efficiently horizontal scaling of file-based workloads
+
+**Run:**
+```bash
+uv run examples/08_file_partitioning.py
+```
+
 ---
 
 ## Sample Data

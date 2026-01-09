@@ -43,17 +43,19 @@ class BaseExecutor(abc.ABC):
         return msgpack.unpackb(data)
 
     @staticmethod
-    def _run_hooks(
+    def run_hooks(
         entry: EntryTypedDict, hooks: list[BaseHook], store: HookStore
-    ) -> None:
-        for hook in hooks:
-            store._lock()
-            try:
-                result = hook.execute(entry, store)
-                if result:
-                    entry["metadata"].update(result)
-            finally:
-                store._unlock()
+    ) -> EntryTypedDict:
+        with store.lock_context():
+            for hook in hooks:
+                try:
+                    result = hook.execute(entry, store)
+                    if isinstance(result, dict) and result is not entry:
+                        entry["metadata"].update(result)
+                except Exception as e:
+                    hook_name = hook.__class__.__name__
+                    entry["metadata"][f"hook_error_{hook_name}"] = str(e)
+        return entry
 
     @staticmethod
     def process_chunk_on_worker(
@@ -78,12 +80,12 @@ class BaseExecutor(abc.ABC):
         try:
             for entry in entries:
                 if pre_hooks:
-                    BaseExecutor._run_hooks(entry, pre_hooks, store)
+                    BaseExecutor.run_hooks(entry, pre_hooks, store)
 
                 validated_entry = validate_entry(schema_model, entry)
 
                 if post_hooks:
-                    BaseExecutor._run_hooks(validated_entry, post_hooks, store)
+                    BaseExecutor.run_hooks(validated_entry, post_hooks, store)
 
                 results.append(validated_entry)
         finally:
@@ -112,23 +114,6 @@ class BaseExecutor(abc.ABC):
     ) -> None:
         self._pre_validation_hooks = pre_validation
         self._post_validation_hooks = post_validation
-
-    def _execute_hooks(
-        self, entry: EntryTypedDict, hooks: list[BaseHook], store: HookStore
-    ) -> None:
-        # Enforce read-only store during execute phase
-        store._lock()
-        try:
-            for hook in hooks:
-                try:
-                    result = hook.execute(entry, store)
-                    if result:
-                        entry["metadata"].update(result)
-                except Exception as e:
-                    hook_name = hook.__class__.__name__
-                    entry["metadata"][f"hook_error_{hook_name}"] = str(e)
-        finally:
-            store._unlock()
 
     def set_upstream_iterator(self, iterator: typing.Iterator[typing.Any]) -> None:
         self._upstream_iterator = iterator

@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel, ConfigDict
 
 from flowschema.core import FlowSchema
@@ -20,9 +22,9 @@ def test_timestamp_hook():
     store = HookStore()
 
     entry = EntryTypedDict(
-        id="test-id",
+        id=uuid.uuid4(),
         raw_data={"name": "Alice", "age": 30},
-        validated_data=None,
+        validated_data={},
         position=0,
         status=EntryStatus.PENDING,
         errors=[],
@@ -31,8 +33,8 @@ def test_timestamp_hook():
 
     result = hook.execute(entry, store)
 
-    assert "processed_at" in result
-    assert isinstance(result["processed_at"], str)
+    assert "processed_at" in result["metadata"]
+    assert isinstance(result["metadata"]["processed_at"], str)
 
 
 def test_field_mapper_hook():
@@ -46,7 +48,7 @@ def test_field_mapper_hook():
     store = HookStore()
 
     entry = EntryTypedDict(
-        id="test-id",
+        id=uuid.uuid4(),
         raw_data={"name": "Alice", "age": 30},
         validated_data={"name": "Alice", "age": 30},
         position=0,
@@ -57,7 +59,7 @@ def test_field_mapper_hook():
 
     result = hook.execute(entry, store)
 
-    assert result["age_group"] == "adult"
+    assert result["metadata"]["age_group"] == "adult"
 
 
 def test_hook_store():
@@ -83,9 +85,10 @@ def test_hook_with_setup_teardown():
         def setup(self, store: HookStore):
             store.counter = 0
 
-        def execute(self, entry: dict, store: HookStore) -> dict:
+        def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
             store.counter += 1
-            return {"count": store.counter}
+            entry["metadata"]["count"] = store.counter
+            return entry
 
         def teardown(self, store: HookStore):
             store.counter = None
@@ -98,12 +101,12 @@ def test_hook_with_setup_teardown():
 
     entry1 = {"metadata": {}}
     result1 = hook.execute(entry1, store)
-    assert result1["count"] == 1
+    assert result1["metadata"]["count"] == 1
     assert store.counter == 1
 
     entry2 = {"metadata": {}}
     result2 = hook.execute(entry2, store)
-    assert result2["count"] == 2
+    assert result2["metadata"]["count"] == 2
 
     hook.teardown(store)
     assert store.counter is None
@@ -118,9 +121,10 @@ def test_hooks_integration_with_flowschema(tmp_path):
         def setup(self, store: HookStore):
             store.processed_count = [0]
 
-        def execute(self, entry: dict, store: HookStore) -> dict:
+        def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
             store.processed_count[0] += 1
-            return {"hook_count": store.processed_count[0]}
+            entry["metadata"]["hook_count"] = store.processed_count[0]
+            return entry
 
     memory_adapter = MemoryOutputAdapter()
     flow = FlowSchema(

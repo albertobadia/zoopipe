@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import itertools
 import logging
@@ -6,10 +7,13 @@ import threading
 from flowschema.executor.base import BaseExecutor
 from flowschema.hooks.base import BaseHook
 from flowschema.input_adapter.base import BaseInputAdapter
+from flowschema.input_adapter.base_async import BaseAsyncInputAdapter
 from flowschema.logger import get_logger
 from flowschema.models.core import EntryStatus, EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
+from flowschema.output_adapter.base_async import BaseAsyncOutputAdapter
 from flowschema.report import FlowReport, FlowStatus
+from flowschema.utils import AsyncInputBridge, AsyncOutputBridge
 
 
 class FlowSchema:
@@ -23,7 +27,19 @@ class FlowSchema:
         post_validation_hooks: list[BaseHook] | None = None,
         logger: logging.Logger | None = None,
         max_bytes_in_flight: int | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
+        if isinstance(input_adapter, BaseAsyncInputAdapter):
+            input_adapter = AsyncInputBridge(input_adapter, loop=loop)
+
+        if isinstance(output_adapter, BaseAsyncOutputAdapter):
+            output_adapter = AsyncOutputBridge(output_adapter, loop=loop)
+
+        if error_output_adapter and isinstance(
+            error_output_adapter, BaseAsyncOutputAdapter
+        ):
+            error_output_adapter = AsyncOutputBridge(error_output_adapter, loop=loop)
+
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
         self.executor = executor
@@ -56,7 +72,6 @@ class FlowSchema:
             report.success_count += 1
             self.output_adapter.write(entry)
 
-        # Release backpressure if needed
         if self.max_bytes_in_flight:
             entry_id = str(entry["id"])
             if entry_id in self._chunk_sizes:
@@ -103,7 +118,6 @@ class FlowSchema:
                                 if isinstance(packed_chunk, bytes)
                                 else 0
                             )
-                            # Track chunk sizes internally for backpressure
                             size_per_entry = chunk_size / len(chunk)
                             for entry in chunk:
                                 self._chunk_sizes[str(entry["id"])] = size_per_entry
@@ -131,7 +145,6 @@ class FlowSchema:
 
                     self._handle_entry(entry, report)
 
-                # Reset backpressure at the end
                 with self._backpressure_condition:
                     self._bytes_in_flight = 0
                     self._chunk_sizes.clear()

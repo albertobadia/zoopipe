@@ -60,6 +60,87 @@ Writes validated entries to JSON files in array or JSONL format.
 
 ---
 
+### Queue Adapters
+
+Bridges the gap between external applications and FlowSchema's pipeline using thread-safe or async queues.
+
+#### Async Queues
+Used for `asyncio` based applications (FastAPI, WebSockets).
+
+**AsyncQueueInputAdapter**
+- Wraps an `asyncio.Queue` for input
+- Efficiently feeds items from an async loop into the pipeline
+- Sentinel support for graceful shutdown
+
+**AsyncQueueOutputAdapter**
+- Wraps an `asyncio.Queue` for output
+- Pushes processing results back into an async loop
+
+#### Synchronous Queues
+Used for standard multi-threaded applications.
+
+**QueueInputAdapter**
+- Wraps a standard `queue.Queue`
+- Fetches items from a thread-safe queue
+
+**QueueOutputAdapter**
+- Wraps a standard `queue.Queue`
+- Pushes processing results into a thread-safe queue
+
+**Example (Async):**
+```python
+from flowschema import (
+    AsyncQueueInputAdapter, 
+    AsyncQueueOutputAdapter, 
+    FlowSchema
+)
+
+flow = FlowSchema(
+    input_adapter=AsyncQueueInputAdapter(input_queue),
+    output_adapter=AsyncQueueOutputAdapter(output_queue),
+    executor=executor
+)
+```
+
+**Example (Sync):**
+```python
+from flowschema import (
+    QueueInputAdapter, 
+    QueueOutputAdapter, 
+    FlowSchema
+)
+
+flow = FlowSchema(
+    input_adapter=QueueInputAdapter(input_queue),
+    output_adapter=QueueOutputAdapter(output_queue),
+    executor=executor
+)
+```
+
+---
+
+### Dummy Output Adapter
+
+A no-op output adapter for cases where hooks handle all output.
+
+**Use Cases:**
+- Hooks write to database/API
+- Side-effects only processing
+- Maximum performance with hook-based output
+
+**Example:**
+```python
+from flowschema.output_adapter.dummy import DummyOutputAdapter
+
+flow = FlowSchema(
+    input_adapter=input_adapter,
+    output_adapter=DummyOutputAdapter(),  # No output overhead
+    post_validation_hooks=[DBWriterHook()],  # Hook writes data
+)
+```
+
+---
+
 ## Hooks System
 
 ### [Hooks Documentation](adapters/hooks.md)
@@ -138,10 +219,12 @@ graph LR
 ### CSV Processing
 
 ```python
-from flowschema.core import FlowSchema
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
-from flowschema.executor.sync_fifo import SyncFifoExecutor
+from flowschema import (
+    FlowSchema,
+    CSVInputAdapter,
+    CSVOutputAdapter,
+    SyncFifoExecutor
+)
 
 flow = FlowSchema(
     input_adapter=CSVInputAdapter("input.csv"),
@@ -154,8 +237,11 @@ flow = FlowSchema(
 ### JSON Processing
 
 ```python
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from flowschema import (
+    JSONInputAdapter, 
+    JSONOutputAdapter, 
+    SyncFifoExecutor
+)
 
 flow = FlowSchema(
     input_adapter=JSONInputAdapter("input.json", format="array"),

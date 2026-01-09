@@ -1,9 +1,11 @@
 from models import UserSchema
 
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from flowschema import (
+    FlowSchema,
+    JSONInputAdapter,
+    JSONOutputAdapter,
+    SyncFifoExecutor,
+)
 
 
 def example_json_array():

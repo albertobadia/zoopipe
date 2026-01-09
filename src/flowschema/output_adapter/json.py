@@ -1,20 +1,10 @@
-import enum
 import json
 import pathlib
 import typing
-import uuid
 
 from flowschema.models.core import EntryTypedDict
 from flowschema.output_adapter.base import BaseOutputAdapter
-
-
-class JSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, uuid.UUID):
-            return str(obj)
-        if isinstance(obj, enum.Enum):
-            return obj.value
-        return super().default(obj)
+from flowschema.utils import JSONEncoder
 
 
 class JSONOutputAdapter(BaseOutputAdapter):

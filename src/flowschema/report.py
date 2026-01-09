@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import threading
 from datetime import datetime
@@ -30,6 +31,10 @@ class FlowReport:
     def wait(self, timeout: float | None = None) -> bool:
         return self._finished_event.wait(timeout)
 
+    async def wait_async(self, timeout: float | None = None) -> bool:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.wait, timeout)
+
     def _mark_running(self) -> None:
         self.status = FlowStatus.RUNNING
         self.start_time = datetime.now()
@@ -45,12 +50,10 @@ class FlowReport:
         self._finished_event.set()
 
     def stop(self) -> None:
-        """Stop processing gracefully after completing current entry."""
         with self._stop_condition:
             self.status = FlowStatus.STOPPED
 
     def continue_(self) -> None:
-        """Resume processing after stop."""
         with self._stop_condition:
             if self.status == FlowStatus.STOPPED:
                 self.status = FlowStatus.RUNNING
@@ -61,7 +64,6 @@ class FlowReport:
         return self.status == FlowStatus.STOPPED
 
     def _wait_if_stopped(self) -> None:
-        """Wait while stopped, return when continue_() is called."""
         with self._stop_condition:
             while self.status == FlowStatus.STOPPED:
                 self._stop_condition.wait()

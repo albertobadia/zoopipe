@@ -1,9 +1,11 @@
 from models import UserSchema
 
-from flowschema.core import FlowSchema
-from flowschema.executor.ray import RayExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from flowschema import (
+    CSVInputAdapter,
+    CSVOutputAdapter,
+    FlowSchema,
+    RayExecutor,
+)
 
 
 def main():
