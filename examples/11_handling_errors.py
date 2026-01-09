@@ -17,12 +17,15 @@ class FaultyDecryptionHook(BaseHook):
     Simulates a hook that fails for specific items.
     """
 
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
-        raw_data = entry["raw_data"]
-        # Simulate failure for items with 'encrypted': True
-        if raw_data.get("encrypted"):
-            raise ValueError("Decryption failed: invalid key")
-        return entry
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        for entry in entries:
+            raw_data = entry["raw_data"]
+            # Simulate failure for items with 'encrypted': True
+            if raw_data.get("encrypted"):
+                raise ValueError("Decryption failed: invalid key")
+        return entries
 
 
 def main():

@@ -10,10 +10,11 @@ from flowschema.output_adapter.json import JSONOutputAdapter
 
 
 class UppercaseNameHook(BaseHook):
-    def execute(self, entry, store):
-        if "name" in entry["raw_data"]:
-            entry["raw_data"]["name"] = entry["raw_data"]["name"].upper()
-        return entry
+    def execute(self, entries, store):
+        for entry in entries:
+            if "name" in entry["raw_data"]:
+                entry["raw_data"]["name"] = entry["raw_data"]["name"].upper()
+        return entries
 
 
 def example_timestamp_hook():

@@ -21,6 +21,7 @@ class WorkerContext:
     compression_algorithm: str | None
     pre_hooks: list[BaseHook] | None = None
     post_hooks: list[BaseHook] | None = None
+    max_hook_chunk_size: int | None = None
 
 
 class BaseExecutor(abc.ABC):
@@ -54,23 +55,47 @@ class BaseExecutor(abc.ABC):
         return msgpack.unpackb(data)
 
     @staticmethod
+    def _handle_hook_error(
+        entries: list[EntryTypedDict], hook_name: str, error: Exception
+    ) -> None:
+        error_msg = str(error)
+        for entry in entries:
+            entry["status"] = EntryStatus.FAILED
+            entry["errors"].append(
+                {
+                    "type": "HookError",
+                    "message": f"{hook_name}: {error_msg}",
+                }
+            )
+            entry["metadata"][f"hook_error_{hook_name}"] = error_msg
+
+    @staticmethod
+    def _execute_hook_safe(
+        entries: list[EntryTypedDict], hook: BaseHook, store: HookStore
+    ) -> None:
+        try:
+            hook.execute(entries, store)
+        except Exception as e:
+            BaseExecutor._handle_hook_error(entries, hook.__class__.__name__, e)
+
+    @staticmethod
     def run_hooks(
-        entry: EntryTypedDict, hooks: list[BaseHook], store: HookStore
-    ) -> EntryTypedDict:
+        entries: list[EntryTypedDict],
+        hooks: list[BaseHook],
+        store: HookStore,
+        max_hook_chunk_size: int | None = None,
+    ) -> list[EntryTypedDict]:
+        if not entries or not hooks:
+            return entries
+
+        chunk_size = max_hook_chunk_size or len(entries)
+
         with store.lock_context():
-            for hook in hooks:
-                try:
-                    result = hook.execute(entry, store)
-                    if isinstance(result, dict) and result is not entry:
-                        entry["metadata"].update(result)
-                except Exception as e:
-                    hook_name = hook.__class__.__name__
-                    entry["status"] = EntryStatus.FAILED
-                    entry["errors"].append(
-                        {"type": "HookError", "message": f"{hook_name}: {str(e)}"}
-                    )
-                    entry["metadata"][f"hook_error_{hook_name}"] = str(e)
-        return entry
+            for i in range(0, len(entries), chunk_size):
+                sub_batch = entries[i : i + chunk_size]
+                for hook in hooks:
+                    BaseExecutor._execute_hook_safe(sub_batch, hook, store)
+        return entries
 
     @staticmethod
     def process_chunk_on_worker(
@@ -80,7 +105,6 @@ class BaseExecutor(abc.ABC):
         entries = BaseExecutor._unpack_data(
             data, context.do_binary_pack, context.compression_algorithm
         )
-        results = []
         store = HookStore()
         all_hooks = (context.pre_hooks or []) + (context.post_hooks or [])
 
@@ -88,25 +112,37 @@ class BaseExecutor(abc.ABC):
             hook.setup(store)
 
         try:
-            for entry in entries:
-                if context.pre_hooks:
-                    BaseExecutor.run_hooks(entry, context.pre_hooks, store)
+            BaseExecutor.run_hooks(
+                entries,
+                context.pre_hooks or [],
+                store,
+                context.max_hook_chunk_size,
+            )
 
-                if entry.get("status") == EntryStatus.FAILED:
-                    results.append(entry)
-                    continue
+            results = [
+                BaseExecutor._process_single_entry(entry, context.schema_model)
+                for entry in entries
+            ]
 
-                validated_entry = validate_entry(context.schema_model, entry)
-
-                if context.post_hooks:
-                    BaseExecutor.run_hooks(validated_entry, context.post_hooks, store)
-
-                results.append(validated_entry)
+            BaseExecutor.run_hooks(
+                results,
+                context.post_hooks or [],
+                store,
+                context.max_hook_chunk_size,
+            )
         finally:
             for hook in all_hooks:
                 hook.teardown(store)
 
         return results
+
+    @staticmethod
+    def _process_single_entry(
+        entry: EntryTypedDict, schema_model: type[BaseModel] | None
+    ) -> EntryTypedDict:
+        if entry.get("status") == EntryStatus.FAILED:
+            return entry
+        return validate_entry(schema_model, entry)
 
     def set_logger(self, logger: logging.Logger) -> None:
         self.logger = logger
@@ -114,6 +150,7 @@ class BaseExecutor(abc.ABC):
     def __init__(self):
         self._pre_validation_hooks: list[BaseHook] = []
         self._post_validation_hooks: list[BaseHook] = []
+        self._max_hook_chunk_size: int | None = None
 
     @property
     def compression_algorithm(self) -> str | None:
@@ -124,16 +161,19 @@ class BaseExecutor(abc.ABC):
         return False
 
     def set_hooks(
-        self, pre_validation: list[BaseHook], post_validation: list[BaseHook]
+        self,
+        pre_validation: list[BaseHook],
+        post_validation: list[BaseHook],
+        max_hook_chunk_size: int | None = None,
     ) -> None:
         self._pre_validation_hooks = pre_validation
         self._post_validation_hooks = post_validation
+        self._max_hook_chunk_size = max_hook_chunk_size
 
     def set_upstream_iterator(self, iterator: typing.Iterator[typing.Any]) -> None:
         self._upstream_iterator = iterator
 
     def shutdown(self) -> None:
-        """Cleanup resources used by the executor."""
         pass
 
     @property

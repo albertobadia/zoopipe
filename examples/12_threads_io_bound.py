@@ -28,20 +28,26 @@ class EnrichmentHook(BaseHook):
     Simulates an IO-bound operation, like calling an external API to enrich data.
     """
 
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> None:
-        user_id = entry["validated_data"]["name"]
-        logger.info(f"Enriching user {user_id}...")
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        for entry in entries:
+            # Check if validation succeeded before accessing validated_data
+            if entry["status"].value != "validated":
+                continue
 
-        # Simulate network latency (e.g., 0.5 seconds)
-        # In a single-threaded executor, 4 items would take 2.0 seconds.
-        # With 4 threads, it should take ~0.5 seconds total.
-        time.sleep(0.5)
+            user_id = entry["validated_data"]["name"]
+            logger.info(f"Enriching user {user_id}...")
 
-        # Add metadata to show which thread processed this
-        entry["metadata"]["enriched"] = True
-        entry["metadata"]["processed_by_thread"] = threading.current_thread().name
+            # Simulate network latency (e.g., 0.5 seconds)
+            time.sleep(0.5)
 
-        logger.info(f"Finished enriching user {user_id}")
+            # Add metadata to show which thread processed this
+            entry["metadata"]["enriched"] = True
+            entry["metadata"]["processed_by_thread"] = threading.current_thread().name
+
+            logger.info(f"Finished enriching user {user_id}")
+        return entries
 
 
 def main():
@@ -76,7 +82,6 @@ def main():
     report.wait()
     duration = time.time() - start_time
 
-    print(f"\nTotal time: {duration:.2f}s")
     print(f"\nTotal time: {duration:.2f}s")
     print(report)
 

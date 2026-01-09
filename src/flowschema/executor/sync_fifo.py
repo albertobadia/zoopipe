@@ -27,6 +27,7 @@ class SyncFifoExecutor(BaseExecutor):
                 compression_algorithm=None,
                 pre_hooks=self._pre_validation_hooks,
                 post_hooks=self._post_validation_hooks,
+                max_hook_chunk_size=self._max_hook_chunk_size,
             )
             results = BaseExecutor.process_chunk_on_worker(
                 data=chunk,

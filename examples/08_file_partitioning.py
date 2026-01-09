@@ -3,7 +3,9 @@ import os
 from pydantic import BaseModel
 
 from flowschema import (
+    EntryTypedDict,
     FlowSchema,
+    HookStore,
     PartitionedReaderHook,
 )
 from flowschema.executor.multiprocessing import MultiProcessingExecutor
@@ -24,7 +26,12 @@ class JsonlReaderHook(PartitionedReaderHook):
     In a real scenario, this would do more complex work.
     """
 
-    def process_line(self, line: bytes, store):
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        return super().execute(entries, store)
+
+    def process_line(self, line: bytes, store: HookStore):
         # We can store data in the 'store' or just count them.
         # For this demo, let's just count them in a session-like object if needed,
         # but PartitionedReaderHook already counts lines_processed.

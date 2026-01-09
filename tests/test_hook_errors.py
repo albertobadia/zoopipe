@@ -9,7 +9,9 @@ from flowschema.output_adapter.memory import MemoryOutputAdapter
 
 
 class FailingHook(BaseHook):
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
         raise ValueError("Intentional Failure")
 
 

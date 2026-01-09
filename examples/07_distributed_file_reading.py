@@ -50,34 +50,38 @@ class UserIDInputAdapter(BaseInputAdapter):
 # 3. Pre-Validation Hook: "The Fetcher"
 # This is where the Zero-Copy magic happens.
 class DataFetcherHook(BaseHook):
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
-        user_id = entry["metadata"]["user_id"]
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        for entry in entries:
+            user_id = entry["metadata"]["user_id"]
 
-        # Simulate fetching from a database or external API
-        # In a real worker, this could be a call to Redis, Postgres, or an API.
-        mock_db = {
-            user_id: {
-                "id": user_id,
-                "name": f"User_{user_id}",
-                "age": 20 + (user_id % 50),
-                "email": f"user_{user_id}@example.com",
+            # Simulate fetching from a database or external API
+            mock_db = {
+                user_id: {
+                    "id": user_id,
+                    "name": f"User_{user_id}",
+                    "age": 20 + (user_id % 50),
+                    "email": f"user_{user_id}@example.com",
+                }
             }
-        }
 
-        # INJECT the data directly into raw_data before validation
-        entry["raw_data"] = mock_db.get(user_id, {})
-
-        entry["metadata"]["fetched_at"] = time.time()
-        return entry
+            # INJECT the data directly into raw_data before validation
+            entry["raw_data"] = mock_db.get(user_id, {})
+            entry["metadata"]["fetched_at"] = time.time()
+        return entries
 
 
 # 4. Post-Validation Hook: "The Enricher"
 class BusinessLogicHook(BaseHook):
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
-        # We already have validated_data available thanks to its FlowSchema engine
-        age = entry["validated_data"].get("age", 0)
-        entry["metadata"]["is_adult"] = age >= 18
-        return entry
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        for entry in entries:
+            # We already have validated_data available thanks to its FlowSchema engine
+            age = entry["validated_data"].get("age", 0)
+            entry["metadata"]["is_adult"] = age >= 18
+        return entries
 
 
 def run_jit_ingestion_demo():

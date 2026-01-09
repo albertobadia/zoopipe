@@ -36,6 +36,26 @@ Reads data from JSON files in both array and JSONL formats.
 
 ---
 
+### [Arrow Input Adapter](adapters/arrow-input.md)
+
+Reads data from Apache Parquet and other Arrow-compatible formats.
+
+**Features:** Partitioned datasets, column selection, predicate pushdown, multiple formats
+
+**[View Documentation →](adapters/arrow-input.md)**
+
+---
+
+### [File Partitioner](adapters/file-partitioner.md)
+
+Partitions large files into byte ranges for distributed processing.
+
+**Features:** Byte-range partitioning, distributed processing, memory efficient, worker integration
+
+**[View Documentation →](adapters/file-partitioner.md)**
+
+---
+
 ## Output Adapters
 
 Output adapters are responsible for persisting processed data to various destinations.
@@ -57,6 +77,36 @@ Writes validated entries to JSON files in array or JSONL format.
 **Features:** Pretty-printing, metadata inclusion, handles UUIDs/Enums
 
 **[View Documentation →](adapters/json-output.md)**
+
+---
+
+### [Arrow Output Adapter](adapters/arrow-output.md)
+
+Writes validated entries to Apache Parquet files using PyArrow.
+
+**Features:** Columnar storage, batched writing, schema flexibility, compression options
+
+**[View Documentation →](adapters/arrow-output.md)**
+
+---
+
+### [Memory Output Adapter](adapters/memory-output.md)
+
+Stores all processed entries in an in-memory list for testing and debugging.
+
+**Features:** Zero-config, direct access via `.results`, no I/O overhead
+
+**[View Documentation →](adapters/memory-output.md)**
+
+---
+
+### [Generator Output Adapter](adapters/generator-output.md)
+
+Provides an iterator interface to consume validation results in real-time.
+
+**Features:** Iterator pattern, queue-based streaming, backpressure control, real-time processing
+
+**[View Documentation →](adapters/generator-output.md)**
 
 ---
 
@@ -263,9 +313,9 @@ flow = FlowSchema(
 
 The following adapters are planned for future releases:
 
-- **ParquetInputAdapter / ParquetOutputAdapter**: For Apache Parquet files
 - **SQLInputAdapter / SQLOutputAdapter**: For database connections
 - **API adapters**: For REST API integration
 - **KafkaInputAdapter / KafkaOutputAdapter**: For Apache Kafka streams
 
 To request a new adapter, please open an issue on GitHub.
+

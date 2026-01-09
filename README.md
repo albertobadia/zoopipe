@@ -12,7 +12,7 @@ Whether you're migrating data, cleaning CSVs, or processing streams, FlowSchema 
 - 🔌 **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors
 - ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor`, `ThreadExecutor`, `DaskExecutor` and `RayExecutor`
 - 🗜️ **High-Performance Serialization**: Uses msgpack and optional LZ4 compression for efficient inter-process communication
-- 📊 **Built-in CSV & JSON Support**: Direct support for reading from and writing to CSV and JSON files (array & JSONL formats)
+- 📊 **Built-in Format Support**: Direct support for CSV, JSON (array & JSONL), and Parquet files
 - 🚨 **Automated Error Handling**: Dedicated error output adapter to capture records that fail validation
 - 🪝 **Hooks System**: Transform and enrich data at various pipeline stages with built-in and custom hooks
 - 🔄 **Async Ready**: Base adapters provided for async implementations
@@ -97,8 +97,9 @@ FlowSchema uses a decoupled architecture based on four components:
 ```
 ┌─────────────────┐      ┌──────────────┐      ┌─────────────────┐
 │  Input Adapter  │─────▶│   Executor   │─────▶│ Output Adapter  │
-│   (CSV, DB,     │      │ (Validation  │      │  (CSV, DB,      │
-│    API, etc)    │      │  & Transform)│      │   API, etc)     │
+│ (CSV, JSON,     │      │ (Validation  │      │ (CSV, JSON,     │
+│  Parquet, DB,   │      │  & Transform)│      │  Parquet, DB,   │
+│    API, etc)    │      │              │      │   API, etc)     │
 └─────────────────┘      └──────────────┘      └─────────────────┘
                                 │
                                 │ (errors)
@@ -109,7 +110,7 @@ FlowSchema uses a decoupled architecture based on four components:
                          └──────────────┘
 ```
 
-- **Input Adapter**: Reads data from sources (CSV, SQL, Parquet, API)
+- **Input Adapter**: Reads data from sources (CSV, JSON, Parquet, SQL, API)
 - **Executor**: Validates with Pydantic and processes data (sequential or parallel)
 - **Output Adapter**: Persists validated data
 - **Error Output Adapter**: Captures failed validations (Dead Letter Queue)

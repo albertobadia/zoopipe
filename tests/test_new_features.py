@@ -35,8 +35,10 @@ class SlowInputAdapter(BaseInputAdapter):
 
 
 class TrackingHook(BaseHook):
-    def execute(self, entry, store):
-        return {"hook_executed": True}
+    def execute(self, entries, store):
+        for entry in entries:
+            entry["metadata"]["hook_executed"] = True
+        return entries
 
 
 def test_backpressure_logic():

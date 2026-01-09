@@ -24,9 +24,10 @@ class InputModel(BaseModel):
 
 
 class SlowHook(BaseHook):
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> None:
+    def execute(self, entries: list[EntryTypedDict], store: HookStore) -> None:
         time.sleep(0.1)
-        entry["metadata"]["thread_id"] = threading.get_ident()
+        for entry in entries:
+            entry["metadata"]["thread_id"] = threading.get_ident()
 
 
 def test_thread_executor(tmp_path):

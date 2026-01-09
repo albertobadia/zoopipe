@@ -33,15 +33,23 @@ class SQLiteWriterHook(BaseHook):
         self.cursor.execute("CREATE TABLE IF NOT EXISTS users (name TEXT, age INTEGER)")
         self.conn.commit()
 
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
-        validated = entry.get("validated_data")
-        if validated:
-            self.cursor.execute(
-                "INSERT INTO users (name, age) VALUES (?, ?)",
-                (validated["name"], validated["age"]),
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        batch_data = []
+        for entry in entries:
+            validated = entry.get("validated_data")
+            if validated:
+                batch_data.append((validated["name"], validated["age"]))
+                entry["metadata"]["written_to_sqlite"] = True
+            else:
+                entry["metadata"]["written_to_sqlite"] = False
+
+        if batch_data:
+            self.cursor.executemany(
+                "INSERT INTO users (name, age) VALUES (?, ?)", batch_data
             )
-        entry["metadata"]["written_to_sqlite"] = True
-        return entry
+        return entries
 
     def teardown(self, store: HookStore) -> None:
         if self.conn:

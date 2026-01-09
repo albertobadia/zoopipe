@@ -45,6 +45,7 @@ class ThreadExecutor(BaseExecutor):
             compression_algorithm=None,
             pre_hooks=self._pre_validation_hooks,
             post_hooks=self._post_validation_hooks,
+            max_hook_chunk_size=self._max_hook_chunk_size,
         )
 
         process_func = partial(

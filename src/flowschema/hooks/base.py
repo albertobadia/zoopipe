@@ -51,8 +51,10 @@ class BaseHook:
     def setup(self, store: HookStore) -> None:
         pass
 
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> EntryTypedDict:
-        return entry
+    def execute(
+        self, entries: list[EntryTypedDict], store: HookStore
+    ) -> list[EntryTypedDict]:
+        return entries
 
     def teardown(self, store: HookStore) -> None:
         pass
