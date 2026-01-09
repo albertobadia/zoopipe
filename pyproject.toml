@@ -25,9 +25,13 @@ ray = [
 dask = [
     "dask[distributed]>=2025.12.0",
 ]
+pyarrow = [
+    "pyarrow>=22.0.0",
+]
 all = [
     "ray>=2.53.0",
     "dask[distributed]>=2025.12.0",
+    "pyarrow>=22.0.0",
 ]
 
 [dependency-groups]
@@ -37,6 +41,7 @@ dev = [
     "ruff>=0.14.10",
     "ray>=2.53.0",
     "dask[distributed]>=2025.12.0",
+    "pyarrow>=22.0.0",
 ]
 
 [tool.pytest.ini_options]
