@@ -1,6 +1,12 @@
 import abc
+import enum
 import logging
 import typing
+import uuid
+
+import lz4.frame
+import msgpack
+from pydantic import BaseModel
 
 from flowschema.hooks.base import BaseHook, HookStore
 from flowschema.models.core import EntryTypedDict
@@ -9,6 +15,82 @@ from flowschema.models.core import EntryTypedDict
 class BaseExecutor(abc.ABC):
     _upstream_iterator: typing.Iterator[typing.Any] | None = None
     logger: logging.Logger | None = None
+
+    def pack_chunk(self, chunk: list[dict[str, typing.Any]]) -> typing.Any:
+        if not self.do_binary_pack:
+            return chunk
+
+        def _packer_default(obj):
+            if isinstance(obj, uuid.UUID):
+                return str(obj)
+            if isinstance(obj, enum.Enum):
+                return obj.value
+            return obj
+
+        packed = msgpack.packb(chunk, default=_packer_default)
+        if self.compression_algorithm == "lz4":
+            packed = lz4.frame.compress(packed)
+        return packed
+
+    @staticmethod
+    def _unpack_data(
+        data: typing.Any, do_binary_pack: bool, compression_algorithm: str | None
+    ) -> list[dict[str, typing.Any]]:
+        if not do_binary_pack:
+            return data
+        if compression_algorithm == "lz4":
+            data = lz4.frame.decompress(data)
+        return msgpack.unpackb(data)
+
+    @staticmethod
+    def _run_hooks(
+        entry: EntryTypedDict, hooks: list[BaseHook], store: HookStore
+    ) -> None:
+        for hook in hooks:
+            store._lock()
+            try:
+                result = hook.execute(entry, store)
+                if result:
+                    entry["metadata"].update(result)
+            finally:
+                store._unlock()
+
+    @staticmethod
+    def process_chunk_on_worker(
+        data: typing.Any,
+        schema_model: type[BaseModel],
+        do_binary_pack: bool,
+        compression_algorithm: str | None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
+    ) -> list[EntryTypedDict]:
+        from flowschema.hooks.base import HookStore
+        from flowschema.utils import validate_entry
+
+        entries = BaseExecutor._unpack_data(data, do_binary_pack, compression_algorithm)
+        results = []
+        store = HookStore()
+        all_hooks = (pre_hooks or []) + (post_hooks or [])
+
+        for hook in all_hooks:
+            hook.setup(store)
+
+        try:
+            for entry in entries:
+                if pre_hooks:
+                    BaseExecutor._run_hooks(entry, pre_hooks, store)
+
+                validated_entry = validate_entry(schema_model, entry)
+
+                if post_hooks:
+                    BaseExecutor._run_hooks(validated_entry, post_hooks, store)
+
+                results.append(validated_entry)
+        finally:
+            for hook in all_hooks:
+                hook.teardown(store)
+
+        return results
 
     def set_logger(self, logger: logging.Logger) -> None:
         self.logger = logger

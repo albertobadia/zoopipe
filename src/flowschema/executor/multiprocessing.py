@@ -3,13 +3,11 @@ import typing
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
-import lz4.frame
-import msgpack
 from pydantic import BaseModel
 
 from flowschema.executor.base import BaseExecutor
+from flowschema.hooks.base import BaseHook
 from flowschema.models.core import EntryTypedDict
-from flowschema.utils import validate_entry
 
 
 class MultiProcessingExecutor(BaseExecutor):
@@ -39,16 +37,17 @@ class MultiProcessingExecutor(BaseExecutor):
         schema_model: type[BaseModel],
         compression: str | None,
         compressed_chunk: bytes,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
     ) -> list[EntryTypedDict]:
-        entries_bytes = compressed_chunk
-        if compression == "lz4":
-            entries_bytes = lz4.frame.decompress(compressed_chunk)
-
-        entries = msgpack.unpackb(entries_bytes)
-        results = []
-        for entry in entries:
-            results.append(validate_entry(schema_model, entry))
-        return results
+        return BaseExecutor.process_chunk_on_worker(
+            data=compressed_chunk,
+            schema_model=schema_model,
+            do_binary_pack=True,
+            compression_algorithm=compression,
+            pre_hooks=pre_hooks,
+            post_hooks=post_hooks,
+        )
 
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
@@ -56,7 +55,11 @@ class MultiProcessingExecutor(BaseExecutor):
             return
 
         process_func = partial(
-            self._process_chunk, self._schema_model, self._compression
+            self._process_chunk,
+            self._schema_model,
+            self._compression,
+            pre_hooks=self._pre_validation_hooks,
+            post_hooks=self._post_validation_hooks,
         )
 
         ctx = multiprocessing.get_context("spawn")

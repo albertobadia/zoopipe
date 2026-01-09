@@ -1,13 +1,11 @@
 import typing
 
-import lz4.frame
-import msgpack
 import ray
 from pydantic import BaseModel
 
 from flowschema.executor.base import BaseExecutor
+from flowschema.hooks.base import BaseHook
 from flowschema.models.core import EntryTypedDict
-from flowschema.utils import validate_entry
 
 
 class RayExecutor(BaseExecutor):
@@ -37,16 +35,17 @@ class RayExecutor(BaseExecutor):
         schema_model: type[BaseModel],
         compression: str | None,
         compressed_chunk: bytes,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
     ) -> list[EntryTypedDict]:
-        entries_bytes = compressed_chunk
-        if compression == "lz4":
-            entries_bytes = lz4.frame.decompress(compressed_chunk)
-
-        entries = msgpack.unpackb(entries_bytes)
-        results = []
-        for entry in entries:
-            results.append(validate_entry(schema_model, entry))
-        return results
+        return BaseExecutor.process_chunk_on_worker(
+            data=compressed_chunk,
+            schema_model=schema_model,
+            do_binary_pack=True,
+            compression_algorithm=compression,
+            pre_hooks=pre_hooks,
+            post_hooks=post_hooks,
+        )
 
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
@@ -58,8 +57,8 @@ class RayExecutor(BaseExecutor):
             ray.init(address=self._address, runtime_env=runtime_env)
 
         @ray.remote
-        def process_task(chunk, model, comp):
-            return RayExecutor._process_chunk_logic(model, comp, chunk)
+        def process_task(chunk, model, comp, pre, post):
+            return RayExecutor._process_chunk_logic(model, comp, chunk, pre, post)
 
         max_inflight = self._max_inflight
         inflight_futures = []
@@ -69,7 +68,11 @@ class RayExecutor(BaseExecutor):
                 try:
                     chunk = next(self._upstream_iterator)
                     future = process_task.remote(
-                        chunk, self._schema_model, self._compression
+                        chunk,
+                        self._schema_model,
+                        self._compression,
+                        self._pre_validation_hooks,
+                        self._post_validation_hooks,
                     )
                     inflight_futures.append(future)
                 except StopIteration:

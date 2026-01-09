@@ -1,12 +1,7 @@
 import contextlib
-import enum
 import itertools
 import logging
 import threading
-import uuid
-
-import lz4.frame
-import msgpack
 
 from flowschema.executor.base import BaseExecutor
 from flowschema.hooks.base import BaseHook
@@ -27,6 +22,7 @@ class FlowSchema:
         pre_validation_hooks: list[BaseHook] | None = None,
         post_validation_hooks: list[BaseHook] | None = None,
         logger: logging.Logger | None = None,
+        max_bytes_in_flight: int | None = None,
     ) -> None:
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
@@ -36,6 +32,9 @@ class FlowSchema:
         self.pre_validation_hooks = pre_validation_hooks or []
         self.post_validation_hooks = post_validation_hooks or []
         self.logger = logger or get_logger()
+        self.max_bytes_in_flight = max_bytes_in_flight
+        self._bytes_in_flight = 0
+        self._backpressure_condition = threading.Condition()
         self._report: FlowReport | None = None
         self._run_lock = threading.Lock()
         self._setup_logger()
@@ -54,10 +53,15 @@ class FlowSchema:
             self.error_entries.append(entry)
             if self.error_output_adapter:
                 self.error_output_adapter.write(entry)
-            return
+        else:
+            report.success_count += 1
+            self.output_adapter.write(entry)
 
-        report.success_count += 1
-        self.output_adapter.write(entry)
+        # Release backpressure if needed
+        if self.max_bytes_in_flight and "packed_size" in entry["metadata"]:
+            with self._backpressure_condition:
+                self._bytes_in_flight -= entry["metadata"]["packed_size"]
+                self._backpressure_condition.notify_all()
 
     def run(self) -> FlowReport:
         with self._run_lock:
@@ -90,27 +94,32 @@ class FlowSchema:
 
                 chunks = itertools.batched(input_adapter.generator, chunksize)
 
-                if self.executor.do_binary_pack:
+                def _get_data_iterator():
+                    for chunk in chunks:
+                        packed_chunk = self.executor.pack_chunk(list(chunk))
+                        if self.max_bytes_in_flight:
+                            chunk_size = (
+                                len(packed_chunk)
+                                if isinstance(packed_chunk, bytes)
+                                else 0
+                            )
+                            # Tag entries with size for backpressure release
+                            for entry in chunk:
+                                entry["metadata"]["packed_size"] = chunk_size / len(
+                                    chunk
+                                )
 
-                    def _packer_default(obj):
-                        if isinstance(obj, uuid.UUID):
-                            return str(obj)
-                        if isinstance(obj, enum.Enum):
-                            return obj.value
-                        return obj
+                            with self._backpressure_condition:
+                                while (
+                                    self._bytes_in_flight + chunk_size
+                                    > self.max_bytes_in_flight
+                                ):
+                                    self._backpressure_condition.wait()
+                                self._bytes_in_flight += chunk_size
 
-                    data_iterator = (
-                        msgpack.packb(list(chunk), default=_packer_default)
-                        for chunk in chunks
-                    )
+                        yield packed_chunk
 
-                    if self.executor.compression_algorithm == "lz4":
-                        data_iterator = (
-                            lz4.frame.compress(chunk) for chunk in data_iterator
-                        )
-                else:
-                    data_iterator = (list(chunk) for chunk in chunks)
-
+                data_iterator = _get_data_iterator()
                 self.executor.set_hooks(
                     pre_validation=self.pre_validation_hooks,
                     post_validation=self.post_validation_hooks,
@@ -119,6 +128,11 @@ class FlowSchema:
 
                 for entry in self.executor.generator:
                     self._handle_entry(entry, report)
+
+                # Reset backpressure at the end
+                with self._backpressure_condition:
+                    self._bytes_in_flight = 0
+                    self._backpressure_condition.notify_all()
 
                 report._mark_completed()
         except Exception as e:
