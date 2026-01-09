@@ -5,19 +5,15 @@ from flowschema.executor.sync_fifo import SyncFifoExecutor
 from flowschema.hooks import FieldMapperHook, TimestampHook
 from flowschema.hooks.base import BaseHook
 from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.models.core import EntryTypedDict
 from flowschema.output_adapter.generator import GeneratorOutputAdapter
 from flowschema.output_adapter.json import JSONOutputAdapter
 
 
 class UppercaseNameHook(BaseHook):
-    def on_raw_data(self, raw_data: dict) -> dict:
-        if "name" in raw_data:
-            raw_data["name"] = raw_data["name"].upper()
-        return raw_data
-
-    def on_validated(self, entry: EntryTypedDict) -> EntryTypedDict:
-        return entry
+    def execute(self, entry: dict, store) -> dict | None:
+        if "name" in entry:
+            entry["name"] = entry["name"].upper()
+        return None
 
 
 def example_timestamp_hook():
@@ -31,7 +27,7 @@ def example_timestamp_hook():
         pre_validation_hooks=hooks,
     )
 
-    report = schema_flow.run()
+    report = schema_flow.start()
     for entry in output_adapter:
         if entry["status"].value == "validated":
             print(f"Processed at: {entry['metadata'].get('processed_at')}")
@@ -55,7 +51,7 @@ def example_field_mapper():
         pre_validation_hooks=hooks,
     )
 
-    report = schema_flow.run()
+    report = schema_flow.start()
     report.wait()
     print(f"Total processed: {report.total_processed}")
 
@@ -71,7 +67,7 @@ def example_custom_hook():
         pre_validation_hooks=hooks,
     )
 
-    report = schema_flow.run()
+    report = schema_flow.start()
     for entry in output_adapter:
         if entry["status"].value == "validated":
             print(f"Name: {entry['raw_data'].get('name')}")

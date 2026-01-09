@@ -46,7 +46,7 @@ def test_ray_executor_lz4():
             error_output_adapter=CSVOutputAdapter("test_ray_errors.csv"),
             executor=executor,
         )
-        report = schema_flow.run()
+        report = schema_flow.start()
         report.wait()
         output_data = memory_adapter.results
 

@@ -167,16 +167,13 @@ flow = FlowSchema(
 ### With Hooks
 
 ```python
-from flowschema.hooks import HookStore, TimestampHook
-
-hook_store = HookStore()
-hook_store.register(TimestampHook())
+from flowschema.hooks.builtin import TimestampHook
 
 flow = FlowSchema(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,
-    hooks=hook_store
+    post_validation_hooks=[TimestampHook(field_name="processed_at")]
 )
 ```
 

@@ -17,7 +17,7 @@ def main():
     )
 
     print("Starting multiprocessing flow...")
-    report = schema_flow.run()
+    report = schema_flow.start()
 
     # We can do other things while the flow runs
     while not report.is_finished:

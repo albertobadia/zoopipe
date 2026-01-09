@@ -6,6 +6,7 @@ from datetime import datetime
 class FlowStatus(enum.Enum):
     PENDING = "pending"
     RUNNING = "running"
+    STOPPED = "stopped"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -20,6 +21,7 @@ class FlowReport:
         self.start_time: datetime | None = None
         self.end_time: datetime | None = None
         self._finished_event = threading.Event()
+        self._stop_condition = threading.Condition()
 
     @property
     def is_finished(self) -> bool:
@@ -36,6 +38,33 @@ class FlowReport:
         self.status = FlowStatus.COMPLETED
         self.end_time = datetime.now()
         self._finished_event.set()
+
+    def _mark_stopped(self) -> None:
+        self.status = FlowStatus.STOPPED
+        self.end_time = datetime.now()
+        self._finished_event.set()
+
+    def stop(self) -> None:
+        """Stop processing gracefully after completing current entry."""
+        with self._stop_condition:
+            self.status = FlowStatus.STOPPED
+
+    def continue_(self) -> None:
+        """Resume processing after stop."""
+        with self._stop_condition:
+            if self.status == FlowStatus.STOPPED:
+                self.status = FlowStatus.RUNNING
+                self._stop_condition.notify_all()
+
+    @property
+    def is_stopped(self) -> bool:
+        return self.status == FlowStatus.STOPPED
+
+    def _wait_if_stopped(self) -> None:
+        """Wait while stopped, return when continue_() is called."""
+        with self._stop_condition:
+            while self.status == FlowStatus.STOPPED:
+                self._stop_condition.wait()
 
     def _mark_failed(self, exception: Exception) -> None:
         self.status = FlowStatus.FAILED

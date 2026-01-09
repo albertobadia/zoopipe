@@ -19,7 +19,7 @@ def main():
     )
 
     # Start the flow in the background
-    report = schema_flow.run()
+    report = schema_flow.start()
 
     # Iterate over the results from the adapter
     for entry in output_adapter:

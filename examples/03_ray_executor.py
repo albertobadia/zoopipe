@@ -15,7 +15,7 @@ def main():
     )
 
     print("Executing with Ray...")
-    report = schema_flow.run()
+    report = schema_flow.start()
     report.wait()
 
     print(f"Finished! Processed {report.total_processed} transactions.")

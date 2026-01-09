@@ -72,6 +72,11 @@ def test_hook_store():
     assert "cache" in store
     assert "nonexistent" not in store
 
+    assert store.get("db_conn") == "mock_connection"
+    assert store.get("nonexistent") is None
+    assert store.get("nonexistent", "default_value") == "default_value"
+    assert store.get("cache", {}) == {}
+
 
 def test_hook_with_setup_teardown():
     class CustomHook(BaseHook):
@@ -128,7 +133,7 @@ def test_hooks_integration_with_flowschema(tmp_path):
         ],
     )
 
-    report = flow.run()
+    report = flow.start()
     report.wait()
     entries = memory_adapter.results
 

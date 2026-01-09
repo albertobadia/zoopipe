@@ -57,7 +57,7 @@ schema_flow = FlowSchema(
     executor=SyncFifoExecutor(UserSchema),
 )
 
-for entry in schema_flow.run():
+for entry in schema_flow.start():
     status = entry['status'].value
     print(f"[{status.upper()}] Row {entry['position']}")
 ```
@@ -74,10 +74,6 @@ for entry in schema_flow.run():
 - [**Adapters**](docs/adapters.md) - Input and Output adapters for various data sources
 - [**Examples**](docs/examples.md) - Practical examples for common use cases
 
-### Architecture
-- [**RFC: Design & Architecture**](docs/RFC.md) - Deep dive into FlowSchema's architecture and design decisions
-
----
 
 ## 🎯 Use Cases
 

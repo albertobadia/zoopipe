@@ -36,7 +36,7 @@ def test_sync_fifo_executor():
             error_output_adapter=CSVOutputAdapter("test_sync_errors.csv"),
             executor=SyncFifoExecutor(InputModel),
         )
-        report = schema_flow.run()
+        report = schema_flow.start()
         report.wait()
         output_data = memory_adapter.results
 

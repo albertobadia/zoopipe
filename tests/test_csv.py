@@ -28,7 +28,7 @@ def test_csv_input_adapter(tmp_path):
         error_output_adapter=CSVOutputAdapter(error_file, write_header=True),
         executor=SyncFifoExecutor(InputModel),
     )
-    report = schema_flow.run()
+    report = schema_flow.start()
     report.wait()
 
     output_data = memory_adapter.results

@@ -45,7 +45,7 @@ schema_flow = FlowSchema(
     executor=SyncFifoExecutor(UserSchema),
 )
 
-for entry in schema_flow.run():
+for entry in schema_flow.start():
     status = entry['status'].value
     print(f"[{status.upper()}] Row {entry['position']}: {entry['id']}")
 ```

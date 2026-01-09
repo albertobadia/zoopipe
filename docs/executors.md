@@ -147,6 +147,38 @@ executor = RayExecutor(
 
 ---
 
+## Unified Processing Architecture
+
+All executors share a common processing pipeline implemented in `BaseExecutor.process_chunk_on_worker`. This method provides a unified, standardized approach to data processing across all executor types.
+
+### Processing Pipeline
+
+The unified pipeline follows these steps:
+
+1. **Data Unpacking**: Automatically handles decompression (LZ4) and deserialization (msgpack) if binary packing is enabled
+2. **Pre-validation Hooks**: Execute hooks on raw data before validation
+3. **Schema Validation**: Validate each entry against the Pydantic schema
+4. **Post-validation Hooks**: Execute hooks on validated data after validation
+5. **Results Collection**: Collect all processed entries for output
+
+### Key Benefits
+
+- **Consistency**: All executors follow the same processing order
+- **Centralized Logic**: Unpacking and hook orchestration in one place
+- **Thread-Safe**: Each worker has its own `HookStore` with proper locking
+- **Error Handling**: Standardized error handling across all executor types
+
+### Hook Execution
+
+The pipeline supports two types of hooks:
+
+- **Pre-validation Hooks**: Run before Pydantic validation, can modify raw data
+- **Post-validation Hooks**: Run after successful validation, can enrich validated data
+
+Hooks are executed in the order they were registered, and the `HookStore` is locked during execution to ensure thread safety.
+
+---
+
 ## Binary Serialization & Compression
 
 Both `MultiprocessingExecutor` and `RayExecutor` use an optimized transport stack:

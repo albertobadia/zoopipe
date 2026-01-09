@@ -33,12 +33,17 @@ class HookStore:
     def __contains__(self, name: str) -> bool:
         return name in self._data
 
+    def get(self, name: str, default: typing.Any = None) -> typing.Any:
+        return self._data.get(name, default)
+
 
 class BaseHook:
     def setup(self, store: HookStore) -> None:
         pass
 
-    def execute(self, entry: EntryTypedDict, store: HookStore) -> dict[str, typing.Any]:
+    def execute(
+        self, entry: EntryTypedDict, store: HookStore
+    ) -> dict[str, typing.Any] | None:
         raise NotImplementedError("Subclasses must implement execute()")
 
     def teardown(self, store: HookStore) -> None:

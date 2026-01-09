@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from flowschema.core import FlowSchema
 from flowschema.executor.sync_fifo import SyncFifoExecutor
 from flowschema.input_adapter.base import BaseInputAdapter
+from flowschema.models.core import EntryStatus
 from flowschema.output_adapter.generator import GeneratorOutputAdapter
 from flowschema.output_adapter.memory import MemoryOutputAdapter
 from flowschema.report import FlowStatus
@@ -36,7 +37,7 @@ def test_background_run_with_memory_adapter():
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.run()
+    report = flow.start()
     assert report.status in [FlowStatus.PENDING, FlowStatus.RUNNING]
 
     finished = report.wait(timeout=5)
@@ -57,7 +58,7 @@ def test_background_run_with_generator_adapter():
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.run()
+    report = flow.start()
 
     results = []
     for entry in output_adapter:
@@ -82,27 +83,32 @@ def test_concurrent_run_error():
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.run()
+    report = flow.start()
     with pytest.raises(RuntimeError, match="Flow is already running"):
-        flow.run()
+        flow.start()
 
     report.wait()
 
 
 def test_error_reporting():
-    data = [{"name": "alice"}, {"age": 30}]  # Second one lacks 'name'
+    data = [{"name": "alice"}, {"age": 30}]
     input_adapter = MockInputAdapter(data)
     output_adapter = MemoryOutputAdapter()
+    error_output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
     flow = FlowSchema(
-        input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
+        input_adapter=input_adapter,
+        output_adapter=output_adapter,
+        error_output_adapter=error_output_adapter,
+        executor=executor,
     )
 
-    report = flow.run()
+    report = flow.start()
     report.wait()
 
     assert report.total_processed == 2
     assert report.success_count == 1
     assert report.error_count == 1
-    assert len(flow.error_entries) == 1
+    assert len(error_output_adapter.results) == 1
+    assert error_output_adapter.results[0]["status"] == EntryStatus.FAILED

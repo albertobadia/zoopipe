@@ -22,7 +22,7 @@ def test_csv_output_adapter(tmp_path):
         input_adapter=input_adapter, executor=executor, output_adapter=output_adapter
     )
 
-    report = flow.run()
+    report = flow.start()
     report.wait()
     results_count = report.total_processed
 

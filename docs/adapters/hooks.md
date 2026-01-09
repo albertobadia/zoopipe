@@ -1,32 +1,63 @@
 # Hooks System
 
-FlowSchema provides a hooks system that allows you to transform, enrich, or modify data at various stages of the processing pipeline.
+FlowSchema provides a powerful hooks system that allows you to transform, enrich, or modify data at various stages of the unified processing pipeline.
 
 ## Overview
 
-Hooks can intercept data at three key points:
-1. **on_raw_data**: Before validation (modify raw input)
-2. **on_validated**: After successful validation
-3. **on_failed**: After failed validation
+Hooks intercept data at two critical points in the processing pipeline:
+
+1. **Pre-validation Hooks**: Execute before Pydantic validation (modify raw input data)
+2. **Post-validation Hooks**: Execute after successful validation (enrich validated data)
+
+The hook system is designed to be:
+- **Thread-safe**: Uses a `HookStore` with locking mechanisms
+- **Lifecycle-aware**: Hooks have `setup()` and `teardown()` methods
+- **Metadata-capable**: Hooks can return metadata that gets merged into entries
 
 ## BaseHook
 
 Abstract base class for creating custom hooks.
 
 ```python
-from flowschema.hooks.base import BaseHook
+from flowschema.hooks.base import BaseHook, HookStore
 from flowschema.models.core import EntryTypedDict
 
 class MyCustomHook(BaseHook):
-    def on_raw_data(self, raw_data: dict) -> dict:
-        return raw_data
+    def setup(self, store: HookStore) -> None:
+        pass
     
-    def on_validated(self, entry: EntryTypedDict) -> EntryTypedDict:
-        return entry
+    def execute(self, entry: EntryTypedDict, store: HookStore) -> dict | None:
+        return {"custom_field": "value"}
     
-    def on_failed(self, entry: EntryTypedDict) -> EntryTypedDict:
-        return entry
+    def teardown(self, store: HookStore) -> None:
+        pass
 ```
+
+### Hook Methods
+
+- **`setup(store)`**: Called once before processing starts. Initialize resources or shared state.
+- **`execute(entry, store)`**: Called for each entry. Return a dict to add metadata to the entry, or None.
+- **`teardown(store)`**: Called once after all processing completes. Clean up resources.
+
+### HookStore
+
+The `HookStore` provides thread-safe access to shared data across hook executions:
+
+```python
+class CountingHook(BaseHook):
+    def setup(self, store: HookStore) -> None:
+        store.count = 0  # Set using attribute style
+    
+    def execute(self, entry: EntryTypedDict, store: HookStore) -> dict | None:
+        current = store.get("count", 0)  # Get with default
+        store.count = current + 1
+        return {"processing_order": current}
+```
+
+**API Methods:**
+- **Set values**: `store.attribute_name = value` (attribute style)
+- **Get values**: `value = store.attribute_name` (without default) or `value = store.get("name", default)` (with default)
+- **Check existence**: `if "name" in store:`
 
 ## Built-in Hooks
 
@@ -65,37 +96,56 @@ mapper_hook = FieldMapperHook(mapping={
 
 ## Using Hooks
 
-### Single Hook
+Hooks are registered as either **pre-validation** or **post-validation** hooks when creating your FlowSchema.
+
+### Pre-validation Hooks
+
+Pre-validation hooks run before Pydantic validation and can modify raw input data:
 
 ```python
 from flowschema.core import FlowSchema
-from flowschema.hooks import HookStore, TimestampHook
+from flowschema.hooks.base import BaseHook
 
-hook_store = HookStore()
-hook_store.register(TimestampHook())
+class NormalizeFieldsHook(BaseHook):
+    def execute(self, entry: dict, store) -> dict | None:
+        if "name" in entry:
+            entry["name"] = entry["name"].strip().lower()
+        return None
 
 schema_flow = FlowSchema(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,
-    hooks=hook_store
+    pre_validation_hooks=[NormalizeFieldsHook()],
 )
 ```
 
-### Multiple Hooks
+### Post-validation Hooks
+
+Post-validation hooks run after successful validation and can enrich the validated data:
 
 ```python
-from flowschema.hooks import HookStore, TimestampHook, FieldMapperHook
-
-hook_store = HookStore()
-hook_store.register(FieldMapperHook(mapping={"old_name": "new_name"}))
-hook_store.register(TimestampHook(field_name="imported_at"))
+from flowschema.hooks.builtin import TimestampHook
 
 schema_flow = FlowSchema(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,
-    hooks=hook_store
+    post_validation_hooks=[TimestampHook(field_name="processed_at")],
+)
+```
+
+### Combining Both
+
+You can use both pre-validation and post-validation hooks together:
+
+```python
+schema_flow = FlowSchema(
+    input_adapter=input_adapter,
+    output_adapter=output_adapter,
+    executor=executor,
+    pre_validation_hooks=[NormalizeFieldsHook()],
+    post_validation_hooks=[TimestampHook()],
 )
 ```
 
@@ -104,57 +154,86 @@ schema_flow = FlowSchema(
 ### Data Transformation Hook
 
 ```python
-from flowschema.hooks.base import BaseHook
+from flowschema.hooks.base import BaseHook, HookStore
 
 class UppercaseHook(BaseHook):
     def __init__(self, fields: list[str]):
         self.fields = fields
     
-    def on_raw_data(self, raw_data: dict) -> dict:
+    def execute(self, entry: dict, store: HookStore) -> dict | None:
         for field in self.fields:
-            if field in raw_data:
-                raw_data[field] = raw_data[field].upper()
-        return raw_data
+            if field in entry:
+                entry[field] = entry[field].upper()
+        return None
 ```
 
 ### Data Enrichment Hook
 
 ```python
 class EnrichmentHook(BaseHook):
-    def on_validated(self, entry: EntryTypedDict) -> EntryTypedDict:
-        entry["validated_data"]["source"] = "import_system"
-        entry["validated_data"]["version"] = "1.0"
-        return entry
+    def execute(self, entry: dict, store: HookStore) -> dict | None:
+        return {
+            "source": "import_system",
+            "version": "1.0"
+        }
 ```
 
-### Logging Hook
+### Logging Hook with Lifecycle
 
 ```python
 import logging
 
 class LoggingHook(BaseHook):
-    def __init__(self):
+    def setup(self, store: HookStore) -> None:
         self.logger = logging.getLogger(__name__)
+        store.processed_count = 0
+        self.logger.info("Starting processing...")
     
-    def on_validated(self, entry: EntryTypedDict) -> EntryTypedDict:
-        self.logger.info(f"Validated entry: {entry['id']}")
-        return entry
+    def execute(self, entry: dict, store: HookStore) -> dict | None:
+        count = store.get("processed_count", 0)
+        store.processed_count = count + 1
+        self.logger.debug(f"Processing entry #{count + 1}")
+        return None
     
-    def on_failed(self, entry: EntryTypedDict) -> EntryTypedDict:
-        self.logger.error(f"Failed entry: {entry['id']}, errors: {entry['errors']}")
-        return entry
+    def teardown(self, store: HookStore) -> None:
+        total = store.get("processed_count", 0)
+        self.logger.info(f"Finished processing {total} entries")
 ```
 
 ## Hook Execution Order
 
-Hooks are executed in the order they are registered:
+### Within Pre-validation Hooks
+
+Pre-validation hooks are executed in list order:
 
 ```python
-hook_store = HookStore()
-hook_store.register(hook1)  # Executed first
-hook_store.register(hook2)  # Executed second
-hook_store.register(hook3)  # Executed third
+pre_validation_hooks = [
+    hook1,  # Executed first
+    hook2,  # Executed second
+    hook3,  # Executed third
+]
 ```
+
+### Within Post-validation Hooks
+
+Post-validation hooks are similarly executed in list order:
+
+```python
+post_validation_hooks = [
+    hook1,  # Executed first
+    hook2,  # Executed second
+]
+```
+
+### Complete Pipeline Order
+
+The full processing sequence is:
+
+1. Data unpacking (if binary packing enabled)
+2. Pre-validation hooks (in registration order)
+3. Pydantic schema validation
+4. Post-validation hooks (in registration order)
+5. Results collection
 
 ---
 

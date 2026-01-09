@@ -36,7 +36,7 @@ def test_multiprocessing_executor():
             error_output_adapter=CSVOutputAdapter("test_mp_errors.csv"),
             executor=MultiProcessingExecutor(InputModel, max_workers=2, chunksize=2),
         )
-        report = schema_flow.run()
+        report = schema_flow.start()
         output_data = list(gen_adapter)
         report.wait()
 

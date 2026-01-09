@@ -20,7 +20,7 @@ def example_json_array():
         executor=SyncFifoExecutor(UserSchema),
     )
 
-    report = schema_flow.run()
+    report = schema_flow.start()
     report.wait()
     print(f"Processed {report.total_processed} items")
 
@@ -39,7 +39,7 @@ def example_jsonl():
         executor=SyncFifoExecutor(UserSchema),
     )
 
-    report = schema_flow.run()
+    report = schema_flow.start()
     report.wait()
     print(f"Processed {report.total_processed} items")
 

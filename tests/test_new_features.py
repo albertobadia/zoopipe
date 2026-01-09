@@ -53,7 +53,7 @@ def test_backpressure_logic():
         max_bytes_in_flight=500,
     )
 
-    report = flow.run()
+    report = flow.start()
     report.wait(timeout=5)
 
     assert report.total_processed == 20
@@ -71,7 +71,7 @@ def test_multiprocessing_hook_parity():
         post_validation_hooks=[TrackingHook()],
     )
 
-    report = flow.run()
+    report = flow.start()
     report.wait(timeout=10)
 
     assert report.total_processed == 5
