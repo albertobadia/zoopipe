@@ -2,7 +2,7 @@ import typing
 
 from pydantic import BaseModel
 
-from flowschema.executor.base import BaseExecutor
+from flowschema.executor.base import BaseExecutor, WorkerContext
 from flowschema.models.core import EntryTypedDict
 
 
@@ -21,13 +21,16 @@ class SyncFifoExecutor(BaseExecutor):
             return
 
         for chunk in self._upstream_iterator:
-            results = BaseExecutor.process_chunk_on_worker(
-                data=chunk,
+            context = WorkerContext(
                 schema_model=self._schema_model,
                 do_binary_pack=False,
                 compression_algorithm=None,
                 pre_hooks=self._pre_validation_hooks,
                 post_hooks=self._post_validation_hooks,
+            )
+            results = BaseExecutor.process_chunk_on_worker(
+                data=chunk,
+                context=context,
             )
             for entry in results:
                 self._position += 1

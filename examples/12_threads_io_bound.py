@@ -77,9 +77,8 @@ def main():
     duration = time.time() - start_time
 
     print(f"\nTotal time: {duration:.2f}s")
-    print(f"Processed: {report.total_processed}")
-    print(f"Success: {report.success_count}")
-    print(f"Errors: {report.error_count}")
+    print(f"\nTotal time: {duration:.2f}s")
+    print(report)
 
 
 if __name__ == "__main__":

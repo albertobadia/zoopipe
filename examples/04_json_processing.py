@@ -24,7 +24,7 @@ def example_json_array():
 
     report = schema_flow.start()
     report.wait()
-    print(f"Processed {report.total_processed} items")
+    print(report)
 
 
 def example_jsonl():
@@ -43,7 +43,7 @@ def example_jsonl():
 
     report = schema_flow.start()
     report.wait()
-    print(f"Processed {report.total_processed} items")
+    print(report)
 
 
 if __name__ == "__main__":

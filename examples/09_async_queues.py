@@ -89,8 +89,8 @@ async def main():
     await consumer_task
 
     print("\n✅ Pipeline Finished!")
-    print(f"Total Processed: {report.total_processed}")
-    print(f"Success: {report.success_count}")
+    print("\n✅ Pipeline Finished!")
+    print(report)
 
 
 if __name__ == "__main__":

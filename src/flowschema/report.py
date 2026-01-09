@@ -34,6 +34,13 @@ class FlowReport:
         return (end - start).total_seconds()
 
     @property
+    def items_per_second(self) -> float:
+        duration = self.duration
+        if duration == 0:
+            return 0.0
+        return self.total_processed / duration
+
+    @property
     def is_finished(self) -> bool:
         return self._finished_event.is_set()
 
@@ -95,5 +102,7 @@ class FlowReport:
             f"<FlowReport status={self.status.value} "
             f"processed={self.total_processed} "
             f"success={self.success_count} "
-            f"error={self.error_count}>"
+            f"error={self.error_count} "
+            f"fps={self.items_per_second:.2f} "
+            f"duration={self.duration:.2f}s>"
         )

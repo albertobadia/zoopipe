@@ -5,6 +5,7 @@ import lz4.frame
 import msgpack
 from pydantic import BaseModel
 
+from flowschema.executor.base import WorkerContext
 from flowschema.executor.multiprocessing import MultiProcessingExecutor
 from flowschema.models.core import EntryStatus, EntryTypedDict
 
@@ -64,7 +65,12 @@ def test_executor_process_chunk():
     chunk_data = [{"raw_data": {"name": "Alice"}}, {"raw_data": {"name": "Bob"}}]
     packed_chunk = msgpack.packb(chunk_data, default=_packer_default)
 
-    results = MultiProcessingExecutor._process_chunk(MockModel, None, packed_chunk)
+    context = WorkerContext(
+        schema_model=MockModel,
+        do_binary_pack=True,
+        compression_algorithm=None,
+    )
+    results = MultiProcessingExecutor._process_chunk(packed_chunk, context)
 
     assert len(results) == 2
     assert results[0]["status"] == EntryStatus.VALIDATED
@@ -78,7 +84,12 @@ def test_executor_process_chunk_lz4():
     packed_chunk = msgpack.packb(chunk_data, default=_packer_default)
     compressed_chunk = lz4.frame.compress(packed_chunk)
 
-    results = MultiProcessingExecutor._process_chunk(MockModel, "lz4", compressed_chunk)
+    context = WorkerContext(
+        schema_model=MockModel,
+        do_binary_pack=True,
+        compression_algorithm="lz4",
+    )
+    results = MultiProcessingExecutor._process_chunk(compressed_chunk, context)
 
     assert len(results) == 2
     assert results[0]["status"] == EntryStatus.VALIDATED

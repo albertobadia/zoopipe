@@ -3,6 +3,7 @@ import enum
 import logging
 import typing
 import uuid
+from dataclasses import dataclass
 
 import lz4.frame
 import msgpack
@@ -10,6 +11,16 @@ from pydantic import BaseModel
 
 from flowschema.hooks.base import BaseHook, HookStore
 from flowschema.models.core import EntryStatus, EntryTypedDict
+from flowschema.utils import validate_entry
+
+
+@dataclass
+class WorkerContext:
+    schema_model: type[BaseModel]
+    do_binary_pack: bool
+    compression_algorithm: str | None
+    pre_hooks: list[BaseHook] | None = None
+    post_hooks: list[BaseHook] | None = None
 
 
 class BaseExecutor(abc.ABC):
@@ -64,36 +75,31 @@ class BaseExecutor(abc.ABC):
     @staticmethod
     def process_chunk_on_worker(
         data: typing.Any,
-        schema_model: type[BaseModel],
-        do_binary_pack: bool,
-        compression_algorithm: str | None,
-        pre_hooks: list[BaseHook] | None = None,
-        post_hooks: list[BaseHook] | None = None,
+        context: WorkerContext,
     ) -> list[EntryTypedDict]:
-        from flowschema.hooks.base import HookStore
-        from flowschema.utils import validate_entry
-
-        entries = BaseExecutor._unpack_data(data, do_binary_pack, compression_algorithm)
+        entries = BaseExecutor._unpack_data(
+            data, context.do_binary_pack, context.compression_algorithm
+        )
         results = []
         store = HookStore()
-        all_hooks = (pre_hooks or []) + (post_hooks or [])
+        all_hooks = (context.pre_hooks or []) + (context.post_hooks or [])
 
         for hook in all_hooks:
             hook.setup(store)
 
         try:
             for entry in entries:
-                if pre_hooks:
-                    BaseExecutor.run_hooks(entry, pre_hooks, store)
+                if context.pre_hooks:
+                    BaseExecutor.run_hooks(entry, context.pre_hooks, store)
 
                 if entry.get("status") == EntryStatus.FAILED:
                     results.append(entry)
                     continue
 
-                validated_entry = validate_entry(schema_model, entry)
+                validated_entry = validate_entry(context.schema_model, entry)
 
-                if post_hooks:
-                    BaseExecutor.run_hooks(validated_entry, post_hooks, store)
+                if context.post_hooks:
+                    BaseExecutor.run_hooks(validated_entry, context.post_hooks, store)
 
                 results.append(validated_entry)
         finally:
@@ -138,4 +144,4 @@ class BaseExecutor(abc.ABC):
         return f"<{self.__class__.__name__}>"
 
 
-__all__ = ["BaseExecutor"]
+__all__ = ["BaseExecutor", "WorkerContext"]

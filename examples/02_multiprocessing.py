@@ -31,9 +31,8 @@ def main():
     report.wait()  # Ensure it's fully done
 
     print("\nFlow finished!")
-    print(f"Total Processed: {report.total_processed}")
-    print(f"Success: {report.success_count}")
-    print(f"Errors: {report.error_count}")
+    print("\nFlow finished!")
+    print(report)
 
 
 if __name__ == "__main__":

@@ -4,8 +4,7 @@ from functools import partial
 
 from pydantic import BaseModel
 
-from flowschema.executor.base import BaseExecutor
-from flowschema.hooks.base import BaseHook
+from flowschema.executor.base import BaseExecutor, WorkerContext
 from flowschema.models.core import EntryTypedDict
 
 
@@ -27,18 +26,12 @@ class ThreadExecutor(BaseExecutor):
 
     @staticmethod
     def _process_chunk(
-        schema_model: type[BaseModel],
         chunk: list[dict[str, typing.Any]],
-        pre_hooks: list[BaseHook] | None = None,
-        post_hooks: list[BaseHook] | None = None,
+        context: WorkerContext,
     ) -> list[EntryTypedDict]:
         return BaseExecutor.process_chunk_on_worker(
             data=chunk,
-            schema_model=schema_model,
-            do_binary_pack=False,
-            compression_algorithm=None,
-            pre_hooks=pre_hooks,
-            post_hooks=post_hooks,
+            context=context,
         )
 
     @property
@@ -46,11 +39,17 @@ class ThreadExecutor(BaseExecutor):
         if not self._upstream_iterator:
             return
 
-        process_func = partial(
-            self._process_chunk,
-            self._schema_model,
+        context = WorkerContext(
+            schema_model=self._schema_model,
+            do_binary_pack=False,
+            compression_algorithm=None,
             pre_hooks=self._pre_validation_hooks,
             post_hooks=self._post_validation_hooks,
+        )
+
+        process_func = partial(
+            self._process_chunk,
+            context=context,
         )
 
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:

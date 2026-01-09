@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import enum
 import json
 import logging
@@ -69,7 +70,12 @@ class SyncAsyncBridge:
         return self._loop
 
     def run_sync(self, coro: typing.Coroutine) -> typing.Any:
-        return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
+        try:
+            return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
+        except (concurrent.futures.CancelledError, RuntimeError) as e:
+            if "close" in str(coro):
+                return None
+            raise e
 
 
 class AsyncInputBridge:

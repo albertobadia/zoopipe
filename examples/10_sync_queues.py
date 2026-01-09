@@ -67,7 +67,8 @@ def main():
     consumer_thread.join()
 
     print("\n✅ Pipeline Finished!")
-    print(f"Total Processed: {report.total_processed}")
+    print("\n✅ Pipeline Finished!")
+    print(report)
 
 
 if __name__ == "__main__":

@@ -85,10 +85,24 @@ class FlowSchema:
 
         return self._report
 
+    def shutdown(self) -> None:
+        if self._report:
+            self._report.abort()
+
+        if self._report:
+            self._report.wait(timeout=5.0)
+
     def __del__(self) -> None:
         if self._report and not self._report.is_finished:
-            self.logger.warning("FlowSchema object collected while running. Stopping flow...")
-            self._report.abort()
+            try:
+                if self.logger:
+                    self.logger.warning(
+                        "FlowSchema object collected while running. Stopping flow..."
+                    )
+            except (ImportError, AttributeError, NameError):
+                pass
+
+            self.shutdown()
 
     def __enter__(self) -> "FlowSchema":
         return self
@@ -96,10 +110,6 @@ class FlowSchema:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self._report and not self._report.is_finished:
             self._report.abort()
-            # If an exception happened, we might want to wait briefly or just let it shut down async
-            # But typically context managers cleaning up resources should try to be clean.
-            # However, waiting might hang if something is stuck.
-            # For now, just signaling stop is safe.
 
     @staticmethod
     def _handle_entry_static(
@@ -140,7 +150,6 @@ class FlowSchema:
         pre_validation_hooks: list[BaseHook],
         post_validation_hooks: list[BaseHook],
     ) -> None:
-        # Internal state for backpressure
         chunk_sizes: dict[str, float] = {}
         bytes_in_flight_container = [0]  # mutable container
         backpressure_condition = threading.Condition()
@@ -213,10 +222,10 @@ class FlowSchema:
                     chunk_sizes.clear()
                     backpressure_condition.notify_all()
 
-                if report.is_stopped:
-                    report._mark_stopped()
-                else:
-                    report._mark_completed()
+            if report.is_stopped:
+                report._mark_stopped()
+            else:
+                report._mark_completed()
         except Exception as e:
             logger.exception("Error during background execution")
             report._mark_failed(e)

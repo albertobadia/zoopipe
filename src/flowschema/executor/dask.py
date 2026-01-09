@@ -1,17 +1,11 @@
 import typing
 from functools import partial
 
+from dask.distributed import Client
 from pydantic import BaseModel
 
-from flowschema.executor.base import BaseExecutor
-from flowschema.hooks.base import BaseHook
+from flowschema.executor.base import BaseExecutor, WorkerContext
 from flowschema.models.core import EntryTypedDict
-
-try:
-    from dask.distributed import Client, as_completed
-except ImportError:
-    Client = None
-    as_completed = None
 
 
 class DaskExecutor(BaseExecutor):
@@ -20,18 +14,13 @@ class DaskExecutor(BaseExecutor):
         schema_model: type[BaseModel],
         address: str | None = None,
         compression: str | None = None,
+        max_inflight: int = 20,
     ) -> None:
         super().__init__()
-        if Client is None:
-            raise ImportError(
-                "dask[distributed] is required for DaskExecutor. "
-                "Install it with `pip install 'flowschema[dask]'`"
-                " or `pip install dask[distributed]`"
-            )
-
         self._schema_model = schema_model
         self._address = address
         self._compression = compression
+        self._max_inflight = max_inflight
         self._client: Client | None = None
 
     @property
@@ -44,19 +33,12 @@ class DaskExecutor(BaseExecutor):
 
     @staticmethod
     def _process_chunk(
-        schema_model: type[BaseModel],
-        compression: str | None,
         chunk: bytes,
-        pre_hooks: list[BaseHook] | None,
-        post_hooks: list[BaseHook] | None,
+        context: WorkerContext,
     ) -> list[EntryTypedDict]:
         return BaseExecutor.process_chunk_on_worker(
             data=chunk,
-            schema_model=schema_model,
-            do_binary_pack=True,
-            compression_algorithm=compression,
-            pre_hooks=pre_hooks,
-            post_hooks=post_hooks,
+            context=context,
         )
 
     @property
@@ -66,27 +48,47 @@ class DaskExecutor(BaseExecutor):
 
         self._client = Client(self._address) if self._address else Client()
 
-        process_func = partial(
-            self._process_chunk,
-            self._schema_model,
-            self._compression,
+        context = WorkerContext(
+            schema_model=self._schema_model,
+            do_binary_pack=True,
+            compression_algorithm=self._compression,
             pre_hooks=self._pre_validation_hooks,
             post_hooks=self._post_validation_hooks,
         )
 
-        futures = []
-        for chunk in self._upstream_iterator:
-            future = self._client.submit(process_func, chunk)
-            futures.append(future)
+        process_func = partial(
+            self._process_chunk,
+            context=context,
+        )
 
-        for future in as_completed(futures):
+        max_inflight = self._max_inflight
+        inflight_futures = []
+
+        def submit_tasks(count: int):
+            for _ in range(count):
+                try:
+                    chunk = next(self._upstream_iterator)
+                    future = self._client.submit(process_func, chunk)
+                    inflight_futures.append(future)
+                except StopIteration:
+                    break
+
+        submit_tasks(max_inflight)
+
+        while inflight_futures:
+            future = inflight_futures.pop(0)
+
             results = future.result()
+
+            submit_tasks(1)
+
             yield from results
 
     def shutdown(self) -> None:
         if self._client:
             try:
                 self._client.close()
+                self._client = None
             except Exception:
                 pass
 

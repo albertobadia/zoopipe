@@ -3,20 +3,16 @@ import typing
 import ray
 from pydantic import BaseModel
 
-from flowschema.executor.base import BaseExecutor
-from flowschema.hooks.base import BaseHook
+from flowschema.executor.base import BaseExecutor, WorkerContext
 from flowschema.models.core import EntryTypedDict
 
 
 @ray.remote
 def _ray_process_task(
     chunk: typing.Any,
-    model: type[BaseModel],
-    comp: str | None,
-    pre: list[BaseHook] | None,
-    post: list[BaseHook] | None,
+    context: WorkerContext,
 ) -> list[EntryTypedDict]:
-    return RayExecutor._process_chunk_logic(model, comp, chunk, pre, post)
+    return RayExecutor._process_chunk_logic(chunk, context)
 
 
 class RayExecutor(BaseExecutor):
@@ -43,19 +39,12 @@ class RayExecutor(BaseExecutor):
 
     @staticmethod
     def _process_chunk_logic(
-        schema_model: type[BaseModel],
-        compression: str | None,
         compressed_chunk: bytes,
-        pre_hooks: list[BaseHook] | None = None,
-        post_hooks: list[BaseHook] | None = None,
+        context: WorkerContext,
     ) -> list[EntryTypedDict]:
         return BaseExecutor.process_chunk_on_worker(
             data=compressed_chunk,
-            schema_model=schema_model,
-            do_binary_pack=True,
-            compression_algorithm=compression,
-            pre_hooks=pre_hooks,
-            post_hooks=post_hooks,
+            context=context,
         )
 
     @property
@@ -70,16 +59,21 @@ class RayExecutor(BaseExecutor):
         max_inflight = self._max_inflight
         inflight_futures = []
 
+        context = WorkerContext(
+            schema_model=self._schema_model,
+            do_binary_pack=True,
+            compression_algorithm=self._compression,
+            pre_hooks=self._pre_validation_hooks,
+            post_hooks=self._post_validation_hooks,
+        )
+
         def submit_tasks(count: int):
             for _ in range(count):
                 try:
                     chunk = next(self._upstream_iterator)
                     future = _ray_process_task.remote(
                         chunk,
-                        self._schema_model,
-                        self._compression,
-                        self._pre_validation_hooks,
-                        self._post_validation_hooks,
+                        context,
                     )
                     inflight_futures.append(future)
                 except StopIteration:
@@ -93,6 +87,13 @@ class RayExecutor(BaseExecutor):
             submit_tasks(1)
 
             yield from batch_result
+
+    def shutdown(self) -> None:
+        if ray.is_initialized():
+            try:
+                ray.shutdown()
+            except Exception:
+                pass
 
 
 __all__ = ["RayExecutor"]

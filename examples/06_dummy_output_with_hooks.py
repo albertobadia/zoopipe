@@ -75,9 +75,7 @@ report = schema_flow.start()
 report.wait()
 
 print("\nProcessing Metrics:")
-print(f"Total processed: {report.total_processed}")
-print(f"Success: {report.success_count}")
-print(f"Errors: {report.error_count}")
+print(report)
 
 # Verify results from SQLite
 conn = sqlite3.connect(db_file)

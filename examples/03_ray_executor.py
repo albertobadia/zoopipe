@@ -21,8 +21,7 @@ def main():
     report.wait()
 
     print(f"Finished! Processed {report.total_processed} transactions.")
-    print(f"{report.success_count=}")
-    print(f"{report.error_count=}")
+    print(report)
 
 
 if __name__ == "__main__":
