@@ -28,3 +28,6 @@ class BaseOutputAdapter(abc.ABC):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         return False
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}>"

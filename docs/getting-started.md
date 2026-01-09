@@ -39,15 +39,21 @@ class UserSchema(BaseModel):
     age: int
 
 schema_flow = FlowSchema(
+flow = FlowSchema(
     input_adapter=CSVInputAdapter("users.csv"),
     output_adapter=CSVOutputAdapter("processed_users.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"),
     executor=SyncFifoExecutor(UserSchema),
 )
 
-for entry in schema_flow.start():
-    status = entry['status'].value
-    print(f"[{status.upper()}] Row {entry['position']}: {entry['id']}")
+# Wait for completion
+report = flow.start()
+report.wait()
+
+print(f"Processed: {report.total_processed}")
+print(f"Success: {report.success_count}")
+print(f"Errors: {report.error_count}")
+print(f"Duration: {report.duration:.2f}s")
 ```
 
 ## Next Steps

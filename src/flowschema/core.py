@@ -158,5 +158,11 @@ class FlowSchema:
             self.logger.exception("Error during background execution")
             report._mark_failed(e)
 
+    def __repr__(self) -> str:
+        return (
+            f"<FlowSchema input={self.input_adapter} "
+            f"output={self.output_adapter} executor={self.executor}>"
+        )
+
 
 __all__ = ["FlowSchema"]

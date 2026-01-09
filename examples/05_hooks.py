@@ -55,7 +55,7 @@ def example_field_mapper():
 
     report = schema_flow.start()
     report.wait()
-    print(f"Total processed: {report.total_processed}")
+    print(f"Total processed: {report.total_processed} in {report.duration:.2f}s")
 
 
 def example_custom_hook():

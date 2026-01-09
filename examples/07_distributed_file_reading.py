@@ -107,8 +107,7 @@ def run_jit_ingestion_demo():
         is_adult = entry["metadata"].get("is_adult")
 
         print(
-            f"Entry {uid}: {name} | Adult: {is_adult} |"
-            f" Status: {entry['status'].value}"
+            f"Entry {uid}: {name} | Adult: {is_adult} | Status: {entry['status'].value}"
         )
 
     print("\nArchitectural Summary:")

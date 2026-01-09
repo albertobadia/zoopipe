@@ -31,3 +31,6 @@ class BaseInputAdapter(abc.ABC):
 
     def __iter__(self) -> typing.Generator[dict[str, typing.Any], None, None]:
         return self.generator
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}>"

@@ -25,6 +25,14 @@ class FlowReport:
         self._stop_condition = threading.Condition()
 
     @property
+    def duration(self) -> float:
+        start = self.start_time
+        if not start:
+            return 0.0
+        end = self.end_time or datetime.now()
+        return (end - start).total_seconds()
+
+    @property
     def is_finished(self) -> bool:
         return self._finished_event.is_set()
 

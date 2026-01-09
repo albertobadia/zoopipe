@@ -33,6 +33,7 @@ def main():
         )
 
     print(f"\nFinal Report: {report}")
+    print(f"Total Duration: {report.duration:.2f}s")
 
 
 if __name__ == "__main__":

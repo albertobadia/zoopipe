@@ -189,6 +189,14 @@ Both `MultiprocessingExecutor` and `RayExecutor` use an optimized transport stac
 - **Fast**: High serialization/deserialization speed
 - **Type-aware**: Preserves Python types
 
+### Error Handling in Hooks
+
+Executors automatically catch exceptions raised by hooks. If a hook fails:
+1.  The entry status is set to `EntryStatus.FAILED`.
+2.  The error is appended to the entry's `errors` list in the format `{"type": "HookError", "message": "HookName: Error details"}`.
+3.  Validation and subsequent hooks are skipped for that entry.
+4.  The failed entry is included in the `FlowReport.error_count`.
+
 ### Compression: LZ4
 
 - **Optional**: Enable with `compression="lz4"`

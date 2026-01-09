@@ -9,6 +9,10 @@ from pydantic import BaseModel, ValidationError
 
 from flowschema.models.core import EntryStatus, EntryTypedDict
 
+if typing.TYPE_CHECKING:
+    from flowschema.input_adapter.base_async import BaseAsyncInputAdapter
+    from flowschema.output_adapter.base_async import BaseAsyncOutputAdapter
+
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -70,7 +74,9 @@ class SyncAsyncBridge:
 
 class AsyncInputBridge:
     def __init__(
-        self, adapter: typing.Any, loop: asyncio.AbstractEventLoop | None = None
+        self,
+        adapter: "BaseAsyncInputAdapter",
+        loop: asyncio.AbstractEventLoop | None = None,
     ):
         self.adapter = adapter
         self.bridge = SyncAsyncBridge(adapter, loop)
@@ -110,7 +116,9 @@ class AsyncInputBridge:
 
 class AsyncOutputBridge:
     def __init__(
-        self, adapter: typing.Any, loop: asyncio.AbstractEventLoop | None = None
+        self,
+        adapter: "BaseAsyncOutputAdapter",
+        loop: asyncio.AbstractEventLoop | None = None,
     ):
         self.adapter = adapter
         self.bridge = SyncAsyncBridge(adapter, loop)

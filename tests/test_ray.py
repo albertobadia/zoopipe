@@ -23,43 +23,38 @@ class InputModel(BaseModel):
     description: str
 
 
-def test_ray_executor_lz4():
+def test_ray_executor_lz4(tmp_path):
     try:
         import ray
     except ImportError:
         pytest.skip("ray not installed")
 
-    sample_csv = "test_ray_data.csv"
+    sample_csv = tmp_path / "test_ray_data.csv"
     with open(sample_csv, "w") as f:
         f.write("name,last_name,age,description\n")
         f.write("Alice,Smith,30,Engineer\n")
         f.write("Bob,Jones,25,Designer\n")
         f.write("Charlie,Brown,35,Manager\n")
 
-    try:
-        executor = RayExecutor(InputModel, compression="lz4")
+    executor = RayExecutor(InputModel, compression="lz4")
 
-        memory_adapter = MemoryOutputAdapter()
-        schema_flow = FlowSchema(
-            input_adapter=CSVInputAdapter(sample_csv),
-            output_adapter=memory_adapter,
-            error_output_adapter=CSVOutputAdapter("test_ray_errors.csv"),
-            executor=executor,
-        )
-        report = schema_flow.start()
-        report.wait()
-        output_data = memory_adapter.results
+    memory_adapter = MemoryOutputAdapter()
+    error_csv = tmp_path / "test_ray_errors.csv"
+    schema_flow = FlowSchema(
+        input_adapter=CSVInputAdapter(str(sample_csv)),
+        output_adapter=memory_adapter,
+        error_output_adapter=CSVOutputAdapter(str(error_csv)),
+        executor=executor,
+    )
+    report = schema_flow.start()
+    report.wait()
+    output_data = memory_adapter.results
 
-        assert len(output_data) == 3
-        assert output_data[0]["status"].value == "validated"
-        assert output_data[0]["validated_data"]["name"] == "Alice"
+    assert len(output_data) == 3
+    assert output_data[0]["status"].value == "validated"
+    assert output_data[0]["validated_data"]["name"] == "Alice"
 
-        print("Ray executor test passed!")
+    print("Ray executor test passed!")
 
-        if ray.is_initialized():
-            ray.shutdown()
-
-    finally:
-        for f in [sample_csv, "test_ray_output.csv", "test_ray_errors.csv"]:
-            if os.path.exists(f):
-                os.remove(f)
+    if ray.is_initialized():
+        ray.shutdown()

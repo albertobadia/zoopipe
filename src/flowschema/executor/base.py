@@ -9,7 +9,7 @@ import msgpack
 from pydantic import BaseModel
 
 from flowschema.hooks.base import BaseHook, HookStore
-from flowschema.models.core import EntryTypedDict
+from flowschema.models.core import EntryStatus, EntryTypedDict
 
 
 class BaseExecutor(abc.ABC):
@@ -54,6 +54,10 @@ class BaseExecutor(abc.ABC):
                         entry["metadata"].update(result)
                 except Exception as e:
                     hook_name = hook.__class__.__name__
+                    entry["status"] = EntryStatus.FAILED
+                    entry["errors"].append(
+                        {"type": "HookError", "message": f"{hook_name}: {str(e)}"}
+                    )
                     entry["metadata"][f"hook_error_{hook_name}"] = str(e)
         return entry
 
@@ -81,6 +85,10 @@ class BaseExecutor(abc.ABC):
             for entry in entries:
                 if pre_hooks:
                     BaseExecutor.run_hooks(entry, pre_hooks, store)
+
+                if entry.get("status") == EntryStatus.FAILED:
+                    results.append(entry)
+                    continue
 
                 validated_entry = validate_entry(schema_model, entry)
 
@@ -121,6 +129,9 @@ class BaseExecutor(abc.ABC):
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
         raise NotImplementedError
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}>"
 
 
 __all__ = ["BaseExecutor"]

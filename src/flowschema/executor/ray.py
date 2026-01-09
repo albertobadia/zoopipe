@@ -8,6 +8,17 @@ from flowschema.hooks.base import BaseHook
 from flowschema.models.core import EntryTypedDict
 
 
+@ray.remote
+def _ray_process_task(
+    chunk: typing.Any,
+    model: type[BaseModel],
+    comp: str | None,
+    pre: list[BaseHook] | None,
+    post: list[BaseHook] | None,
+) -> list[EntryTypedDict]:
+    return RayExecutor._process_chunk_logic(model, comp, chunk, pre, post)
+
+
 class RayExecutor(BaseExecutor):
     def __init__(
         self,
@@ -56,10 +67,6 @@ class RayExecutor(BaseExecutor):
             runtime_env = {"py_modules": ["src/flowschema"]}
             ray.init(address=self._address, runtime_env=runtime_env)
 
-        @ray.remote
-        def process_task(chunk, model, comp, pre, post):
-            return RayExecutor._process_chunk_logic(model, comp, chunk, pre, post)
-
         max_inflight = self._max_inflight
         inflight_futures = []
 
@@ -67,7 +74,7 @@ class RayExecutor(BaseExecutor):
             for _ in range(count):
                 try:
                     chunk = next(self._upstream_iterator)
-                    future = process_task.remote(
+                    future = _ray_process_task.remote(
                         chunk,
                         self._schema_model,
                         self._compression,
