@@ -267,6 +267,24 @@ uv run examples/14_adapter_hooks_fetching.py
 
 ---
 
+### [15_sqlalchemy_jit.py](../examples/15_sqlalchemy_jit.py)
+
+"Just-In-Time" (JIT) SQL fetching pattern: the input adapter generates row IDs, and a specialized hook performs the actual fetching in bulk within the worker.
+
+**Demonstrates:**
+- `SQLInputAdapter` for lightweight metadata generation
+- `SQLFetchHook` with thread-safe connection management (`setup`/`teardown`)
+- `SQLOutputAdapter` for bulk persistence
+- Parallel distributed fetching pattern for massive databases (100k+ rows)
+
+**Run:**
+```bash
+uv run examples/scripts/generate_sql_data.py
+PYTHONPATH=src uv run examples/15_sqlalchemy_jit.py
+```
+
+---
+
 ## Sample Data
 
 All examples use the sample data files located in [`examples/data/`](../examples/data/):

@@ -72,11 +72,12 @@ class BaseExecutor(abc.ABC):
     @staticmethod
     def _execute_hook_safe(
         entries: list[EntryTypedDict], hook: BaseHook, store: HookStore
-    ) -> None:
+    ) -> list[EntryTypedDict]:
         try:
-            hook.execute(entries, store)
+            return hook.execute(entries, store) or entries
         except Exception as e:
             BaseExecutor._handle_hook_error(entries, hook.__class__.__name__, e)
+            return entries
 
     @staticmethod
     def run_hooks(
@@ -89,12 +90,14 @@ class BaseExecutor(abc.ABC):
             return entries
 
         chunk_size = max_hook_chunk_size or len(entries)
+        new_entries = []
 
         for i in range(0, len(entries), chunk_size):
             sub_batch = entries[i : i + chunk_size]
             for hook in hooks:
-                BaseExecutor._execute_hook_safe(sub_batch, hook, store)
-        return entries
+                sub_batch = BaseExecutor._execute_hook_safe(sub_batch, hook, store)
+            new_entries.extend(sub_batch)
+        return new_entries
 
     @staticmethod
     def process_chunk_on_worker(
@@ -111,7 +114,7 @@ class BaseExecutor(abc.ABC):
             hook.setup(store)
 
         try:
-            BaseExecutor.run_hooks(
+            entries = BaseExecutor.run_hooks(
                 entries,
                 context.pre_hooks or [],
                 store,
@@ -123,7 +126,7 @@ class BaseExecutor(abc.ABC):
                 for entry in entries
             ]
 
-            BaseExecutor.run_hooks(
+            results = BaseExecutor.run_hooks(
                 results,
                 context.post_hooks or [],
                 store,

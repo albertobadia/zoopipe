@@ -14,7 +14,7 @@ class PartitionedReaderHook(BaseHook):
         self, entries: list[EntryTypedDict], store: HookStore
     ) -> list[EntryTypedDict]:
         for entry in entries:
-            params = entry.get("raw_data", {})
+            params = entry.get("metadata", {})
             path = params.get("path")
             start = params.get("start")
             end = params.get("end")

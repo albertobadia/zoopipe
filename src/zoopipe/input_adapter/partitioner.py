@@ -41,13 +41,13 @@ class FilePartitioner(BaseInputAdapter):
                 "id": self.id_generator(),
                 "position": i,
                 "status": EntryStatus.PENDING,
-                "raw_data": {
+                "raw_data": {},
+                "validated_data": {},
+                "errors": [],
+                "metadata": {
                     "path": self.file_path,
                     "start": start,
                     "end": end,
                     "partition_id": i,
                 },
-                "validated_data": {},
-                "errors": [],
-                "metadata": {},
             }
