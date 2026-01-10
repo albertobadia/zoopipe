@@ -1,6 +1,6 @@
 [project]
 name = "zoopipe"
-version = "2026.01.09"
+version = "2026.01.10"
 description = "ZooPipe is a data processing framework that allows you to process data in a declarative way."
 readme = "README.md"
 requires-python = ">=3.13"

@@ -56,6 +56,26 @@ Partitions large files into byte ranges for distributed processing.
 
 ---
 
+### [DuckDB Input Adapter](adapters/duckdb-input.md)
+
+Reads data from DuckDB databases using an efficient JIT metadata pattern.
+
+**Features:** JIT metadata, batch processing, PK range optimization, parallel distributed reading
+
+**[View Documentation →](adapters/duckdb-input.md)**
+
+---
+
+### [SQLAlchemy Input Adapter](adapters/sqlalchemy-input.md)
+
+Reads data from SQL databases (PostgreSQL, MySQL, SQLite, etc.) using SQLAlchemy.
+
+**Features:** Multi-database support, JIT metadata, batch processing, PK range optimization
+
+**[View Documentation →](adapters/sqlalchemy-input.md)**
+
+---
+
 ### Boto3 S3 Input Adapter
 
 Reads data from AWS S3 or S3-compatible storage using Boto3.
@@ -131,6 +151,26 @@ Writes validated entries to Apache Parquet files using PyArrow.
 **Features:** Columnar storage, batched writing, schema flexibility, compression options
 
 **[View Documentation →](adapters/arrow-output.md)**
+
+---
+
+### [DuckDB Output Adapter](adapters/duckdb-output.md)
+
+Writes validated entries to DuckDB databases using efficient batch processing.
+
+**Features:** Batch writing, transaction support, CSV-based bulk insert, automatic flushing
+
+**[View Documentation →](adapters/duckdb-output.md)**
+
+---
+
+### [SQLAlchemy Output Adapter](adapters/sqlalchemy-output.md)
+
+Writes data to SQL databases (PostgreSQL, MySQL, SQLite, etc.) using SQLAlchemy.
+
+**Features:** Multi-database support, batch writing, transaction support, bulk inserts
+
+**[View Documentation →](adapters/sqlalchemy-output.md)**
 
 ---
 

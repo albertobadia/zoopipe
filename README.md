@@ -92,7 +92,7 @@ from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
 
 pipe = Pipe(
     input_adapter=Boto3InputAdapter("my-bucket", prefix="data/", jit=True),
-    output_adapter=DuckDBOutputAdapter("analytics.duckdb", "events"),
+    output_adapter=DuckDBOutputAdapter("analytics.duckdb", "events", batch_size=5000),
     executor=RayExecutor(EventSchema),
 )
 ```
@@ -172,6 +172,7 @@ ZooPipe provides three execution strategies:
 | `SyncFifoExecutor` | Small datasets, debugging | Single-threaded |
 | `MultiprocessingExecutor` | Large datasets on single machine | Multi-process (CPU cores) |
 | `ThreadExecutor` | IO-bound tasks (network/DB) | Multi-thread |
+| `AsyncIOExecutor` | Async workflows, async hooks | Asyncio concurrency |
 | `DaskExecutor` | ETL pipelines, Dask users | Dask cluster |
 | `RayExecutor` | Massive datasets, distributed | Ray cluster |
 

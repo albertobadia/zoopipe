@@ -11,6 +11,7 @@ Pipe provides three types of executors:
 | `SyncFifoExecutor` | Simple processing | None | Small datasets, debugging |
 | `MultiprocessingExecutor` | CPU-bound tasks | Multiple processes | Large datasets on single machine |
 | `ThreadExecutor` | IO-bound tasks | Multiple threads | Network requests, DB queries, high concurrency |
+| `AsyncIOExecutor` | Async workflows | Asyncio concurrency | Async hooks, async I/O workflows |
 | `DaskExecutor` | ETL, Dataframe-style workflows | Dask cluster | Data transformations, existing Dask infra |
 | `RayExecutor` | Distributed processing | Ray cluster | Very large datasets, multiple machines |
 
@@ -111,6 +112,78 @@ executor = ThreadExecutor(
 - `schema_model` (required): Your Pydantic model class
 - `max_workers` (optional): Number of threads. Defaults to `None` (based on CPU count * 5)
 - `chunksize` (optional): Number of entries per task. usually `1` is fine for threads.
+
+---
+
+## AsyncIOExecutor
+
+Uses asyncio for concurrent execution with support for async hooks and integration with async frameworks.
+
+### Features
+
+- **Asyncio Integration**: Native support for async/await patterns
+- **Concurrent Processing**: Configurable concurrency level for parallel task execution
+- **Async Hook Support**: Automatically detects and executes async hooks
+- **Mixed Hook Support**: Can handle both sync and async hooks in the same pipeline
+- **Event Loop Integration**: Can integrate with existing event loops
+- **Thread Pool Fallback**: Uses thread pool for CPU-bound operations
+- **Ideal for async I/O workflows** with async hooks or async data sources
+
+### Usage
+
+```python
+from zoopipe.executor.asyncio import AsyncIOExecutor
+
+executor = AsyncIOExecutor(
+    schema_model=YourSchema,
+    concurrency=10,
+    max_workers=4
+)
+```
+
+### Parameters
+
+- `schema_model` (required): Your Pydantic model class
+- `concurrency` (optional): Maximum number of concurrent async tasks. Default: `10`
+- `max_workers` (optional): Number of threads for thread pool executor. Default: `None` (auto)
+- `use_batch_validation` (optional): Use batch validation if supported. Default: `False`
+- `loop` (optional): Existing asyncio event loop to use. Default: `None` (creates new loop)
+
+### Use Cases
+
+**Async Hooks Integration**
+```python
+from zoopipe.executor.asyncio import AsyncIOExecutor
+from zoopipe.hooks.base import BaseHook
+
+class AsyncAPIEnrichmentHook(BaseHook):
+    async def execute(self, entries, store):
+        async with aiohttp.ClientSession() as session:
+            for entry in entries:
+                async with session.get(f"https://api.example.com/{entry['raw_data']['id']}") as resp:
+                    data = await resp.json()
+                    entry['raw_data']['enriched'] = data
+        return entries
+
+executor = AsyncIOExecutor(
+    schema_model=YourSchema,
+    concurrency=20
+)
+
+pipe = Pipe(
+    input_adapter=input_adapter,
+    output_adapter=output_adapter,
+    executor=executor,
+    pre_validation_hooks=[AsyncAPIEnrichmentHook()]
+)
+```
+
+### Performance Tips
+
+- Set `concurrency` based on I/O wait time (higher for slower I/O operations)
+- Use async hooks for network calls, database queries, and file I/O
+- Adjust `max_workers` for CPU-bound validation workloads
+- Can integrate with existing event loop if needed
 
 ---
 
@@ -319,7 +392,7 @@ graph TD
 | Small CSV validation | `SyncFifoExecutor` | Simple, no overhead |
 | Large CSV processing | `MultiprocessingExecutor` | Parallel on single machine |
 | ETL from database | `MultiprocessingExecutor` | CPU-bound transformations |
-| API Enrichment | `ThreadExecutor` | IO-bound (waiting for network) |
+| API Enrichment | `ThreadExecutor` or `AsyncIOExecutor` | IO-bound (waiting for network) |
 | Massive data migration | `RayExecutor` | Distributed processing |
 | Real-time streaming | `SyncFifoExecutor` | Low latency |
 | Batch processing pipeline | `MultiprocessingExecutor` or `RayExecutor` | Throughput optimization |
