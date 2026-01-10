@@ -4,14 +4,20 @@ import logging
 import typing
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
 
 import lz4.frame
 import msgpack
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.models.core import EntryStatus, EntryTypedDict
 from zoopipe.utils import validate_entry
+
+
+@lru_cache
+def _get_type_adapter(schema_model: type[BaseModel]) -> TypeAdapter:
+    return TypeAdapter(list[schema_model])
 
 
 @dataclass
@@ -22,6 +28,7 @@ class WorkerContext:
     pre_hooks: list[BaseHook] | None = None
     post_hooks: list[BaseHook] | None = None
     max_hook_chunk_size: int | None = None
+    use_batch_validation: bool = False
 
 
 class BaseExecutor(abc.ABC):
@@ -121,10 +128,15 @@ class BaseExecutor(abc.ABC):
                 context.max_hook_chunk_size,
             )
 
-            results = [
-                BaseExecutor._process_single_entry(entry, context.schema_model)
-                for entry in entries
-            ]
+            if context.schema_model and context.use_batch_validation:
+                results = BaseExecutor._process_batch_with_fallback(
+                    entries, context.schema_model
+                )
+            else:
+                results = [
+                    BaseExecutor._process_single_entry(entry, context.schema_model)
+                    for entry in entries
+                ]
 
             results = BaseExecutor.run_hooks(
                 results,
@@ -137,6 +149,55 @@ class BaseExecutor(abc.ABC):
                 hook.teardown(store)
 
         return results
+
+    @staticmethod
+    def _process_batch_with_fallback(
+        entries: list[EntryTypedDict], schema_model: type[BaseModel]
+    ) -> list[EntryTypedDict]:
+        from pydantic import ValidationError
+
+        adapter = _get_type_adapter(schema_model)
+        current_idx = 0
+
+        while current_idx < len(entries):
+            remaining = entries[current_idx:]
+            try:
+                raw_data_list = [e["raw_data"] for e in remaining]
+                validated_objs = adapter.validate_python(raw_data_list)
+
+                for i, obj in enumerate(validated_objs):
+                    entry = remaining[i]
+                    entry["validated_data"] = obj.model_dump()
+                    entry["status"] = EntryStatus.VALIDATED
+                break
+
+            except ValidationError as e:
+                errors_by_row = {}
+                for err in e.errors():
+                    row_idx = err["loc"][0]
+                    if row_idx not in errors_by_row:
+                        errors_by_row[row_idx] = []
+                    errors_by_row[row_idx].append(err)
+
+                first_rel_idx = min(errors_by_row.keys())
+                first_abs_idx = current_idx + first_rel_idx
+
+                if first_rel_idx > 0:
+                    clean_slice = remaining[:first_rel_idx]
+                    clean_raw = [ent["raw_data"] for ent in clean_slice]
+                    clean_objs = adapter.validate_python(clean_raw)
+                    for i, obj in enumerate(clean_objs):
+                        ent = clean_slice[i]
+                        ent["validated_data"] = obj.model_dump()
+                        ent["status"] = EntryStatus.VALIDATED
+
+                failed_entry = entries[first_abs_idx]
+                failed_entry["status"] = EntryStatus.FAILED
+                failed_entry["errors"] = errors_by_row[first_rel_idx]
+
+                current_idx = first_abs_idx + 1
+
+        return entries
 
     @staticmethod
     def _process_single_entry(

@@ -14,11 +14,13 @@ class ThreadExecutor(BaseExecutor):
         schema_model: type[BaseModel] | None = None,
         max_workers: int | None = None,
         chunksize: int = 1,
+        use_batch_validation: bool = False,
     ) -> None:
         super().__init__()
         self._schema_model = schema_model
         self._max_workers = max_workers
         self._chunksize = chunksize
+        self._use_batch_validation = use_batch_validation
 
     @property
     def do_binary_pack(self) -> bool:
@@ -46,6 +48,7 @@ class ThreadExecutor(BaseExecutor):
             pre_hooks=self._pre_validation_hooks,
             post_hooks=self._post_validation_hooks,
             max_hook_chunk_size=self._max_hook_chunk_size,
+            use_batch_validation=self._use_batch_validation,
         )
 
         process_func = partial(
