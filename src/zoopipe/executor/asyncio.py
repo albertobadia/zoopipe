@@ -176,7 +176,6 @@ class AsyncIOExecutor(BaseExecutor):
                 if not pending_tasks:
                     break
 
-                # Wait for at least one task to complete
                 done, pending = loop.run_until_complete(
                     asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
                 )

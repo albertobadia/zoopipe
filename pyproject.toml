@@ -34,6 +34,12 @@ sqlalchemy = [
 duckdb = [
     "duckdb>=1.4.3",
 ]
+boto3 = [
+    "boto3>=1.42.25",
+]
+minio = [
+    "minio>=7.2.20",
+]
 all = [
     "ray>=2.53.0",
     "dask[distributed]>=2025.12.0",
@@ -52,6 +58,9 @@ dev = [
     "pyarrow>=22.0.0",
     "sqlalchemy>=2.0.45",
     "duckdb>=1.4.3",
+    "boto3>=1.42.25",
+    "minio>=7.2.20",
+    "moto>=5.1.19",
 ]
 
 [tool.pytest.ini_options]

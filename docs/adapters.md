@@ -56,6 +56,50 @@ Partitions large files into byte ranges for distributed processing.
 
 ---
 
+### Boto3 S3 Input Adapter
+
+Reads data from AWS S3 or S3-compatible storage using Boto3.
+
+**Features:** JIT (Just-In-Time) fetching for parallel processing, prefix filtering, automatic pagination, works with mocked S3 (moto)
+
+**Example:**
+```python
+from zoopipe.input_adapter.boto3 import Boto3InputAdapter
+
+pipe = Pipe(
+    input_adapter=Boto3InputAdapter(
+        bucket_name="my-bucket",
+        prefix="data/",
+        jit=True  # Metadata-only, fetch on workers
+    ),
+    executor=MultiProcessingExecutor(schema)
+)
+```
+
+---
+
+### MinIO S3 Input Adapter
+
+Reads data from MinIO or S3-compatible storage using the MinIO client.
+
+**Features:** JIT fetching, S3-compatible, prefix filtering, recursive listing
+
+**Example:**
+```python
+from zoopipe.input_adapter.minio import MinIOInputAdapter
+
+pipe = Pipe(
+    input_adapter=MinIOInputAdapter(
+        endpoint="localhost:9000",
+        bucket_name="data-lake",
+        jit=True
+    ),
+    executor=RayExecutor(schema)
+)
+```
+
+---
+
 ## Output Adapters
 
 Output adapters are responsible for persisting processed data to various destinations.
@@ -87,6 +131,48 @@ Writes validated entries to Apache Parquet files using PyArrow.
 **Features:** Columnar storage, batched writing, schema flexibility, compression options
 
 **[View Documentation →](adapters/arrow-output.md)**
+
+---
+
+### Boto3 S3 Output Adapter
+
+Writes data to AWS S3 or S3-compatible storage using Boto3.
+
+**Features:** Automatic bucket creation, flexible content handling (bytes/JSON), configurable key prefixes
+
+**Example:**
+```python
+from zoopipe.output_adapter.boto3 import Boto3OutputAdapter
+
+pipe = Pipe(
+    input_adapter=input_adapter,
+    output_adapter=Boto3OutputAdapter(
+        bucket_name="processed-data",
+        object_name_prefix="output/"
+    )
+)
+```
+
+---
+
+### MinIO S3 Output Adapter
+
+Writes data to MinIO or S3-compatible storage using the MinIO client.
+
+**Features:** Automatic bucket creation, streaming writes, content-type detection
+
+**Example:**
+```python
+from zoopipe.output_adapter.minio import MinIOOutputAdapter
+
+pipe = Pipe(
+    input_adapter=input_adapter,
+    output_adapter=MinIOOutputAdapter(
+        endpoint="localhost:9000",
+        bucket_name="results"
+    )
+)
+```
 
 ---
 
@@ -313,9 +399,9 @@ pipe = Pipe(
 
 The following adapters are planned for future releases:
 
-- **SQLInputAdapter / SQLOutputAdapter**: For database connections
-- **API adapters**: For REST API integration
 - **KafkaInputAdapter / KafkaOutputAdapter**: For Apache Kafka streams
+- **RedisInputAdapter / RedisOutputAdapter**: For Redis pub/sub and streams
+- **MongoDBInputAdapter / MongoDBOutputAdapter**: For MongoDB collections
 
 To request a new adapter, please open an issue on GitHub.
 

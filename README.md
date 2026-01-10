@@ -12,7 +12,7 @@ Whether you're migrating data, cleaning CSVs, or processing streams, ZooPipe pro
 - 🔌 **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors
 - ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor`, `ThreadExecutor`, `DaskExecutor` and `RayExecutor`
 - 🗜️ **High-Performance Serialization**: Uses msgpack and optional LZ4 compression for efficient inter-process communication
-- 📊 **Built-in Format Support**: Direct support for CSV, JSON (array & JSONL), and Parquet files
+- 📊 **Built-in Format Support**: Direct support for CSV, JSON (array & JSONL), Parquet, and S3-compatible storage (Boto3, MinIO)
 - 🚨 **Automated Error Handling**: Dedicated error output adapter to capture records that fail validation
 - 🪝 **Hooks System**: Transform and enrich data at various pipeline stages with built-in and custom hooks
 - 🔄 **Async Ready**: Base adapters provided for async implementations
@@ -67,6 +67,52 @@ print(f"Finished! Processed {report.total_processed} items.")
 
 ---
 
+## 💡 Common Data Flows
+
+### CSV → PostgreSQL (via SQLAlchemy)
+```python
+from zoopipe import Pipe
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.sqlalchemy import SQLAlchemyOutputAdapter
+
+pipe = Pipe(
+    input_adapter=CSVInputAdapter("data.csv"),
+    output_adapter=SQLAlchemyOutputAdapter("postgresql://user:pass@localhost/db", "users"),
+    executor=MultiProcessingExecutor(UserSchema, max_workers=4),
+)
+```
+
+### S3 → DuckDB (with JIT fetching)
+```python
+from zoopipe import Pipe
+from zoopipe.executor.ray import RayExecutor
+from zoopipe.input_adapter.boto3 import Boto3InputAdapter
+from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+
+pipe = Pipe(
+    input_adapter=Boto3InputAdapter("my-bucket", prefix="data/", jit=True),
+    output_adapter=DuckDBOutputAdapter("analytics.duckdb", "events"),
+    executor=RayExecutor(EventSchema),
+)
+```
+
+### SQLAlchemy → Parquet
+```python
+from zoopipe import Pipe
+from zoopipe.executor.dask import DaskExecutor
+from zoopipe.input_adapter.sqlalchemy import SQLAlchemyInputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+
+pipe = Pipe(
+    input_adapter=SQLAlchemyInputAdapter("mysql://localhost/olddb", "legacy_table"),
+    output_adapter=ArrowOutputAdapter("output.parquet", format="parquet"),
+    executor=DaskExecutor(MigrationSchema),
+)
+```
+
+---
+
 ## 📚 Documentation
 
 ### Getting Started
@@ -99,7 +145,7 @@ ZooPipe uses a decoupled architecture based on four components:
 │  Input Adapter  │─────▶│   Executor   │─────▶│ Output Adapter  │
 │ (CSV, JSON,     │      │ (Validation  │      │ (CSV, JSON,     │
 │  Parquet, DB,   │      │  & Transform)│      │  Parquet, DB,   │
-│    API, etc)    │      │              │      │   API, etc)     │
+│  S3, API, etc)  │      │              │      │  S3, API, etc)  │
 └─────────────────┘      └──────────────┘      └─────────────────┘
                                 │
                                 │ (errors)
@@ -110,7 +156,7 @@ ZooPipe uses a decoupled architecture based on four components:
                          └──────────────┘
 ```
 
-- **Input Adapter**: Reads data from sources (CSV, JSON, Parquet, SQL, API)
+- **Input Adapter**: Reads data from sources (CSV, JSON, Parquet, SQL, S3, API)
 - **Executor**: Validates with Pydantic and processes data (sequential or parallel)
 - **Output Adapter**: Persists validated data
 - **Error Output Adapter**: Captures failed validations (Dead Letter Queue)

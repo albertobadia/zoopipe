@@ -38,6 +38,11 @@ You can run all examples sequentially with:
 - **13 No Output**: Hooks/Executor-only persistence.
 - **13 PyArrow**: High-speed Parquet processing.
 - **14 Remote Fetch**: Adapter-level fetching hooks.
+- **15 SQLAlchemy JIT**: Database JIT fetching.
+- **16 DuckDB JIT**: DuckDB parallel fetching.
+- **17 Asyncio Executor**: Async I/O operations.
+- **18 Boto3 S3 Mocked**: S3 processing with moto (no real AWS needed).
+- **19 MinIO S3 Mocked**: MinIO processing with mocks (no server needed).
 
 ## Sample Data
 

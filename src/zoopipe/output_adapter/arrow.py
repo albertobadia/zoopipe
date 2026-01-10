@@ -62,8 +62,6 @@ class ArrowOutputAdapter(BaseOutputAdapter):
             )
 
         row = entry.get("validated_data") or entry.get("raw_data") or {}
-        # We might want to include some metadata or ID, but usually for Parquet
-        # users want the records themselves.
         self._buffer.append(row)
 
         if len(self._buffer) >= self.batch_size:
