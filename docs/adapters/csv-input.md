@@ -13,7 +13,7 @@ The CSVInputAdapter reads data from CSV files with extensive configuration optio
 ## Usage
 
 ```python
-from flowschema.input_adapter.csv import CSVInputAdapter
+from zoopipe.input_adapter.csv import CSVInputAdapter
 
 input_adapter = CSVInputAdapter(
     filepath="data.csv",
@@ -39,7 +39,7 @@ input_adapter = CSVInputAdapter(
 ### Basic Usage
 
 ```python
-from flowschema.input_adapter.csv import CSVInputAdapter
+from zoopipe.input_adapter.csv import CSVInputAdapter
 
 adapter = CSVInputAdapter("users.csv")
 ```

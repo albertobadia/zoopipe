@@ -3,15 +3,15 @@ import sqlite3
 
 from pydantic import BaseModel, ConfigDict
 
-from flowschema import (
+from zoopipe import (
     BaseHook,
     EntryTypedDict,
-    FlowSchema,
     HookStore,
+    Pipe,
 )
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.dummy import DummyOutputAdapter
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.dummy import DummyOutputAdapter
 
 
 class UserSchema(BaseModel):
@@ -71,15 +71,15 @@ data_input = "examples/data/sample_data.json"
 # another output stream.
 sqlite_hook = SQLiteWriterHook(db_file)
 
-schema_flow = FlowSchema(
+pipe = Pipe(
     input_adapter=JSONInputAdapter(data_input, format="array"),
     output_adapter=DummyOutputAdapter(),
     executor=SyncFifoExecutor(UserSchema),
     post_validation_hooks=[sqlite_hook],
 )
 
-print(f"Starting flow processing into {db_file}...")
-report = schema_flow.start()
+print(f"Starting pipeprocessing into {db_file}...")
+report = pipe.start()
 report.wait()
 
 print("\nProcessing Metrics:")

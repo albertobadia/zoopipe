@@ -2,6 +2,6 @@
 
 rm -rf dist
 rm -rf build
-rm -rf flowschema.egg-info
+rm -rf zoopipe.egg-info
 
 uv build

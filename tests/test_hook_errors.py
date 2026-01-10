@@ -1,11 +1,11 @@
 import queue
 
-from flowschema import EntryStatus, FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.hooks.base import BaseHook, HookStore
-from flowschema.input_adapter.queue import QueueInputAdapter
-from flowschema.models.core import EntryTypedDict
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe import EntryStatus, Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.input_adapter.queue import QueueInputAdapter
+from zoopipe.models.core import EntryTypedDict
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 
 class FailingHook(BaseHook):
@@ -24,34 +24,34 @@ def test_hook_failure_marks_entry_failed():
     output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(schema_model=None)  # type: ignore
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter,
         output_adapter=output_adapter,
         executor=executor,
         pre_validation_hooks=[FailingHook()],
     )
 
-    report = flow.start()
+    report = pipe.start()
     report.wait()
 
     assert report.error_count == 1
     assert report.success_count == 0
 
     error_adapter = MemoryOutputAdapter()
-    flow.error_output_adapter = error_adapter
+    pipe.error_output_adapter = error_adapter
 
     input_q2 = queue.Queue()
     input_q2.put({"foo": "bar"})
     input_q2.put(None)
 
-    flow2 = FlowSchema(
+    pipe2 = Pipe(
         input_adapter=QueueInputAdapter(input_q2),
         output_adapter=MemoryOutputAdapter(),
         executor=SyncFifoExecutor(schema_model=None),  # type: ignore
         error_output_adapter=error_adapter,
         pre_validation_hooks=[FailingHook()],
     )
-    report2 = flow2.start()
+    report2 = pipe2.start()
     report2.wait()
 
     assert len(error_adapter.results) == 1
@@ -64,7 +64,7 @@ def test_hook_failure_marks_entry_failed():
 def test_flow_report_duration():
     import time
 
-    from flowschema import FlowReport
+    from zoopipe import FlowReport
 
     report = FlowReport()
     assert report.duration == 0.0

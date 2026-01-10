@@ -1,10 +1,10 @@
 # Adapters
 
-Adapters handle communication with external data sources and sinks in FlowSchema. They provide a pluggable interface for reading from and writing to various data formats.
+Adapters handle communication with external data sources and sinks in Pipe. They provide a pluggable interface for reading from and writing to various data formats.
 
 ## Architecture
 
-FlowSchema uses three types of adapters:
+Pipe uses three types of adapters:
 
 - **Input Adapter**: Fetches data from a source
 - **Output Adapter**: Persists processed data to a destination
@@ -112,7 +112,7 @@ Provides an iterator interface to consume validation results in real-time.
 
 ### Queue Adapters
 
-Bridges the gap between external applications and FlowSchema's pipeline using thread-safe or async queues.
+Bridges the gap between external applications and Pipe's pipeline using thread-safe or async queues.
 
 #### Async Queues
 Used for `asyncio` based applications (FastAPI, WebSockets).
@@ -139,11 +139,11 @@ Used for standard multi-threaded applications.
 
 **Example (Async):**
 ```python
-from flowschema import FlowSchema
-from flowschema.input_adapter.queue import AsyncQueueInputAdapter
-from flowschema.output_adapter.queue import AsyncQueueOutputAdapter
+from zoopipe import Pipe
+from zoopipe.input_adapter.queue import AsyncQueueInputAdapter
+from zoopipe.output_adapter.queue import AsyncQueueOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=AsyncQueueInputAdapter(input_queue),
     output_adapter=AsyncQueueOutputAdapter(output_queue),
     executor=executor
@@ -152,11 +152,11 @@ flow = FlowSchema(
 
 **Example (Sync):**
 ```python
-from flowschema import FlowSchema
-from flowschema.input_adapter.queue import QueueInputAdapter
-from flowschema.output_adapter.queue import QueueOutputAdapter
+from zoopipe import Pipe
+from zoopipe.input_adapter.queue import QueueInputAdapter
+from zoopipe.output_adapter.queue import QueueOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=QueueInputAdapter(input_queue),
     output_adapter=QueueOutputAdapter(output_queue),
     executor=executor
@@ -176,10 +176,10 @@ A no-op output adapter for cases where hooks handle all output.
 
 **Example:**
 ```python
-from flowschema import FlowSchema
-from flowschema.output_adapter.dummy import DummyOutputAdapter
+from zoopipe import Pipe
+from zoopipe.output_adapter.dummy import DummyOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=DummyOutputAdapter(),  # No output overhead
     post_validation_hooks=[DBWriterHook()],  # Hook writes data
@@ -221,7 +221,7 @@ Learn how to build your own input and output adapters for specialized data sourc
 
 ## The Entry Object
 
-Every record in FlowSchema is wrapped in an `EntryTypedDict`, which tracks its lifecycle through the pipeline.
+Every record in Pipe is wrapped in an `EntryTypedDict`, which tracks its lifecycle through the pipeline.
 
 ### Entry Structure
 
@@ -266,12 +266,12 @@ graph LR
 ### CSV Processing
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=CSVInputAdapter("input.csv"),
     output_adapter=CSVOutputAdapter("output.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"),
@@ -282,12 +282,12 @@ flow = FlowSchema(
 ### JSON Processing
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=JSONInputAdapter("input.json", format="array"),
     output_adapter=JSONOutputAdapter("output.json", indent=2),
     executor=SyncFifoExecutor(YourSchema)
@@ -297,9 +297,9 @@ flow = FlowSchema(
 ### With Hooks
 
 ```python
-from flowschema.hooks.builtin import TimestampHook
+from zoopipe.hooks.builtin import TimestampHook
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,

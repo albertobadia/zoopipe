@@ -3,9 +3,9 @@ import uuid
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from flowschema.input_adapter.arrow import ArrowInputAdapter
-from flowschema.models.core import EntryStatus
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.models.core import EntryStatus
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 
 
 def test_arrow_input_adapter_parquet(tmp_path):

@@ -1,6 +1,6 @@
 # Examples
 
-FlowSchema includes executable examples demonstrating various data processing scenarios. All examples are located in the [`examples/`](../examples/) directory.
+Pipe includes executable examples demonstrating various data processing scenarios. All examples are located in the [`examples/`](../examples/) directory.
 
 ## Running Examples
 
@@ -179,4 +179,4 @@ For more detailed information, see:
 
 - [Executors Documentation](executors.md) - Learn about different execution strategies
 - [Adapters Documentation](adapters.md) - Input and output adapter reference
-- [RFC: Architecture and Design](RFC.md) - Deep dive into FlowSchema's architecture
+- [RFC: Architecture and Design](RFC.md) - Deep dive into Pipe's architecture

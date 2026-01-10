@@ -1,5 +1,5 @@
-from flowschema.models.core import EntryStatus
-from flowschema.output_adapter.dummy import DummyOutputAdapter
+from zoopipe.models.core import EntryStatus
+from zoopipe.output_adapter.dummy import DummyOutputAdapter
 
 
 def test_dummy_output_adapter():

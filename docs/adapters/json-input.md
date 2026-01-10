@@ -13,7 +13,7 @@ The JSONInputAdapter reads data from JSON files in two formats: JSON arrays or J
 ## Usage
 
 ```python
-from flowschema.input_adapter.json import JSONInputAdapter
+from zoopipe.input_adapter.json import JSONInputAdapter
 
 input_adapter = JSONInputAdapter(
     source="data.json",
@@ -37,7 +37,7 @@ input_adapter = JSONInputAdapter(
 ### Reading JSON Array
 
 ```python
-from flowschema.input_adapter.json import JSONInputAdapter
+from zoopipe.input_adapter.json import JSONInputAdapter
 
 adapter = JSONInputAdapter(
     source="users.json",

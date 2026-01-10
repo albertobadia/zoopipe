@@ -1,10 +1,10 @@
 import json
 import os
 
-from flowschema import FlowSchema
-from flowschema.executor.thread import ThreadExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.thread import ThreadExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
 def setup_data():
@@ -25,16 +25,16 @@ def main():
     input_adapter = JSONInputAdapter("examples/data/no_pydantic.json")
     output_adapter = JSONOutputAdapter("examples/output_data/no_pydantic_output.json")
 
-    print("Starting flow without Pydantic schema...")
-    with FlowSchema(
+    print("Starting pipewithout Pydantic schema...")
+    with Pipe(
         input_adapter=input_adapter,
         output_adapter=output_adapter,
         executor=executor,
-    ) as flow:
-        report = flow.start()
+    ) as pipe:
+        report = pipe.start()
         report.wait()
 
-    print("\nFlow completed!")
+    print("\nPipecompleted!")
     print(f"Total processed: {report.total_processed}")
     print(f"Success count: {report.success_count}")
     print(f"Error count: {report.error_count}")

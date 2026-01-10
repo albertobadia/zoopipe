@@ -1,12 +1,12 @@
 from models import UserSchema
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.hooks.base import BaseHook
-from flowschema.hooks.builtin import FieldMapperHook, TimestampHook
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.generator import GeneratorOutputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.hooks.base import BaseHook
+from zoopipe.hooks.builtin import FieldMapperHook, TimestampHook
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.generator import GeneratorOutputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
 class UppercaseNameHook(BaseHook):
@@ -21,14 +21,14 @@ def example_timestamp_hook():
     hooks = [TimestampHook(field_name="processed_at")]
 
     output_adapter = GeneratorOutputAdapter()
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
         output_adapter=output_adapter,
         executor=SyncFifoExecutor(UserSchema),
         pre_validation_hooks=hooks,
     )
 
-    report = schema_flow.start()
+    report = pipe.start()
     for entry in output_adapter:
         if entry["status"].value == "validated":
             print(f"Processed at: {entry['metadata'].get('processed_at')}")
@@ -45,14 +45,14 @@ def example_field_mapper():
         )
     ]
 
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
         output_adapter=JSONOutputAdapter("examples/output_data/output.json", indent=2),
         executor=SyncFifoExecutor(UserSchema),
         pre_validation_hooks=hooks,
     )
 
-    report = schema_flow.start()
+    report = pipe.start()
     report.wait()
     print(report)
 
@@ -61,14 +61,14 @@ def example_custom_hook():
     hooks = [UppercaseNameHook(), TimestampHook(field_name="processed_at")]
 
     output_adapter = GeneratorOutputAdapter()
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
         output_adapter=output_adapter,
         executor=SyncFifoExecutor(UserSchema),
         pre_validation_hooks=hooks,
     )
 
-    report = schema_flow.start()
+    report = pipe.start()
     for entry in output_adapter:
         if entry["status"].value == "validated":
             print(f"Name: {entry['raw_data'].get('name')}")

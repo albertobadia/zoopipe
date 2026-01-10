@@ -2,10 +2,10 @@ import queue
 
 from pydantic import BaseModel
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.queue import QueueInputAdapter
-from flowschema.output_adapter.queue import QueueOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.queue import QueueInputAdapter
+from zoopipe.output_adapter.queue import QueueOutputAdapter
 
 
 class SimpleSchema(BaseModel):
@@ -16,13 +16,13 @@ def test_sync_queue_flow():
     input_q = queue.Queue()
     output_q = queue.Queue()
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=QueueInputAdapter(input_q),
         output_adapter=QueueOutputAdapter(output_q),
         executor=SyncFifoExecutor(SimpleSchema),
     )
 
-    report = flow.start()
+    report = pipe.start()
 
     input_q.put({"name": "Alice"})
     input_q.put({"name": "Bob"})

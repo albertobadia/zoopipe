@@ -1,13 +1,13 @@
 from models import UserSchema
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
 def example_json_array():
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=JSONInputAdapter(
             source="examples/data/sample_data.json", format="array"
         ),
@@ -20,13 +20,13 @@ def example_json_array():
         executor=SyncFifoExecutor(UserSchema),
     )
 
-    report = schema_flow.start()
+    report = pipe.start()
     report.wait()
     print(report)
 
 
 def example_jsonl():
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=JSONInputAdapter(
             source="examples/data/sample_data.jsonl", format="jsonl"
         ),
@@ -39,7 +39,7 @@ def example_jsonl():
         executor=SyncFifoExecutor(UserSchema),
     )
 
-    report = schema_flow.start()
+    report = pipe.start()
     report.wait()
     print(report)
 

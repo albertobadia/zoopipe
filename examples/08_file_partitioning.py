@@ -2,15 +2,15 @@ import os
 
 from pydantic import BaseModel
 
-from flowschema import (
+from zoopipe import (
     EntryTypedDict,
-    FlowSchema,
     HookStore,
     PartitionedReaderHook,
+    Pipe,
 )
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.partitioner import FilePartitioner
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.input_adapter.partitioner import FilePartitioner
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 
 # 1. Define the model for the lines we expect in the file
@@ -50,8 +50,8 @@ def run_partitioning_demo():
 
     # 2. Setup the Flow
     # We use FilePartitioner to split the file into 4 parts.
-    # Each part is an 'Entry' in FlowSchema.
-    flow = FlowSchema(
+    # Each part is an 'Entry' in Pipe.
+    pipe = Pipe(
         input_adapter=FilePartitioner(file_path, num_partitions=4),
         output_adapter=MemoryOutputAdapter(),
         executor=MultiProcessingExecutor(LineModel, max_workers=4),
@@ -61,12 +61,12 @@ def run_partitioning_demo():
     print(f"- Partitioning {file_path} into 4 chunks...")
     print("- Processing chunks in parallel using MultiProcessingExecutor...\n")
 
-    report = flow.start()
+    report = pipe.start()
     report.wait()
 
     print(f"✅ Processing complete! Report: {report}")
 
-    output = flow.output_adapter
+    output = pipe.output_adapter
     if not output.results:
         print("⚠️ No entries were successfully processed. Check validation errors.")
 

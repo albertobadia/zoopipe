@@ -1,9 +1,9 @@
 from pydantic import BaseModel, ConfigDict
 
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from zoopipe.core import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
 
 
 def test_csv_output_adapter(tmp_path):
@@ -18,11 +18,11 @@ def test_csv_output_adapter(tmp_path):
     output_adapter = CSVOutputAdapter(output_file)
     executor = SyncFifoExecutor(Person)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter, executor=executor, output_adapter=output_adapter
     )
 
-    report = flow.start()
+    report = pipe.start()
     report.wait()
     results_count = report.total_processed
 

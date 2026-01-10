@@ -1,10 +1,10 @@
 # Executors
 
-Executors define **how** the data flows through the FlowSchema system. They handle the validation logic and can process data sequentially or in parallel.
+Executors define **how** the data flows through the Pipe system. They handle the validation logic and can process data sequentially or in parallel.
 
 ## Overview
 
-FlowSchema provides three types of executors:
+Pipe provides three types of executors:
 
 | Executor | Use Case | Parallelism | Best For |
 |----------|----------|-------------|----------|
@@ -30,7 +30,7 @@ Processes entries one by one in a synchronous, first-in-first-out manner.
 ### Usage
 
 ```python
-from flowschema.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
 
 executor = SyncFifoExecutor(YourSchema)
 ```
@@ -57,7 +57,7 @@ Leverages Python's multiprocessing to process data in parallel across multiple C
 ### Usage
 
 ```python
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
 
 executor = MultiProcessingExecutor(
     schema_model=YourSchema,
@@ -97,7 +97,7 @@ Uses a thread pool for concurrent execution. This is lighter than multiprocessin
 ### Usage
 
 ```python
-from flowschema.executor.thread import ThreadExecutor
+from zoopipe.executor.thread import ThreadExecutor
 
 executor = ThreadExecutor(
     schema_model=YourSchema,
@@ -128,7 +128,7 @@ Uses Dask for distributed parallel processing. Ideal for ETL workflows or if you
 ### Usage
 
 ```python
-from flowschema.executor.dask import DaskExecutor
+from zoopipe.executor.dask import DaskExecutor
 
 # Connect to a local cluster (auto-created) or existing scheduler
 executor = DaskExecutor(
@@ -164,7 +164,7 @@ Uses Ray for distributed parallel processing across multiple machines or contain
 #### Local Mode
 
 ```python
-from flowschema.executor.ray import RayExecutor
+from zoopipe.executor.ray import RayExecutor
 
 executor = RayExecutor(
     schema_model=YourSchema,

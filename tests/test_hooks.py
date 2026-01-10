@@ -2,14 +2,14 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
-from flowschema.core import FlowSchema
-from flowschema.executor.base import BaseExecutor
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.hooks.base import BaseHook, HookStore
-from flowschema.hooks.builtin import FieldMapperHook, TimestampHook
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.models.core import EntryStatus, EntryTypedDict
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.core import Pipe
+from zoopipe.executor.base import BaseExecutor
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.hooks.builtin import FieldMapperHook, TimestampHook
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.models.core import EntryStatus, EntryTypedDict
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 
 class UserSchema(BaseModel):
@@ -116,7 +116,7 @@ def test_hook_with_setup_teardown():
     assert store["counter"] is None
 
 
-def test_hooks_integration_with_flowschema(tmp_path):
+def test_hooks_integration_with_zoopipe(tmp_path):
     input_file = tmp_path / "input.json"
 
     input_file.write_text('[{"name": "Alice", "age": 30}]')
@@ -134,7 +134,7 @@ def test_hooks_integration_with_flowschema(tmp_path):
             return entries
 
     memory_adapter = MemoryOutputAdapter()
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=JSONInputAdapter(input_file, format="array"),
         output_adapter=memory_adapter,
         executor=SyncFifoExecutor(UserSchema),
@@ -144,7 +144,7 @@ def test_hooks_integration_with_flowschema(tmp_path):
         ],
     )
 
-    report = flow.start()
+    report = pipe.start()
     report.wait()
     entries = memory_adapter.results
 
@@ -179,6 +179,7 @@ def test_max_hook_chunk_size():
     BaseExecutor.run_hooks(entries, [hook], store, max_hook_chunk_size=3)
 
     assert store["batch_calls"][0] == 4
+
 
 def test_hook_store_mutability():
     class MutableHook(BaseHook):

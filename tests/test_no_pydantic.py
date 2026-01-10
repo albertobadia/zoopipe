@@ -1,11 +1,11 @@
 import json
 import os
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.executor.thread import ThreadExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.executor.thread import ThreadExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 
 def test_flow_no_pydantic_thread():
@@ -19,12 +19,12 @@ def test_flow_no_pydantic_thread():
         output_adapter = MemoryOutputAdapter()
         input_adapter = JSONInputAdapter(input_file)
 
-        with FlowSchema(
+        with Pipe(
             input_adapter=input_adapter,
             output_adapter=output_adapter,
             executor=executor,
-        ) as flow:
-            report = flow.start()
+        ) as pipe:
+            report = pipe.start()
             report.wait()
 
         assert report.success_count == 5
@@ -47,12 +47,12 @@ def test_flow_no_pydantic_sync():
         output_adapter = MemoryOutputAdapter()
         input_adapter = JSONInputAdapter(input_file)
 
-        with FlowSchema(
+        with Pipe(
             input_adapter=input_adapter,
             output_adapter=output_adapter,
             executor=executor,
-        ) as flow:
-            report = flow.start()
+        ) as pipe:
+            report = pipe.start()
             report.wait()
 
         assert report.success_count == 5
@@ -72,11 +72,11 @@ def test_flow_no_output_adapter():
         executor = SyncFifoExecutor(schema_model=None)
         input_adapter = JSONInputAdapter(input_file)
 
-        with FlowSchema(
+        with Pipe(
             input_adapter=input_adapter,
             executor=executor,
-        ) as flow:
-            report = flow.start()
+        ) as pipe:
+            report = pipe.start()
             report.wait()
 
         assert report.success_count == 5

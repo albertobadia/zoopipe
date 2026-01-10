@@ -1,6 +1,6 @@
 # Creating Custom Adapters
 
-FlowSchema provides base classes for creating your own input and output adapters to support custom data sources and destinations.
+Pipe provides base classes for creating your own input and output adapters to support custom data sources and destinations.
 
 ## Custom Input Adapters
 
@@ -9,8 +9,8 @@ FlowSchema provides base classes for creating your own input and output adapters
 Abstract base class for creating custom synchronous input adapters.
 
 ```python
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.models.core import EntryTypedDict
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.models.core import EntryTypedDict
 import typing
 
 class MyCustomInputAdapter(BaseInputAdapter):
@@ -31,7 +31,7 @@ class MyCustomInputAdapter(BaseInputAdapter):
 Abstract base class for creating async input adapters.
 
 ```python
-from flowschema.input_adapter.base_async import BaseAsyncInputAdapter
+from zoopipe.input_adapter.base_async import BaseAsyncInputAdapter
 
 class MyAsyncInputAdapter(BaseAsyncInputAdapter):
     @property
@@ -50,8 +50,8 @@ class MyAsyncInputAdapter(BaseAsyncInputAdapter):
 Abstract base class for creating custom synchronous output adapters.
 
 ```python
-from flowschema.output_adapter.base import BaseOutputAdapter
-from flowschema.models.core import EntryTypedDict
+from zoopipe.output_adapter.base import BaseOutputAdapter
+from zoopipe.models.core import EntryTypedDict
 
 class MyCustomOutputAdapter(BaseOutputAdapter):
     def __init__(self, destination_config):
@@ -69,7 +69,7 @@ class MyCustomOutputAdapter(BaseOutputAdapter):
 Abstract base class for creating async output adapters.
 
 ```python
-from flowschema.output_adapter.base_async import BaseAsyncOutputAdapter
+from zoopipe.output_adapter.base_async import BaseAsyncOutputAdapter
 
 class MyAsyncOutputAdapter(BaseAsyncOutputAdapter):
     async def write(self, entry: EntryTypedDict) -> None:
@@ -82,8 +82,8 @@ class MyAsyncOutputAdapter(BaseAsyncOutputAdapter):
 ## Example: Database Output Adapter
 
 ```python
-from flowschema.output_adapter.base import BaseOutputAdapter
-from flowschema.models.core import EntryTypedDict
+from zoopipe.output_adapter.base import BaseOutputAdapter
+from zoopipe.models.core import EntryTypedDict
 import sqlite3
 
 class SQLiteOutputAdapter(BaseOutputAdapter):
@@ -117,7 +117,7 @@ class SQLiteOutputAdapter(BaseOutputAdapter):
 ## Example: API Input Adapter
 
 ```python
-from flowschema.input_adapter.base import BaseInputAdapter
+from zoopipe.input_adapter.base import BaseInputAdapter
 import typing
 import requests
 

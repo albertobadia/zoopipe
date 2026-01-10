@@ -14,10 +14,10 @@ The `MemoryOutputAdapter` stores all processed entries in an in-memory list, mak
 ### Basic Example
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 from pydantic import BaseModel
 
 class ProductSchema(BaseModel):
@@ -26,14 +26,14 @@ class ProductSchema(BaseModel):
 
 output_adapter = MemoryOutputAdapter()
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=JSONInputAdapter("products.json"),
     output_adapter=output_adapter,
     executor=SyncFifoExecutor(ProductSchema)
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 
 print(f"Processed {len(output_adapter.results)} items")
@@ -44,19 +44,19 @@ for entry in output_adapter.results:
 ### Unit Testing
 
 ```python
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 def test_validation_flow():
     output_adapter = MemoryOutputAdapter()
     
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=test_input_adapter,
         output_adapter=output_adapter,
         executor=SyncFifoExecutor(MySchema)
     )
     
-    with flow:
-        report = flow.start()
+    with pipe:
+        report = pipe.start()
         report.wait()
     
     assert len(output_adapter.results) == 10
@@ -66,18 +66,18 @@ def test_validation_flow():
 ### Analyzing Results
 
 ```python
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 output_adapter = MemoryOutputAdapter()
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 
 validated_data = [
@@ -94,7 +94,7 @@ print(f"Success rate: {len(validated_data) / len(output_adapter.results) * 100:.
 The `MemoryOutputAdapter` requires no parameters:
 
 ```python
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 output_adapter = MemoryOutputAdapter()
 ```
@@ -104,7 +104,7 @@ output_adapter = MemoryOutputAdapter()
 ### `results`
 - **Type**: `list[EntryTypedDict]`
 - **Description**: List containing all entries that have been written to the adapter
-- **Access**: Read-only (do not modify directly during flow execution)
+- **Access**: Read-only (do not modify directly during pipeexecution)
 
 ## Entry Structure
 
@@ -131,14 +131,14 @@ Perfect for testing validation logic without I/O overhead:
 def test_email_validation():
     adapter = MemoryOutputAdapter()
     
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=test_data_adapter,
         output_adapter=adapter,
         executor=SyncFifoExecutor(EmailSchema)
     )
     
-    with flow:
-        report = flow.start()
+    with pipe:
+        report = pipe.start()
         report.wait()
     
     for entry in adapter.results:
@@ -151,14 +151,14 @@ Inspect intermediate results during development:
 ```python
 output_adapter = MemoryOutputAdapter()
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 
 import pprint
@@ -169,19 +169,19 @@ pprint.pprint(output_adapter.results[:5])
 Useful for prototyping and exploration with small datasets:
 
 ```python
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 import statistics
 
 output_adapter = MemoryOutputAdapter()
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=JSONInputAdapter("sample_data.json"),
     output_adapter=output_adapter,
     executor=SyncFifoExecutor(DataSchema)
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 
 ages = [entry["validated_data"]["age"] for entry in output_adapter.results]

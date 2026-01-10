@@ -3,15 +3,15 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
-from flowschema import (
+from zoopipe import (
     BaseHook,
-    FlowSchema,
     HookStore,
+    Pipe,
 )
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.models.core import EntryStatus, EntryTypedDict
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.models.core import EntryStatus, EntryTypedDict
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 
 # 1. Real Schema for the data we want to process
@@ -78,7 +78,7 @@ class BusinessLogicHook(BaseHook):
         self, entries: list[EntryTypedDict], store: HookStore
     ) -> list[EntryTypedDict]:
         for entry in entries:
-            # We already have validated_data available thanks to its FlowSchema engine
+            # We already have validated_data available thanks to its Pipe engine
             age = entry["validated_data"].get("age", 0)
             entry["metadata"]["is_adult"] = age >= 18
         return entries
@@ -88,7 +88,7 @@ def run_jit_ingestion_demo():
     print("🚀 Starting 'JIT Ingestion' Demo...")
 
     # Configure the pipeline
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=UserIDInputAdapter(count=10),
         output_adapter=MemoryOutputAdapter(),
         executor=MultiProcessingExecutor(UserSchema, max_workers=4),
@@ -99,12 +99,12 @@ def run_jit_ingestion_demo():
     print("- The Coordinator only generated IDs.")
     print("- Workers are doing the 'fetch' and validation in parallel.\n")
 
-    report = flow.start()
+    report = pipe.start()
     report.wait()
 
     print("✅ Processing completed!")
 
-    output = flow.output_adapter
+    output = pipe.output_adapter
     for entry in output.results:
         uid = entry["metadata"]["user_id"]
         name = entry["validated_data"].get("name")

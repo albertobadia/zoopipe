@@ -2,11 +2,11 @@ import logging
 
 from pydantic import BaseModel
 
-from flowschema.core import FlowSchema
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
-from flowschema.output_adapter.generator import GeneratorOutputAdapter
+from zoopipe.core import Pipe
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.generator import GeneratorOutputAdapter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,13 +29,13 @@ def test_multiprocessing_executor(tmp_path):
 
     gen_adapter = GeneratorOutputAdapter()
     error_csv = tmp_path / "test_mp_errors.csv"
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter(str(sample_csv)),
         output_adapter=gen_adapter,
         error_output_adapter=CSVOutputAdapter(str(error_csv)),
         executor=MultiProcessingExecutor(InputModel, max_workers=2, chunksize=2),
     )
-    report = schema_flow.start()
+    report = pipe.start()
     output_data = list(gen_adapter)
     report.wait()
 

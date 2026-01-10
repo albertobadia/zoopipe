@@ -1,6 +1,6 @@
 # Hooks System
 
-FlowSchema provides a powerful hooks system that allows you to transform, enrich, or modify data at various stages of the unified processing pipeline.
+Pipe provides a powerful hooks system that allows you to transform, enrich, or modify data at various stages of the unified processing pipeline.
 
 ## Overview
 
@@ -19,8 +19,8 @@ The hook system is designed to be:
 Abstract base class for creating custom hooks.
 
 ```python
-from flowschema.hooks.base import BaseHook, HookStore
-from flowschema.models.core import EntryTypedDict
+from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.models.core import EntryTypedDict
 
 class MyCustomHook(BaseHook):
     def setup(self, store: HookStore) -> None:
@@ -66,7 +66,7 @@ class CountingHook(BaseHook):
 Automatically adds timestamps to your data.
 
 ```python
-from flowschema.hooks.builtin import TimestampHook
+from zoopipe.hooks.builtin import TimestampHook
 
 timestamp_hook = TimestampHook(
     field_name="processed_at",
@@ -83,7 +83,7 @@ timestamp_hook = TimestampHook(
 Renames or maps fields in your data.
 
 ```python
-from flowschema.hooks.builtin import FieldMapperHook
+from zoopipe.hooks.builtin import FieldMapperHook
 
 mapper_hook = FieldMapperHook(mapping={
     "old_field_name": "new_field_name",
@@ -96,15 +96,15 @@ mapper_hook = FieldMapperHook(mapping={
 
 ## Using Hooks
 
-Hooks are registered as either **pre-validation** or **post-validation** hooks when creating your FlowSchema.
+Hooks are registered as either **pre-validation** or **post-validation** hooks when creating your Pipe.
 
 ### Pre-validation Hooks
 
 Pre-validation hooks run before Pydantic validation and can modify raw input data:
 
 ```python
-from flowschema.core import FlowSchema
-from flowschema.hooks.base import BaseHook
+from zoopipe.core import Pipe
+from zoopipe.hooks.base import BaseHook
 
 class NormalizeFieldsHook(BaseHook):
     def execute(self, entry: dict, store) -> dict | None:
@@ -112,7 +112,7 @@ class NormalizeFieldsHook(BaseHook):
             entry["name"] = entry["name"].strip().lower()
         return None
 
-schema_flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,
@@ -125,9 +125,9 @@ schema_flow = FlowSchema(
 Post-validation hooks run after successful validation and can enrich the validated data:
 
 ```python
-from flowschema.hooks.builtin import TimestampHook
+from zoopipe.hooks.builtin import TimestampHook
 
-schema_flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,
@@ -140,7 +140,7 @@ schema_flow = FlowSchema(
 You can use both pre-validation and post-validation hooks together:
 
 ```python
-schema_flow = FlowSchema(
+pipe = Pipe(
     input_adapter=input_adapter,
     output_adapter=output_adapter,
     executor=executor,
@@ -154,7 +154,7 @@ schema_flow = FlowSchema(
 ### Data Transformation Hook
 
 ```python
-from flowschema.hooks.base import BaseHook, HookStore
+from zoopipe.hooks.base import BaseHook, HookStore
 
 class UppercaseHook(BaseHook):
     def __init__(self, fields: list[str]):

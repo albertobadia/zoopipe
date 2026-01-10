@@ -2,8 +2,8 @@ import pathlib
 
 from pydantic import BaseModel, ConfigDict
 
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.models.core import EntryStatus
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.models.core import EntryStatus
 
 
 class UserSchema(BaseModel):

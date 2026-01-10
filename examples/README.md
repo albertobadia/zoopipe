@@ -1,6 +1,6 @@
-# FlowSchema Examples
+# Pipe Examples
 
-This directory contains executable examples demonstrating various FlowSchema features.
+This directory contains executable examples demonstrating various Pipe features.
 
 ## Running Examples
 

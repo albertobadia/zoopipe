@@ -2,11 +2,11 @@ import time
 
 from pydantic import BaseModel
 
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
-from flowschema.report import FlowStatus
+from zoopipe.core import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.report import FlowStatus
 
 
 class MockInputAdapter(BaseInputAdapter):
@@ -31,11 +31,11 @@ def test_stop_continue():
     output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.start()
+    report = pipe.start()
     time.sleep(0.2)
 
     report.stop()
@@ -58,11 +58,11 @@ def test_stop_without_continue():
     output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.start()
+    report = pipe.start()
     time.sleep(0.15)
 
     report.stop()

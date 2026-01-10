@@ -4,10 +4,10 @@ import time
 
 from pydantic import BaseModel
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.queue import QueueInputAdapter
-from flowschema.output_adapter.queue import QueueOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.queue import QueueInputAdapter
+from zoopipe.output_adapter.queue import QueueOutputAdapter
 
 
 class UserSchema(BaseModel):
@@ -44,7 +44,7 @@ def main():
     input_q = queue.Queue()
     output_q = queue.Queue()
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=QueueInputAdapter(input_q),
         output_adapter=QueueOutputAdapter(output_q),
         executor=SyncFifoExecutor(UserSchema),
@@ -57,7 +57,7 @@ def main():
     consumer_thread.start()
 
     print("🚀 Starting Sync Queue Pipeline...")
-    report = flow.start()
+    report = pipe.start()
     report.wait()
 
     output_q.put(None)

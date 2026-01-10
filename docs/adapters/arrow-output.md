@@ -28,10 +28,10 @@ pip install pyarrow
 ### Basic Example
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 from pydantic import BaseModel
 
 class UserSchema(BaseModel):
@@ -39,14 +39,14 @@ class UserSchema(BaseModel):
     age: int
     email: str
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=JSONInputAdapter("users.json"),
     output_adapter=ArrowOutputAdapter("output.parquet"),
     executor=SyncFifoExecutor(UserSchema)
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 ```
 
@@ -54,7 +54,7 @@ with flow:
 
 ```python
 import pyarrow as pa
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 
 schema = pa.schema([
     ("name", pa.string()),
@@ -73,7 +73,7 @@ output_adapter = ArrowOutputAdapter(
 ### With Compression
 
 ```python
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 
 output_adapter = ArrowOutputAdapter(
     "compressed_data.parquet",
@@ -128,7 +128,7 @@ output_adapter = ArrowOutputAdapter(
 Write validation results directly to data lake storage:
 
 ```python
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 
 output_adapter = ArrowOutputAdapter(
     "/data/lake/validated/events.parquet",
@@ -141,12 +141,12 @@ output_adapter = ArrowOutputAdapter(
 Transform CSV/JSON to efficient Parquet format:
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.multiprocessing import MultiprocessingExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.multiprocessing import MultiprocessingExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=CSVInputAdapter("large_dataset.csv"),
     output_adapter=ArrowOutputAdapter(
         "transformed.parquet",

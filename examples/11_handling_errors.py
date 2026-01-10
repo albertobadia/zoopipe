@@ -1,11 +1,11 @@
 import logging
 import queue
 
-from flowschema import EntryTypedDict, FlowSchema, HookStore
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.hooks.base import BaseHook
-from flowschema.input_adapter.queue import QueueInputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe import EntryTypedDict, HookStore, Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.hooks.base import BaseHook
+from zoopipe.input_adapter.queue import QueueInputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -47,20 +47,20 @@ def main():
     # 3. Setup Executor
     executor = SyncFifoExecutor(schema_model=None)  # type: ignore - skipping validation for this example
 
-    # 4. Configure Flow with Faulty Hook
-    flow = FlowSchema(
+    # 4. Configure Pipewith Faulty Hook
+    pipe = Pipe(
         input_adapter=input_adapter,
         output_adapter=output_adapter,
         executor=executor,
         pre_validation_hooks=[FaultyDecryptionHook()],
     )
 
-    logger.info("Starting flow with potential errors...")
-    report = flow.start()
+    logger.info("Starting pipewith potential errors...")
+    report = pipe.start()
     report.wait()
 
     # 5. Analyze Results
-    logger.info(f"Flow finished in {report.duration:.4f} seconds")
+    logger.info(f"Pipefinished in {report.duration:.4f} seconds")
     logger.info(f"Processed: {report.total_processed}")
     logger.info(f"Success: {report.success_count}")
     logger.info(f"Errors: {report.error_count}")
@@ -71,7 +71,7 @@ def main():
         print(f"ID: {item['raw_data']['id']} - Status: {item['status']}")
 
     # Inspect failed items
-    # (FlowSchema doesn't output failed items to main output_adapter by default,
+    # (Pipe doesn't output failed items to main output_adapter by default,
     # but we can inspect them if we had an error_adapter,
     # or by checking the report count.
     # To see the errors, we should have used an error_adapter.

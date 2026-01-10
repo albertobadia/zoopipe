@@ -3,13 +3,13 @@ import time
 import pytest
 from pydantic import BaseModel
 
-from flowschema.core import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.models.core import EntryStatus
-from flowschema.output_adapter.generator import GeneratorOutputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
-from flowschema.report import FlowStatus
+from zoopipe.core import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.models.core import EntryStatus
+from zoopipe.output_adapter.generator import GeneratorOutputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.report import FlowStatus
 
 
 class MockInputAdapter(BaseInputAdapter):
@@ -33,11 +33,11 @@ def test_background_run_with_memory_adapter():
     output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.start()
+    report = pipe.start()
     assert report.status in [FlowStatus.PENDING, FlowStatus.RUNNING]
 
     finished = report.wait(timeout=5)
@@ -54,11 +54,11 @@ def test_background_run_with_generator_adapter():
     output_adapter = GeneratorOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.start()
+    report = pipe.start()
 
     results = []
     for entry in output_adapter:
@@ -78,13 +78,13 @@ def test_concurrent_run_error():
     output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter, output_adapter=output_adapter, executor=executor
     )
 
-    report = flow.start()
-    with pytest.raises(RuntimeError, match="Flow is already running"):
-        flow.start()
+    report = pipe.start()
+    with pytest.raises(RuntimeError, match="Pipeis already running"):
+        pipe.start()
 
     report.wait()
 
@@ -96,14 +96,14 @@ def test_error_reporting():
     error_output_adapter = MemoryOutputAdapter()
     executor = SyncFifoExecutor(SimpleModel)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter,
         output_adapter=output_adapter,
         error_output_adapter=error_output_adapter,
         executor=executor,
     )
 
-    report = flow.start()
+    report = pipe.start()
     report.wait()
 
     assert report.total_processed == 2

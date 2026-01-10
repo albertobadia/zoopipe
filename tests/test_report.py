@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from flowschema.report import FlowReport
+from zoopipe.report import FlowReport
 
 
 def test_items_per_second():

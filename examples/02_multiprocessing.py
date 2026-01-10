@@ -1,13 +1,13 @@
 from models import UserSchema
 
-from flowschema import FlowSchema
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
 
 
 def main():
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
         output_adapter=CSVOutputAdapter("examples/output_data/output.csv"),
         error_output_adapter=CSVOutputAdapter("examples/output_data/errors.csv"),
@@ -17,9 +17,9 @@ def main():
     )
 
     print("Starting multiprocessing flow...")
-    report = schema_flow.start()
+    report = pipe.start()
 
-    # We can do other things while the flow runs
+    # We can do other things while the piperuns
     while not report.is_finished:
         print(f"Still working... Progress: {report.total_processed}")
         import time
@@ -28,8 +28,8 @@ def main():
 
     report.wait()  # Ensure it's fully done
 
-    print("\nFlow finished!")
-    print("\nFlow finished!")
+    print("\nPipefinished!")
+    print("\nPipefinished!")
     print(report)
 
 

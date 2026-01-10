@@ -4,10 +4,10 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.queue import AsyncQueueInputAdapter
-from flowschema.output_adapter.queue import AsyncQueueOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.queue import AsyncQueueInputAdapter
+from zoopipe.output_adapter.queue import AsyncQueueOutputAdapter
 
 
 class SensorData(BaseModel):
@@ -54,10 +54,10 @@ async def main():
     input_queue = asyncio.Queue()
     output_queue = asyncio.Queue()
 
-    # Configure FlowSchema with Async Queue Adapters
-    # Note: FlowSchema runs the processing in a background thread,
+    # Configure Pipe with Async Queue Adapters
+    # Note: Pipe runs the processing in a background thread,
     # but these adapters bridge that gap by being coro-safe.
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=AsyncQueueInputAdapter(input_queue),
         output_adapter=AsyncQueueOutputAdapter(output_queue),
         executor=SyncFifoExecutor(SensorData),
@@ -71,13 +71,13 @@ async def main():
     # 2. Start the consumer
     consumer_task = asyncio.create_task(consumer(output_queue))
 
-    # 3. Running FlowSchema (it starts its own thread)
-    report = flow.start()
+    # 3. Running Pipe (it starts its own thread)
+    report = pipe.start()
 
     # 4. Wait for producer to finish
     await producer_task
 
-    # 5. Wait for FlowSchema to complete
+    # 5. Wait for Pipe to complete
     # Since we are in an async main, we can't easily wait() on the report
     # without blocking the loop, but report.wait() is thread-safe.
     await report.wait_async()

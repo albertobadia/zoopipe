@@ -4,13 +4,13 @@ import time
 
 from pydantic import BaseModel
 
-from flowschema.core import FlowSchema
-from flowschema.executor.thread import ThreadExecutor
-from flowschema.hooks.base import BaseHook, HookStore
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.models.core import EntryTypedDict
-from flowschema.output_adapter.csv import CSVOutputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.core import Pipe
+from zoopipe.executor.thread import ThreadExecutor
+from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.models.core import EntryTypedDict
+from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def test_thread_executor(tmp_path):
 
     executor = ThreadExecutor(InputModel, max_workers=2, chunksize=1)
 
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter(str(sample_csv)),
         output_adapter=memory_adapter,
         error_output_adapter=CSVOutputAdapter(str(error_csv)),
@@ -53,7 +53,7 @@ def test_thread_executor(tmp_path):
     )
 
     start_time = time.time()
-    report = schema_flow.start()
+    report = pipe.start()
     report.wait()
     duration = time.time() - start_time
 

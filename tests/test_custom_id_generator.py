@@ -9,10 +9,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from flowschema.input_adapter.arrow import ArrowInputAdapter
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.input_adapter.json import JSONInputAdapter
-from flowschema.input_adapter.queue import AsyncQueueInputAdapter, QueueInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.input_adapter.queue import AsyncQueueInputAdapter, QueueInputAdapter
 
 
 def sequential_id_generator():

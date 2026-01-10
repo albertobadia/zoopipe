@@ -2,13 +2,13 @@ import uuid
 
 from pydantic import BaseModel
 
-from flowschema.core import FlowSchema
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.hooks.base import BaseHook
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.models.core import EntryStatus
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.core import Pipe
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.hooks.base import BaseHook
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.models.core import EntryStatus
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 
 class SimpleModel(BaseModel):
@@ -47,14 +47,14 @@ def test_backpressure_logic():
 
     output = MemoryOutputAdapter()
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=adapter,
         output_adapter=output,
         executor=SyncFifoExecutor(SimpleModel),
         max_bytes_in_flight=500,
     )
 
-    report = flow.start()
+    report = pipe.start()
     report.wait(timeout=5)
 
     assert report.total_processed == 20
@@ -65,14 +65,14 @@ def test_multiprocessing_hook_parity():
     adapter = SlowInputAdapter(count=5)
     output = MemoryOutputAdapter()
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=adapter,
         output_adapter=output,
         executor=MultiProcessingExecutor(SimpleModel, max_workers=2),
         post_validation_hooks=[TrackingHook()],
     )
 
-    report = flow.start()
+    report = pipe.start()
     report.wait(timeout=10)
 
     assert report.total_processed == 5

@@ -3,10 +3,10 @@ import asyncio
 import pytest
 from pydantic import BaseModel
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.queue import AsyncQueueInputAdapter
-from flowschema.output_adapter.queue import AsyncQueueOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.queue import AsyncQueueInputAdapter
+from zoopipe.output_adapter.queue import AsyncQueueOutputAdapter
 
 
 class SimpleSchema(BaseModel):
@@ -18,13 +18,13 @@ async def test_async_queue_flow():
     input_queue = asyncio.Queue()
     output_queue = asyncio.Queue()
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=AsyncQueueInputAdapter(input_queue),
         output_adapter=AsyncQueueOutputAdapter(output_queue),
         executor=SyncFifoExecutor(SimpleSchema),
     )
 
-    report = flow.start()
+    report = pipe.start()
 
     await input_queue.put({"name": "Alice"})
     await input_queue.put({"name": "Bob"})

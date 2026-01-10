@@ -4,10 +4,10 @@ import time
 import pytest
 from pydantic import BaseModel
 
-from flowschema.core import FlowSchema
-from flowschema.executor.dask import DaskExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe.core import Pipe
+from zoopipe.executor.dask import DaskExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 
 # type: ignore
 dask = pytest.importorskip("dask")
@@ -44,14 +44,14 @@ def test_dask_executor(tmp_path, dask_cluster):
     address = dask_cluster.scheduler_address
     executor = DaskExecutor(InputModel, address=address)
 
-    schema_flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter(str(sample_csv)),
         output_adapter=memory_adapter,
         executor=executor,
     )
 
     start_time = time.time()
-    report = schema_flow.start()
+    report = pipe.start()
     report.wait()
     duration = time.time() - start_time
 

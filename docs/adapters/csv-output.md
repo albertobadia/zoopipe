@@ -13,7 +13,7 @@ The CSVOutputAdapter writes validated entries to a CSV file.
 ## Usage
 
 ```python
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
 
 output_adapter = CSVOutputAdapter(
     filepath="output.csv",
@@ -33,7 +33,7 @@ output_adapter = CSVOutputAdapter(
 ### Basic Usage
 
 ```python
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
 
 adapter = CSVOutputAdapter("processed_data.csv")
 ```

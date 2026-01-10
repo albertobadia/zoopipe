@@ -3,11 +3,11 @@ import time
 import pytest
 from pydantic import BaseModel
 
-from flowschema import FlowSchema
-from flowschema.executor.dask import DaskExecutor
-from flowschema.input_adapter.base import BaseInputAdapter
-from flowschema.models.core import EntryStatus
-from flowschema.output_adapter.base import BaseOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.dask import DaskExecutor
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.models.core import EntryStatus
+from zoopipe.output_adapter.base import BaseOutputAdapter
 
 
 class SimpleModel(BaseModel):
@@ -21,7 +21,7 @@ class InfiniteInputAdapter(BaseInputAdapter):
         i = 0
         import uuid
 
-        from flowschema.models.core import EntryTypedDict
+        from zoopipe.models.core import EntryTypedDict
 
         while True:
             yield EntryTypedDict(
@@ -64,14 +64,14 @@ async def test_dask_streaming_backpressure():
     output_adapter = CounterOutputAdapter()
     error_adapter = ErrorCapturingAdapter()
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=input_adapter,
         output_adapter=output_adapter,
         error_output_adapter=error_adapter,
         executor=executor,
     )
 
-    report = flow.start()
+    report = pipe.start()
 
     start_time = time.time()
     while time.time() - start_time < 30:
@@ -79,7 +79,7 @@ async def test_dask_streaming_backpressure():
             break
         await get_async_sleep()(0.1)
 
-    flow.shutdown()
+    pipe.shutdown()
 
     if report.success_count == 0:
         print(f"\n DEBUG: Report status: {report.status}")
@@ -100,7 +100,7 @@ async def test_dask_streaming_backpressure():
         if error_adapter.errors
         else "No errors captured but count > 0"
     )
-    assert report.error_count == 0, f"Flow had errors. First error: {first_error}"
+    assert report.error_count == 0, f"Pipehad errors. First error: {first_error}"
     assert report.success_count > 0, "Should have processed some items"
 
 

@@ -1,8 +1,8 @@
-# FlowSchema
+# ZooPipe
 
-**FlowSchema** is a lightweight, high-performance data processing framework for Python that combines the simplicity of Pydantic validation with the power of parallel processing.
+**ZooPipe** is a lightweight, high-performance data processing framework for Python that combines the simplicity of Pydantic validation with the power of parallel processing.
 
-Whether you're migrating data, cleaning CSVs, or processing streams, FlowSchema provides a structured way to handle validation, transformation, and error management without the complexity of big data frameworks.
+Whether you're migrating data, cleaning CSVs, or processing streams, ZooPipe provides a structured way to handle validation, transformation, and error management without the complexity of big data frameworks.
 
 ---
 
@@ -26,23 +26,23 @@ Whether you're migrating data, cleaning CSVs, or processing streams, FlowSchema 
 ### Installation
 
 ```bash
-uv add flowschema
+uv add zoopipe
 ```
 
 Or using pip:
 
 ```bash
-pip install flowschema
+pip install zoopipe
 ```
 
 ### Simple Example
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.csv import CSVOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -50,16 +50,16 @@ class UserSchema(BaseModel):
     last_name: str
     age: int
 
-schema_flow = FlowSchema(
+pipe = Pipe(
     input_adapter=CSVInputAdapter("users.csv"),
     output_adapter=CSVOutputAdapter("processed_users.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"),
     executor=SyncFifoExecutor(UserSchema),
 )
 
-# Start the flow with context manager to ensure cleanup
-with schema_flow:
-    report = schema_flow.start()
+# Start the pipewith context manager to ensure cleanup
+with pipe:
+    report = pipe.start()
     report.wait()
 
 print(f"Finished! Processed {report.total_processed} items.")
@@ -80,7 +80,7 @@ print(f"Finished! Processed {report.total_processed} items.")
 
 ## 🎯 Use Cases
 
-FlowSchema excels at:
+ZooPipe excels at:
 
 - **Legacy Data Migrations**: Moving data between heterogeneous databases with validation
 - **ETL Pipelines**: Extract, Transform, Load workflows with error handling
@@ -92,7 +92,7 @@ FlowSchema excels at:
 
 ## 🧩 Architecture
 
-FlowSchema uses a decoupled architecture based on four components:
+ZooPipe uses a decoupled architecture based on four components:
 
 ```
 ┌─────────────────┐      ┌──────────────┐      ┌─────────────────┐
@@ -121,7 +121,7 @@ Learn more in the [Architecture RFC](docs/RFC.md).
 
 ## 🔧 Executors
 
-FlowSchema provides three execution strategies:
+ZooPipe provides three execution strategies:
 
 | Executor | Best For | Parallelism |
 |----------|----------|-------------|
@@ -140,8 +140,8 @@ See the [Executors documentation](docs/executors.md) for detailed information.
 ### Setup
 
 ```bash
-git clone https://github.com/albertobadia/flowschema.git
-cd flowschema
+git clone https://github.com/albertobadia/zoopipe.git
+cd zoopipe
 uv sync
 ```
 

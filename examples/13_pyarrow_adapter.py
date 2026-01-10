@@ -3,10 +3,10 @@ import pathlib
 import pyarrow.parquet as pq
 from models import UserSchema
 
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.arrow import ArrowInputAdapter
-from flowschema.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 
 
 def main():
@@ -15,14 +15,14 @@ def main():
 
     print(f"Processing {parquet_input}...")
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=ArrowInputAdapter(parquet_input),
         output_adapter=ArrowOutputAdapter(parquet_output),
         executor=SyncFifoExecutor(UserSchema),
     )
 
     # Run the flow
-    report = flow.start()
+    report = pipe.start()
     report.wait()
 
     print(f"\nFinal Report: {report}")

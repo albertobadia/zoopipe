@@ -4,15 +4,15 @@ import time
 
 from models import UserSchema
 
-from flowschema import (
+from zoopipe import (
     BaseHook,
     EntryTypedDict,
-    FlowSchema,
     HookStore,
+    Pipe,
 )
-from flowschema.executor.thread import ThreadExecutor
-from flowschema.input_adapter.csv import CSVInputAdapter
-from flowschema.output_adapter.generator import GeneratorOutputAdapter
+from zoopipe.executor.thread import ThreadExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.generator import GeneratorOutputAdapter
 
 # Configure logging to see thread information
 logging.basicConfig(
@@ -59,7 +59,7 @@ def main():
     # Since we have an IO delay of 0.5s, multiple threads will be effectively utilized.
     executor = ThreadExecutor(schema_model=UserSchema, max_workers=4, chunksize=1)
 
-    flow = FlowSchema(
+    pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
         output_adapter=output_adapter,
         executor=executor,
@@ -67,11 +67,11 @@ def main():
         post_validation_hooks=[EnrichmentHook()],
     )
 
-    print("Starting Flow with ThreadExecutor (simulating API calls)...")
+    print("Starting Pipewith ThreadExecutor (simulating API calls)...")
     start_time = time.time()
 
     # 3. Start processing
-    report = flow.start()
+    report = pipe.start()
 
     # 4. Consume results
     for result in output_adapter:

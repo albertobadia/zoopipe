@@ -5,9 +5,9 @@ import lz4.frame
 import msgpack
 from pydantic import BaseModel
 
-from flowschema.executor.base import WorkerContext
-from flowschema.executor.multiprocessing import MultiProcessingExecutor
-from flowschema.models.core import EntryStatus, EntryTypedDict
+from zoopipe.executor.base import WorkerContext
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.models.core import EntryStatus, EntryTypedDict
 
 
 def _packer_default(obj):

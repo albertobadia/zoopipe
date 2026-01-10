@@ -29,10 +29,10 @@ pip install pyarrow
 ### Basic Example
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.sync_fifo import SyncFifoExecutor
-from flowschema.input_adapter.arrow import ArrowInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 from pydantic import BaseModel
 
 class UserSchema(BaseModel):
@@ -40,21 +40,21 @@ class UserSchema(BaseModel):
     age: int
     email: str
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=ArrowInputAdapter("users.parquet"),
     output_adapter=JSONOutputAdapter("output.json"),
     executor=SyncFifoExecutor(UserSchema)
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 ```
 
 ### Reading Specific Columns
 
 ```python
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 input_adapter = ArrowInputAdapter(
     "large_dataset.parquet",
@@ -66,7 +66,7 @@ input_adapter = ArrowInputAdapter(
 
 ```python
 import pyarrow.dataset as ds
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 filter_expr = (ds.field("age") > 25) & (ds.field("country") == "US")
 
@@ -79,7 +79,7 @@ input_adapter = ArrowInputAdapter(
 ### Reading Partitioned Datasets
 
 ```python
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 input_adapter = ArrowInputAdapter(
     "/data/lake/events/",
@@ -90,7 +90,7 @@ input_adapter = ArrowInputAdapter(
 ### Multiple Files
 
 ```python
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 import pathlib
 
 files = [
@@ -142,7 +142,7 @@ Read from partitioned data lakes with automatic partition filtering:
 
 ```python
 import pyarrow.dataset as ds
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 filter_expr = ds.field("date") >= "2024-01-01"
 
@@ -158,12 +158,12 @@ input_adapter = ArrowInputAdapter(
 Convert Parquet files to JSON with validation:
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.multiprocessing import MultiprocessingExecutor
-from flowschema.input_adapter.arrow import ArrowInputAdapter
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.multiprocessing import MultiprocessingExecutor
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=ArrowInputAdapter("input.parquet"),
     output_adapter=JSONOutputAdapter("output.jsonl", format="jsonl"),
     executor=MultiprocessingExecutor(Schema, num_workers=4)
@@ -174,7 +174,7 @@ flow = FlowSchema(
 Read only required columns from large Parquet files:
 
 ```python
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 input_adapter = ArrowInputAdapter(
     "huge_dataset.parquet",
@@ -187,7 +187,7 @@ Apply filters before loading data into memory:
 
 ```python
 import pyarrow.dataset as ds
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 filter_expr = (
     (ds.field("country") == "US") &
@@ -206,7 +206,7 @@ input_adapter = ArrowInputAdapter(
 ### Working with Partitioned Data
 
 ```python
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 import pyarrow.dataset as ds
 
 input_adapter = ArrowInputAdapter(
@@ -226,7 +226,7 @@ input_adapter = ArrowInputAdapter(
 
 ```python
 import pyarrow.dataset as ds
-from flowschema.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
 
 input_adapter = ArrowInputAdapter(
     "large_events.parquet",
@@ -246,7 +246,7 @@ input_adapter = ArrowInputAdapter(
 
 - The adapter reads data using PyArrow's `scanner` API for efficient streaming
 - Each row from the Parquet file becomes an entry with `raw_data` set to a dictionary
-- Filtering happens at the storage layer before data enters FlowSchema
+- Filtering happens at the storage layer before data enters Pipe
 - Supports reading from local files, directories, and lists of files
 - Compatible with all Arrow-supported file formats
 

@@ -15,38 +15,38 @@ The `FilePartitioner` is a specialized input adapter that partitions large files
 ### Basic Example
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.multiprocessing import MultiprocessingExecutor
-from flowschema.input_adapter.partitioner import FilePartitioner
-from flowschema.output_adapter.memory import MemoryOutputAdapter
+from zoopipe import Pipe
+from zoopipe.executor.multiprocessing import MultiprocessingExecutor
+from zoopipe.input_adapter.partitioner import FilePartitioner
+from zoopipe.output_adapter.memory import MemoryOutputAdapter
 from pydantic import BaseModel
 
 class LineModel(BaseModel):
     model_config = {"extra": "allow"}
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=FilePartitioner("large_file.jsonl", num_partitions=4),
     output_adapter=MemoryOutputAdapter(),
     executor=MultiprocessingExecutor(LineModel, max_workers=4)
 )
 
-with flow:
-    report = flow.start()
+with pipe:
+    report = pipe.start()
     report.wait()
 ```
 
 ### With Custom Hook for Processing
 
 ```python
-from flowschema import FlowSchema, PartitionedReaderHook
-from flowschema.input_adapter.partitioner import FilePartitioner
-from flowschema.executor.multiprocessing import MultiprocessingExecutor
+from zoopipe import Pipe, PartitionedReaderHook
+from zoopipe.input_adapter.partitioner import FilePartitioner
+from zoopipe.executor.multiprocessing import MultiprocessingExecutor
 
 class JsonlReaderHook(PartitionedReaderHook):
     def process_line(self, line: bytes, store):
         pass
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=FilePartitioner("data.jsonl", num_partitions=8),
     output_adapter=MemoryOutputAdapter(),
     executor=MultiprocessingExecutor(Schema, max_workers=8),
@@ -57,11 +57,11 @@ flow = FlowSchema(
 ### With Ray Executor
 
 ```python
-from flowschema import FlowSchema
-from flowschema.executor.ray import RayExecutor
-from flowschema.input_adapter.partitioner import FilePartitioner
+from zoopipe import Pipe
+from zoopipe.executor.ray import RayExecutor
+from zoopipe.input_adapter.partitioner import FilePartitioner
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=FilePartitioner("huge_file.csv", num_partitions=16),
     output_adapter=output_adapter,
     executor=RayExecutor(Schema, num_workers=16)
@@ -112,9 +112,9 @@ Each partition generates an entry with the following `raw_data`:
 ### Processing Large JSONL Files
 
 ```python
-from flowschema import FlowSchema, PartitionedReaderHook
-from flowschema.input_adapter.partitioner import FilePartitioner
-from flowschema.executor.multiprocessing import MultiprocessingExecutor
+from zoopipe import Pipe, PartitionedReaderHook
+from zoopipe.input_adapter.partitioner import FilePartitioner
+from zoopipe.executor.multiprocessing import MultiprocessingExecutor
 
 class JsonlProcessor(PartitionedReaderHook):
     def process_line(self, line: bytes, store):
@@ -125,7 +125,7 @@ class JsonlProcessor(PartitionedReaderHook):
         except json.JSONDecodeError:
             pass
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=FilePartitioner("events.jsonl", num_partitions=8),
     output_adapter=MemoryOutputAdapter(),
     executor=MultiprocessingExecutor(Schema, max_workers=8),
@@ -136,9 +136,9 @@ flow = FlowSchema(
 ### Distributed CSV Processing
 
 ```python
-from flowschema import FlowSchema, PartitionedReaderHook
-from flowschema.input_adapter.partitioner import FilePartitioner
-from flowschema.executor.ray import RayExecutor
+from zoopipe import Pipe, PartitionedReaderHook
+from zoopipe.input_adapter.partitioner import FilePartitioner
+from zoopipe.executor.ray import RayExecutor
 
 class CsvPartitionProcessor(PartitionedReaderHook):
     def process_partition(self, file_path: str, start: int, end: int, store):
@@ -150,7 +150,7 @@ class CsvPartitionProcessor(PartitionedReaderHook):
         for row in csv.DictReader(data.decode().splitlines()):
             store.append(row)
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=FilePartitioner("massive.csv", num_partitions=32),
     output_adapter=output_adapter,
     executor=RayExecutor(Schema, num_workers=32),
@@ -161,11 +161,11 @@ flow = FlowSchema(
 ### Log File Analysis
 
 ```python
-from flowschema import FlowSchema
-from flowschema.input_adapter.partitioner import FilePartitioner
-from flowschema.executor.multiprocessing import MultiprocessingExecutor
+from zoopipe import Pipe
+from zoopipe.input_adapter.partitioner import FilePartitioner
+from zoopipe.executor.multiprocessing import MultiprocessingExecutor
 
-flow = FlowSchema(
+pipe = Pipe(
     input_adapter=FilePartitioner("app.log", num_partitions=4),
     output_adapter=output_adapter,
     executor=MultiprocessingExecutor(LogSchema, max_workers=4),
@@ -178,7 +178,7 @@ flow = FlowSchema(
 The `FilePartitioner` is designed to work with `PartitionedReaderHook`:
 
 ```python
-from flowschema import PartitionedReaderHook
+from zoopipe import PartitionedReaderHook
 
 class MyPartitionHook(PartitionedReaderHook):
     def process_line(self, line: bytes, store):

@@ -1,8 +1,8 @@
 import json
 import uuid
 
-from flowschema.models.core import EntryStatus, EntryTypedDict
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe.models.core import EntryStatus, EntryTypedDict
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
 def test_json_output_adapter_array(tmp_path):
@@ -125,7 +125,7 @@ def test_json_output_adapter_with_metadata(tmp_path):
 def test_json_output_adapter_round_trip(tmp_path):
     output_file = tmp_path / "output.json"
 
-    from flowschema.input_adapter.json import JSONInputAdapter
+    from zoopipe.input_adapter.json import JSONInputAdapter
 
     write_adapter = JSONOutputAdapter(output_file, format="array")
 

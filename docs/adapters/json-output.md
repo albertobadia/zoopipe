@@ -14,7 +14,7 @@ The JSONOutputAdapter writes validated entries to a JSON file in two formats: JS
 ## Usage
 
 ```python
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 output_adapter = JSONOutputAdapter(
     output="output.json",
@@ -38,7 +38,7 @@ output_adapter = JSONOutputAdapter(
 ### Writing JSON Array with Pretty Print
 
 ```python
-from flowschema.output_adapter.json import JSONOutputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 output_adapter = JSONOutputAdapter(
     output="users.json",
