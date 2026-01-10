@@ -3,6 +3,7 @@ import pathlib
 import typing
 import uuid
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.models.core import EntryStatus, EntryTypedDict
 
@@ -18,9 +19,13 @@ class CSVInputAdapter(BaseInputAdapter):
         max_rows: int | None = None,
         fieldnames: list[str] | None = None,
         id_generator: typing.Callable[[], typing.Any] | None = None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
         **csv_options,
     ):
-        super().__init__(id_generator=id_generator)
+        super().__init__(
+            id_generator=id_generator, pre_hooks=pre_hooks, post_hooks=post_hooks
+        )
 
         self.source_path = pathlib.Path(source)
         self.encoding = encoding

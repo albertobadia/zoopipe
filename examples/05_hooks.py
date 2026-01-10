@@ -22,10 +22,9 @@ def example_timestamp_hook():
 
     output_adapter = GeneratorOutputAdapter()
     pipe = Pipe(
-        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv", pre_hooks=hooks),
         output_adapter=output_adapter,
         executor=SyncFifoExecutor(UserSchema),
-        pre_validation_hooks=hooks,
     )
 
     report = pipe.start()
@@ -46,10 +45,9 @@ def example_field_mapper():
     ]
 
     pipe = Pipe(
-        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv", pre_hooks=hooks),
         output_adapter=JSONOutputAdapter("examples/output_data/output.json", indent=2),
         executor=SyncFifoExecutor(UserSchema),
-        pre_validation_hooks=hooks,
     )
 
     report = pipe.start()
@@ -62,10 +60,9 @@ def example_custom_hook():
 
     output_adapter = GeneratorOutputAdapter()
     pipe = Pipe(
-        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
+        input_adapter=CSVInputAdapter("examples/data/sample_data.csv", pre_hooks=hooks),
         output_adapter=output_adapter,
         executor=SyncFifoExecutor(UserSchema),
-        pre_validation_hooks=hooks,
     )
 
     report = pipe.start()

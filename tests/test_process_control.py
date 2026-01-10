@@ -13,6 +13,8 @@ class MockInputAdapter(BaseInputAdapter):
     def __init__(self, data, delay=0.1):
         self.data = data
         self.delay = delay
+        self.pre_hooks = []
+        self.post_hooks = []
 
     @property
     def generator(self):

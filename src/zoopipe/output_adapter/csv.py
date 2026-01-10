@@ -3,6 +3,7 @@ import json
 import pathlib
 import typing
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.utils import JSONEncoder
@@ -17,9 +18,11 @@ class CSVOutputAdapter(BaseOutputAdapter):
         quotechar: str = '"',
         fieldnames: list[str] | None = None,
         include_metadata: bool = False,
+        pre_hooks: list["BaseHook"] | None = None,
+        post_hooks: list["BaseHook"] | None = None,
         **csv_options,
     ):
-        super().__init__()
+        super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self.output_path = pathlib.Path(output)
         self.encoding = encoding
         self.delimiter = delimiter

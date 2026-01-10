@@ -4,12 +4,6 @@ Pipe includes executable examples demonstrating various data processing scenario
 
 ## Running Examples
 
-From the project root directory:
-
-```bash
-uv run examples/01_basic_csv.py
-```
-
 ---
 
 ## Available Examples
@@ -97,7 +91,7 @@ Using the Hooks system to transform and enrich data.
 uv run examples/05_hooks.py
 ```
 
-### [06_dummy_output_with_hooks.py](../examples/06_dummy_output_with_hooks.py)
+### [06_sqlite_output_hook.py](../examples/06_sqlite_output_hook.py)
 
 Advanced use of hooks for custom persistence (e.g., SQLite) while skipping standard output.
 
@@ -108,7 +102,7 @@ Advanced use of hooks for custom persistence (e.g., SQLite) while skipping stand
 
 **Run:**
 ```bash
-uv run examples/06_dummy_output_with_hooks.py
+uv run examples/06_sqlite_output_hook.py
 ```
 
 ---
@@ -145,6 +139,70 @@ uv run examples/08_file_partitioning.py
 
 ---
 
+### [09_async_queues.py](../examples/09_async_queues.py)
+
+Ingestion using asynchronous queues for high-concurrency ingestion.
+
+**Demonstrates:**
+- `AsyncQueueInputAdapter` and `AsyncQueueOutputAdapter`
+- Producers and Consumers in an async pipeline
+- Handling streams of data asynchronously
+
+**Run:**
+```bash
+uv run examples/09_async_queues.py
+```
+
+---
+
+### [10_sync_queues.py](../examples/10_sync_queues.py)
+
+Using standard thread-safe queues for communication between pipeline stages.
+
+**Demonstrates:**
+- `QueueInputAdapter` and `QueueOutputAdapter`
+- Interleaving production and consumption in sync mode
+- Sentinel-based flow control
+
+**Run:**
+```bash
+uv run examples/10_sync_queues.py
+```
+
+---
+
+### [11_handling_errors.py](../examples/11_handling_errors.py)
+
+Deep dive into error reporting and dead-letter queues.
+
+**Demonstrates:**
+- Validation failure handling
+- Custom `error_output_adapter` configuration
+- Analyzing the final `FlowReport` for error details
+
+**Run:**
+```bash
+uv run examples/11_handling_errors.py
+```
+
+---
+
+### [12_no_pydantic.py](../examples/12_no_pydantic.py)
+
+Running pipelines without Pydantic schemas (using dictionary transformations).
+
+**Demonstrates:**
+- Schema-less data processing
+- Flexible data enrichment
+- Handling raw dictionaries in encoders
+
+**Run:**
+```bash
+uv run examples/12_no_pydantic.py
+```
+
+---
+
 ### [12_threads_io_bound.py](../examples/12_threads_io_bound.py)
 
 Concurrent processing of IO-bound tasks using ThreadExecutor.
@@ -157,6 +215,54 @@ Concurrent processing of IO-bound tasks using ThreadExecutor.
 **Run:**
 ```bash
 uv run examples/12_threads_io_bound.py
+```
+
+---
+
+### [13_no_output_adapter.py](../examples/13_no_output_adapter.py)
+
+Executing pipelines where processing happens in hooks or executors and results aren't persisted via an adapter.
+
+**Demonstrates:**
+- Pipelines without an `output_adapter`
+- Pure-transformation or analysis flows
+- Efficient termination of processed streams
+
+**Run:**
+```bash
+uv run examples/13_no_output_adapter.py
+```
+
+---
+
+### [13_pyarrow_adapter.py](../examples/13_pyarrow_adapter.py)
+
+High-performance processing of Parquet files using PyArrow.
+
+**Demonstrates:**
+- `ArrowInputAdapter` and `ArrowOutputAdapter`
+- Batch-based Parquet processing
+- Automatic schema inference
+
+**Run:**
+```bash
+uv run examples/13_pyarrow_adapter.py
+```
+
+---
+
+### [14_adapter_hooks_fetching.py](../examples/14_adapter_hooks_fetching.py)
+
+Advanced adapter-level hook patterns for fetching remote data.
+
+**Demonstrates:**
+- Registering hooks directly on the input adapter
+- Fetching details in the pre-validation stage
+- Dynamic data enrichment before the main executor runs
+
+**Run:**
+```bash
+uv run examples/14_adapter_hooks_fetching.py
 ```
 
 ---

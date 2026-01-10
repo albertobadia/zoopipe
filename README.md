@@ -115,8 +115,6 @@ ZooPipe uses a decoupled architecture based on four components:
 - **Output Adapter**: Persists validated data
 - **Error Output Adapter**: Captures failed validations (Dead Letter Queue)
 
-Learn more in the [Architecture RFC](docs/RFC.md).
-
 ---
 
 ## 🔧 Executors

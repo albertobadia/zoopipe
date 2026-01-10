@@ -6,7 +6,8 @@ from zoopipe.models.core import EntryTypedDict
 
 
 class TimestampHook(BaseHook):
-    def __init__(self, field_name: str = "processed_at"):
+    def __init__(self, field_name: str = "processed_at", priority: int = 50):
+        super().__init__(priority=priority)
         self.field_name = field_name
 
     def execute(
@@ -24,7 +25,9 @@ class FieldMapperHook(BaseHook):
         field_mapping: dict[
             str, typing.Callable[[EntryTypedDict, HookStore], typing.Any]
         ],
+        priority: int = 50,
     ):
+        super().__init__(priority=priority)
         self.field_mapping = field_mapping
 
     def execute(

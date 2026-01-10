@@ -47,12 +47,15 @@ def main():
     # 3. Setup Executor
     executor = SyncFifoExecutor(schema_model=None)  # type: ignore - skipping validation for this example
 
-    # 4. Configure Pipewith Faulty Hook
+    # 4. Configure Pipewith Faulty Hook integrated in Adapter
+    # We re-instantiate QueueInputAdapter here just to show injection
+    # In practice, you'd pass hooks during initial creation
+    input_adapter.pre_hooks = [FaultyDecryptionHook()]
+
     pipe = Pipe(
         input_adapter=input_adapter,
         output_adapter=output_adapter,
         executor=executor,
-        pre_validation_hooks=[FaultyDecryptionHook()],
     )
 
     logger.info("Starting pipewith potential errors...")

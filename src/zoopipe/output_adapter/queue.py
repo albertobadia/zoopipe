@@ -1,14 +1,20 @@
 import asyncio
 import queue
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.output_adapter.base_async import BaseAsyncOutputAdapter
 
 
 class AsyncQueueOutputAdapter(BaseAsyncOutputAdapter):
-    def __init__(self, queue: asyncio.Queue):
-        super().__init__()
+    def __init__(
+        self,
+        queue: asyncio.Queue,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
+    ):
+        super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self.queue = queue
 
     async def write(self, entry: EntryTypedDict) -> None:
@@ -22,8 +28,13 @@ class AsyncQueueOutputAdapter(BaseAsyncOutputAdapter):
 
 
 class QueueOutputAdapter(BaseOutputAdapter):
-    def __init__(self, queue: queue.Queue):
-        super().__init__()
+    def __init__(
+        self,
+        queue: queue.Queue,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
+    ):
+        super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self.queue = queue
 
     def write(self, entry: EntryTypedDict) -> None:

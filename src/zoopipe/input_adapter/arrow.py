@@ -3,6 +3,7 @@ import typing
 
 import pyarrow.dataset as ds
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.models.core import EntryStatus, EntryTypedDict
 
@@ -16,9 +17,13 @@ class ArrowInputAdapter(BaseInputAdapter):
         columns: list[str] | None = None,
         filter: ds.Expression | None = None,
         id_generator: typing.Callable[[], typing.Any] | None = None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
         **dataset_options,
     ):
-        super().__init__(id_generator=id_generator)
+        super().__init__(
+            id_generator=id_generator, pre_hooks=pre_hooks, post_hooks=post_hooks
+        )
 
         self.source = source
         self.format = format

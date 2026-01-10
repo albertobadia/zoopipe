@@ -2,6 +2,7 @@ import asyncio
 import queue
 import typing
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.input_adapter.base_async import BaseAsyncInputAdapter
 from zoopipe.models.core import EntryStatus, EntryTypedDict
@@ -13,8 +14,12 @@ class AsyncQueueInputAdapter(BaseAsyncInputAdapter):
         queue: asyncio.Queue,
         sentinel: typing.Any = None,
         id_generator: typing.Callable[[], typing.Any] | None = None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
     ):
-        super().__init__(id_generator=id_generator)
+        super().__init__(
+            id_generator=id_generator, pre_hooks=pre_hooks, post_hooks=post_hooks
+        )
         self.queue = queue
         self.sentinel = sentinel
         self._item_count = 0
@@ -51,8 +56,12 @@ class QueueInputAdapter(BaseInputAdapter):
         queue: queue.Queue,
         sentinel: typing.Any = None,
         id_generator: typing.Callable[[], typing.Any] | None = None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
     ):
-        super().__init__(id_generator=id_generator)
+        super().__init__(
+            id_generator=id_generator, pre_hooks=pre_hooks, post_hooks=post_hooks
+        )
         self.queue = queue
         self.sentinel = sentinel
         self._item_count = 0

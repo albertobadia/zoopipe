@@ -3,16 +3,22 @@ import logging
 import typing
 import uuid
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.models.core import EntryTypedDict
 
 
 class BaseAsyncInputAdapter(abc.ABC):
     def __init__(
-        self, id_generator: typing.Callable[[], typing.Any] | None = None
+        self,
+        id_generator: typing.Callable[[], typing.Any] | None = None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
     ) -> None:
         self.id_generator = id_generator or uuid.uuid4
         self._is_opened: bool = False
         self.logger: logging.Logger | None = None
+        self.pre_hooks: list[BaseHook] = pre_hooks or []
+        self.post_hooks: list[BaseHook] = post_hooks or []
 
     def set_logger(self, logger: logging.Logger) -> None:
         self.logger = logger

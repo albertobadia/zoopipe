@@ -15,6 +15,8 @@ from zoopipe.report import FlowStatus
 class MockInputAdapter(BaseInputAdapter):
     def __init__(self, data):
         self.data = data
+        self.pre_hooks = []
+        self.post_hooks = []
 
     @property
     def generator(self):

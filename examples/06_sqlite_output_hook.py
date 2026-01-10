@@ -22,6 +22,7 @@ class UserSchema(BaseModel):
 
 class SQLiteWriterHook(BaseHook):
     def __init__(self, db_path: str):
+        super().__init__()
         self.db_path = db_path
         self.conn = None
         self.cursor = None
@@ -73,9 +74,8 @@ sqlite_hook = SQLiteWriterHook(db_file)
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter(data_input, format="array"),
-    output_adapter=DummyOutputAdapter(),
+    output_adapter=DummyOutputAdapter(post_hooks=[sqlite_hook]),
     executor=SyncFifoExecutor(UserSchema),
-    post_validation_hooks=[sqlite_hook],
 )
 
 print(f"Starting pipeprocessing into {db_file}...")

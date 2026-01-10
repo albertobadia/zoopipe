@@ -50,8 +50,20 @@ class Pipe:
         self.output_adapter = output_adapter
         self.executor = executor
         self.error_output_adapter = error_output_adapter
-        self.pre_validation_hooks = pre_validation_hooks or []
-        self.post_validation_hooks = post_validation_hooks or []
+
+        _pre_hooks = (
+            input_adapter.pre_hooks
+            + (pre_validation_hooks or [])
+            + output_adapter.pre_hooks
+        )
+        self.pre_validation_hooks = sorted(_pre_hooks, key=lambda h: h.priority)
+        _post_hooks = (
+            input_adapter.post_hooks
+            + (post_validation_hooks or [])
+            + output_adapter.post_hooks
+        )
+        self.post_validation_hooks = sorted(_post_hooks, key=lambda h: h.priority)
+
         self.logger = logger or get_logger()
         self.max_bytes_in_flight = max_bytes_in_flight
         self.max_hook_chunk_size = max_hook_chunk_size

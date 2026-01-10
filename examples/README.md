@@ -12,39 +12,32 @@ uv run examples/01_basic_csv.py
 
 ## Available Examples
 
-### 01_basic_csv.py
-Basic CSV processing with validation and error handling. Demonstrates:
-- Reading from CSV
-- Validating with Pydantic schema
-- Writing validated data to output CSV
-- Writing errors to separate CSV
+### 01–14 Examples
+Detailed descriptions of all examples can be found in the [Documentation](https://github.com/albertobadia/zoopipe/blob/main/docs/examples.md).
 
-### 02_multiprocessing.py
-Parallel processing using MultiprocessingExecutor. Demonstrates:
-- Multi-core processing
-- Configurable worker count
-- Chunk-based processing
-- LZ4 compression for inter-process communication
+## ⚡ Quick Run (All Examples)
+You can run all examples sequentially with:
+```bash
+./run_examples.sh
+```
 
-### 03_ray_executor.py
-Distributed processing using Ray. Demonstrates:
-- Ray-based distributed computing
-- Cluster support
-- LZ4 compression for network efficiency
-
-### 04_json_processing.py
-Working with JSON files. Demonstrates:
-- Reading JSON arrays
-- Reading JSONL (JSON Lines) format
-- Writing to JSON with formatting
-- JSON to JSON transformations
-
-### 05_hooks.py
-Using the Hooks system. Demonstrates:
-- TimestampHook for adding timestamps
-- FieldMapperHook for field renaming
-- Custom hooks for data transformation
-- Combining multiple hooks
+## 📂 Available Examples
+- **01 Basic CSV**: CSV processing, Pydantic validation, error handling.
+- **02 Multiprocessing**: Multi-core parallel processing.
+- **03 Ray**: Distributed computing across clusters.
+- **04 JSON**: JSON Array and JSONL parsing/writing.
+- **05 Hooks**: Data transformation and enrichment.
+- **06 SQLite Hook**: Custom persistence via hooks.
+- **07 JIT Ingestion**: Zero-copy parallel data fetching.
+- **08 Partitioning**: Large file split into byte-range chunks.
+- **09 Async Queues**: High-concurrency async ingestion.
+- **10 Sync Queues**: Thread-safe queue communication.
+- **11 Handling Errors**: Error analysis and DLQs.
+- **12 Schema-less**: Dictionaries without Pydantic.
+- **12 Threads**: IO-bound concurrent operations.
+- **13 No Output**: Hooks/Executor-only persistence.
+- **13 PyArrow**: High-speed Parquet processing.
+- **14 Remote Fetch**: Adapter-level fetching hooks.
 
 ## Sample Data
 

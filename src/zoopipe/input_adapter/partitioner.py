@@ -1,6 +1,7 @@
 import os
 from typing import Any, Callable, Iterator
 
+from zoopipe.hooks.base import BaseHook
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.models.core import EntryStatus
 
@@ -11,8 +12,12 @@ class FilePartitioner(BaseInputAdapter):
         file_path: str,
         num_partitions: int,
         id_generator: Callable[[], Any] | None = None,
+        pre_hooks: list[BaseHook] | None = None,
+        post_hooks: list[BaseHook] | None = None,
     ):
-        super().__init__(id_generator=id_generator)
+        super().__init__(
+            id_generator=id_generator, pre_hooks=pre_hooks, post_hooks=post_hooks
+        )
         self.file_path = file_path
         self.num_partitions = num_partitions
 

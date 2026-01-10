@@ -26,7 +26,8 @@ class UserSchema(BaseModel):
 # 2. "Ultra-Light" Input Adapter
 # Only delivers the intent/ID, not the raw data.
 class UserIDInputAdapter(BaseInputAdapter):
-    def __init__(self, count: int):
+    def __init__(self, count: int, pre_hooks=None):
+        super().__init__(pre_hooks=pre_hooks)
         self.count = count
 
     @property
@@ -89,10 +90,9 @@ def run_jit_ingestion_demo():
 
     # Configure the pipeline
     pipe = Pipe(
-        input_adapter=UserIDInputAdapter(count=10),
+        input_adapter=UserIDInputAdapter(count=10, pre_hooks=[DataFetcherHook()]),
         output_adapter=MemoryOutputAdapter(),
         executor=MultiProcessingExecutor(UserSchema, max_workers=4),
-        pre_validation_hooks=[DataFetcherHook()],
         post_validation_hooks=[BusinessLogicHook()],
     )
 

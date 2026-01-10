@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 from zoopipe.models.core import EntryStatus, EntryTypedDict
 
 if typing.TYPE_CHECKING:
+    from zoopipe.hooks.base import BaseHook
     from zoopipe.input_adapter.base_async import BaseAsyncInputAdapter
     from zoopipe.output_adapter.base_async import BaseAsyncOutputAdapter
 
@@ -110,6 +111,14 @@ class AsyncInputBridge:
         self.close()
 
     @property
+    def pre_hooks(self) -> list["BaseHook"]:
+        return getattr(self.adapter, "pre_hooks", [])
+
+    @property
+    def post_hooks(self) -> list["BaseHook"]:
+        return getattr(self.adapter, "post_hooks", [])
+
+    @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
         async_gen = self.adapter.generator
 
@@ -158,6 +167,14 @@ class AsyncOutputBridge:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    @property
+    def pre_hooks(self) -> list["BaseHook"]:
+        return getattr(self.adapter, "pre_hooks", [])
+
+    @property
+    def post_hooks(self) -> list["BaseHook"]:
+        return getattr(self.adapter, "post_hooks", [])
 
     def _flush(self) -> None:
         if not self._buffer:
