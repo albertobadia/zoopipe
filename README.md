@@ -111,6 +111,127 @@ pipe = Pipe(
 )
 ```
 
+### CSV with Field Validation (using Pydantic)
+```python
+from pydantic import BaseModel, field_validator, ConfigDict
+from zoopipe import Pipe
+from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    email: str
+    age: int
+    
+    @field_validator('email')
+    @classmethod
+    def normalize_email(cls, v):
+        return v.lower().strip()
+    
+    @field_validator('name')
+    @classmethod
+    def normalize_name(cls, v):
+        return v.strip().title()
+
+pipe = Pipe(
+    input_adapter=CSVInputAdapter("users.csv"),
+    output_adapter=CSVOutputAdapter("clean_users.csv"),
+    executor=SyncFifoExecutor(UserSchema),
+)
+```
+
+### API Enrichment with Hooks
+```python
+from zoopipe import Pipe
+from zoopipe.executor.asyncio import AsyncIOExecutor
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe.hooks.base import BaseHook
+import aiohttp
+
+class GeoLocationHook(BaseHook):
+    async def execute(self, entries, store):
+        async with aiohttp.ClientSession() as session:
+            for entry in entries:
+                data = entry.get("validated_data", {})
+                ip = data.get("ip_address")
+                if ip:
+                    async with session.get(f"https://ipapi.co/{ip}/json/") as resp:
+                        geo_data = await resp.json()
+                        entry["metadata"]["location"] = {
+                            "country": geo_data.get("country_name"),
+                            "city": geo_data.get("city")
+                        }
+        return entries
+
+pipe = Pipe(
+    input_adapter=JSONInputAdapter("events.jsonl", format="jsonl"),
+    output_adapter=JSONOutputAdapter("enriched_events.jsonl", format="jsonl"),
+    executor=AsyncIOExecutor(EventSchema, concurrency=10),
+    post_validation_hooks=[GeoLocationHook()],
+)
+```
+
+### Database Lookup with Caching (using Store)
+```python
+from zoopipe import Pipe
+from zoopipe.executor.multiprocessing import MultiProcessingExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe.hooks.base import BaseHook
+from sqlalchemy import create_engine
+
+class ProductLookupHook(BaseHook):
+    def __init__(self, db_url: str):
+        super().__init__()
+        self.db_url = db_url
+    
+    def setup(self, store):
+        # Initialize resources once per worker
+        store["engine"] = create_engine(self.db_url, pool_size=5)
+        store["product_cache"] = {}  # Shared cache
+        store["cache_hits"] = 0
+    
+    async def execute(self, entries, store):
+        engine = store["engine"]
+        cache = store["product_cache"]
+        
+        for entry in entries:
+            product_id = entry.get("validated_data", {}).get("product_id")
+            
+            # Check cache first
+            if product_id in cache:
+                entry["metadata"]["product_name"] = cache[product_id]
+                store["cache_hits"] += 1
+            else:
+                # Fetch from DB and cache
+                with engine.connect() as conn:
+                    result = conn.execute(
+                        f"SELECT name FROM products WHERE id = {product_id}"
+                    ).fetchone()
+                    if result:
+                        cache[product_id] = result[0]
+                        entry["metadata"]["product_name"] = result[0]
+        
+        return entries
+    
+    def teardown(self, store):
+        # Cleanup resources
+        engine = store.get("engine")
+        if engine:
+            engine.dispose()
+        print(f"Cache hits: {store.get('cache_hits', 0)}")
+
+pipe = Pipe(
+    input_adapter=CSVInputAdapter("orders.csv"),
+    output_adapter=JSONOutputAdapter("enriched_orders.jsonl", format="jsonl"),
+    executor=MultiProcessingExecutor(OrderSchema, max_workers=4),
+    post_validation_hooks=[ProductLookupHook("postgresql://localhost/shop")],
+)
+```
+
 ---
 
 ## 📚 Documentation
