@@ -20,7 +20,7 @@ class BaseHook:
     def setup(self, store: HookStore) -> None:
         pass
 
-    def execute(
+    async def execute(
         self, entries: list[EntryTypedDict], store: HookStore
     ) -> list[EntryTypedDict]:
         return entries
