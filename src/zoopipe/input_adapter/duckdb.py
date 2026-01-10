@@ -48,37 +48,47 @@ class DuckDBInputAdapter(BaseInputAdapter):
             )
 
         conn = duckdb.connect(self.database)
-
-        if self.total_rows is None:
-            self.total_rows = conn.execute(
-                f"SELECT COUNT(*) FROM {self.table_name}"
-            ).fetchone()[0]
-
-        num_batches = math.ceil(self.total_rows / self.batch_size)
+        quoted_table = f'"{self.table_name}"'
 
         try:
-            pk_info = conn.execute(f"DESCRIBE {self.table_name}").fetchall()
-            pk_type = next(
-                (col[1] for col in pk_info if col[0] == self.pk_column), None
-            )
+            if self.total_rows is None:
+                self.total_rows = conn.execute(
+                    f"SELECT COUNT(*) FROM {quoted_table}"
+                ).fetchone()[0]
 
-            is_numeric = pk_type in [
-                "BIGINT",
-                "INTEGER",
-                "DOUBLE",
-                "FLOAT",
-                "HUGEINT",
-                "SMALLINT",
-                "TINYINT",
-            ]
+            num_batches = math.ceil(self.total_rows / self.batch_size)
 
-            if is_numeric:
+            use_pk_ranges = False
+            try:
+                pk_info = conn.execute(f"DESCRIBE {quoted_table}").fetchall()
+                pk_type = next(
+                    (col[1] for col in pk_info if col[0] == self.pk_column), None
+                )
+
+                use_pk_ranges = pk_type in [
+                    "BIGINT",
+                    "INTEGER",
+                    "DOUBLE",
+                    "FLOAT",
+                    "HUGEINT",
+                    "SMALLINT",
+                    "TINYINT",
+                ]
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(
+                        f"Could not inspect table schema for optimization: {e}. "
+                        "Falling back to OFFSET/LIMIT."
+                    )
+
+            if use_pk_ranges:
+                quoted_pk = f'"{self.pk_column}"'
                 boundary_query = f"""
-                SELECT {self.pk_column}
+                SELECT {quoted_pk}
                 FROM (
-                    SELECT {self.pk_column}, row_number()
-                        OVER (ORDER BY {self.pk_column}) as rn
-                    FROM {self.table_name}
+                    SELECT {quoted_pk}, row_number()
+                        OVER (ORDER BY {quoted_pk}) as rn
+                    FROM {quoted_table}
                 ) t
                 WHERE (t.rn - 1) % {self.batch_size} = 0
                 """
@@ -105,9 +115,7 @@ class DuckDBInputAdapter(BaseInputAdapter):
             else:
                 for i in range(num_batches):
                     yield self._yield_offset_metadata(i)
-        except Exception:
-            for i in range(num_batches):
-                yield self._yield_offset_metadata(i)
+
         finally:
             conn.close()
 

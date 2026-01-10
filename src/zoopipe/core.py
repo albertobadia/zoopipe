@@ -87,24 +87,13 @@ class Pipe:
     def start(self) -> FlowReport:
         with self._run_lock:
             if self._report and self._report.status == FlowStatus.RUNNING:
-                raise RuntimeError("Pipeis already running")
+                raise RuntimeError("Pipe is already running")
 
             self._report = FlowReport()
 
         thread = threading.Thread(
-            target=self._run_background_static,
-            kwargs={
-                "report": self._report,
-                "input_adapter": self.input_adapter,
-                "output_adapter": self.output_adapter,
-                "error_output_adapter": self.error_output_adapter,
-                "executor": self.executor,
-                "logger": self.logger,
-                "max_bytes_in_flight": self.max_bytes_in_flight,
-                "max_hook_chunk_size": self.max_hook_chunk_size,
-                "pre_validation_hooks": self.pre_validation_hooks,
-                "post_validation_hooks": self.post_validation_hooks,
-            },
+            target=self._run_background,
+            args=(self._report,),
             daemon=True,
         )
         thread.start()
@@ -137,22 +126,20 @@ class Pipe:
         if self._report and not self._report.is_finished:
             self._report.abort()
 
-    @staticmethod
-    def _handle_entry_static(
+    def _handle_entry(
+        self,
         entry: EntryTypedDict,
         report: FlowReport,
-        output_adapter: BaseOutputAdapter,
-        error_output_adapter: BaseOutputAdapter | None,
-        ctx: "_FlowRunContext",
+        ctx: "_PipeRunContext",
     ) -> None:
         report.total_processed += 1
         if entry["status"] == EntryStatus.FAILED:
             report.error_count += 1
-            if error_output_adapter:
-                error_output_adapter.write(entry)
+            if self.error_output_adapter:
+                self.error_output_adapter.write(entry)
         else:
             report.success_count += 1
-            output_adapter.write(entry)
+            self.output_adapter.write(entry)
 
         if ctx.max_bytes_in_flight:
             entry_id = str(entry["id"])
@@ -161,83 +148,54 @@ class Pipe:
                     ctx.bytes_in_flight[0] -= ctx.chunk_sizes.pop(entry_id)
                     ctx.backpressure_condition.notify_all()
 
-    @staticmethod
-    def _run_background_static(
+    def _run_background(
+        self,
         report: FlowReport,
-        input_adapter: BaseInputAdapter,
-        output_adapter: BaseOutputAdapter,
-        error_output_adapter: BaseOutputAdapter | None,
-        executor: BaseExecutor,
-        logger: logging.Logger,
-        max_bytes_in_flight: int | None,
-        max_hook_chunk_size: int | None,
-        pre_validation_hooks: list[BaseHook],
-        post_validation_hooks: list[BaseHook],
     ) -> None:
-        ctx = _FlowRunContext(
-            max_bytes_in_flight=max_bytes_in_flight,
-            executor_chunksize=max(1, getattr(executor, "_chunksize", 1)),
+        ctx = _PipeRunContext(
+            max_bytes_in_flight=self.max_bytes_in_flight,
+            executor_chunksize=max(1, getattr(self.executor, "_chunksize", 1)),
         )
 
         report._mark_running()
         try:
-            with Pipe._enter_adapters(
-                input_adapter, output_adapter, error_output_adapter
-            ):
-                Pipe._execute_main_loop(
-                    report,
-                    input_adapter,
-                    output_adapter,
-                    error_output_adapter,
-                    executor,
-                    ctx,
-                    pre_validation_hooks,
-                    post_validation_hooks,
-                    max_hook_chunk_size,
-                )
-            Pipe._finalize_report(report)
+            with self._enter_adapters():
+                self._execute_main_loop(report, ctx)
+            self._finalize_report(report)
         except Exception as e:
-            logger.exception("Error during background execution")
+            self.logger.exception("Error during background execution")
             report._mark_failed(e)
         finally:
-            executor.shutdown()
+            self.executor.shutdown()
 
-    @staticmethod
     @contextlib.contextmanager
-    def _enter_adapters(
-        input_adapter: BaseInputAdapter,
-        output_adapter: BaseOutputAdapter,
-        error_output_adapter: BaseOutputAdapter | None,
-    ) -> typing.Generator[contextlib.ExitStack, None, None]:
+    def _enter_adapters(self) -> typing.Generator[contextlib.ExitStack, None, None]:
         with contextlib.ExitStack() as stack:
-            stack.enter_context(input_adapter)
-            stack.enter_context(output_adapter)
-            if error_output_adapter:
-                stack.enter_context(error_output_adapter)
+            stack.enter_context(self.input_adapter)
+            stack.enter_context(self.output_adapter)
+            if self.error_output_adapter:
+                stack.enter_context(self.error_output_adapter)
             yield stack
 
-    @staticmethod
     def _execute_main_loop(
+        self,
         report: FlowReport,
-        input_adapter: BaseInputAdapter,
-        output_adapter: BaseOutputAdapter,
-        error_output_adapter: BaseOutputAdapter | None,
-        executor: BaseExecutor,
-        ctx: "_FlowRunContext",
-        pre_hooks: list[BaseHook],
-        post_hooks: list[BaseHook],
-        max_hook_chunk_size: int | None,
+        ctx: "_PipeRunContext",
     ) -> None:
-        chunks = itertools.batched(input_adapter.generator, ctx.executor_chunksize)
+        chunks = itertools.batched(self.input_adapter.generator, ctx.executor_chunksize)
 
         def _get_data_iterator() -> typing.Generator[typing.Any, None, None]:
             for chunk in chunks:
-                yield Pipe._prepare_chunk(chunk, executor, ctx)
+                yield self._prepare_chunk(chunk, ctx)
 
-        executor.set_hooks(pre_hooks, post_hooks, max_hook_chunk_size)
-        executor.set_upstream_iterator(_get_data_iterator())
+        self.executor.set_hooks(
+            self.pre_validation_hooks,
+            self.post_validation_hooks,
+            self.max_hook_chunk_size,
+        )
+        self.executor.set_upstream_iterator(_get_data_iterator())
 
-        for entry in executor.generator:
+        for entry in self.executor.generator:
             if report.status == FlowStatus.CANCELLED:
                 break
 
@@ -245,35 +203,36 @@ class Pipe:
             if report.status == FlowStatus.CANCELLED:
                 break
 
-            Pipe._handle_entry_static(
+            self._handle_entry(
                 entry=entry,
                 report=report,
-                output_adapter=output_adapter,
-                error_output_adapter=error_output_adapter,
                 ctx=ctx,
             )
 
-        Pipe._clear_backpressure(ctx)
+        self._clear_backpressure(ctx)
 
-    @staticmethod
     def _prepare_chunk(
+        self,
         chunk: tuple[dict[str, typing.Any], ...],
-        executor: BaseExecutor,
-        ctx: "_FlowRunContext",
+        ctx: "_PipeRunContext",
     ) -> typing.Any:
-        packed_chunk = executor.pack_chunk(list(chunk))
+        packed_chunk = self.executor.pack_chunk(list(chunk))
         if ctx.max_bytes_in_flight:
-            Pipe._apply_backpressure(chunk, packed_chunk, ctx)
+            self._apply_backpressure(chunk, packed_chunk, ctx)
         return packed_chunk
 
-    @staticmethod
     def _apply_backpressure(
+        self,
         chunk: tuple[dict[str, typing.Any], ...],
         packed_chunk: typing.Any,
-        ctx: "_FlowRunContext",
+        ctx: "_PipeRunContext",
     ) -> None:
-        chunk_size = len(packed_chunk) if isinstance(packed_chunk, bytes) else 0
-        size_per_entry = chunk_size / len(chunk)
+        if isinstance(packed_chunk, bytes):
+            chunk_size = len(packed_chunk)
+        else:
+            chunk_size = len(str(packed_chunk))
+
+        size_per_entry = chunk_size / len(chunk) if chunk else 0
         for entry in chunk:
             ctx.chunk_sizes[str(entry["id"])] = size_per_entry
 
@@ -282,22 +241,20 @@ class Pipe:
                 ctx.backpressure_condition.wait()
             ctx.bytes_in_flight[0] += chunk_size
 
-    @staticmethod
-    def _clear_backpressure(ctx: "_FlowRunContext") -> None:
+    def _clear_backpressure(self, ctx: "_PipeRunContext") -> None:
         with ctx.backpressure_condition:
             ctx.bytes_in_flight[0] = 0
             ctx.chunk_sizes.clear()
             ctx.backpressure_condition.notify_all()
 
-    @staticmethod
-    def _finalize_report(report: FlowReport) -> None:
+    def _finalize_report(self, report: FlowReport) -> None:
         if report.is_stopped:
             report._mark_stopped()
         else:
             report._mark_completed()
 
 
-class _FlowRunContext:
+class _PipeRunContext:
     def __init__(self, max_bytes_in_flight: int | None, executor_chunksize: int):
         self.max_bytes_in_flight = max_bytes_in_flight
         self.executor_chunksize = executor_chunksize
@@ -307,7 +264,7 @@ class _FlowRunContext:
 
     def __repr__(self) -> str:
         return (
-            f"<_FlowRunContext bytes_in_flight={self.bytes_in_flight[0]} "
+            f"<_PipeRunContext bytes_in_flight={self.bytes_in_flight[0]} "
             f"max_bytes_in_flight={self.max_bytes_in_flight}>"
         )
 

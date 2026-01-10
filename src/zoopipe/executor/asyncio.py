@@ -17,12 +17,14 @@ class AsyncIOExecutor(BaseExecutor):
         max_workers: int | None = None,
         concurrency: int = 10,
         use_batch_validation: bool = False,
+        loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         super().__init__()
         self._schema_model = schema_model
         self._max_workers = max_workers
         self._concurrency = concurrency
         self._use_batch_validation = use_batch_validation
+        self._main_loop = loop
 
     @property
     def do_binary_pack(self) -> bool:
@@ -37,7 +39,13 @@ class AsyncIOExecutor(BaseExecutor):
     ) -> list[EntryTypedDict]:
         try:
             if inspect.iscoroutinefunction(hook.execute):
-                result = await hook.execute(entries, store)
+                if self._main_loop:
+                    future = asyncio.run_coroutine_threadsafe(
+                        hook.execute(entries, store), self._main_loop
+                    )
+                    result = future.result()
+                else:
+                    result = await hook.execute(entries, store)
             else:
                 loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(

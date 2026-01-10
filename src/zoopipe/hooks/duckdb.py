@@ -18,56 +18,60 @@ class DuckDBFetchHook(BaseHook):
     def execute(
         self, entries: list[EntryTypedDict], store: HookStore
     ) -> list[EntryTypedDict]:
-        conn = duckdb.connect(self.database)
-        try:
-            new_entries = []
-            for entry in entries:
-                meta = entry.get("metadata", {})
-                if not meta.get("is_duckdb_range_metadata"):
-                    new_entries.append(entry)
-                    continue
+        conn = store.get("duckdb_connection")
+        if not conn:
+            conn = duckdb.connect(self.database)
+            store["duckdb_connection"] = conn
 
-                table_name = meta["table"]
-                pk_column = meta.get("pk_column")
-                pk_start = meta.get("pk_start")
-                pk_end = meta.get("pk_end")
+        new_entries = []
+        for entry in entries:
+            meta = entry.get("metadata", {})
+            if not meta.get("is_duckdb_range_metadata"):
+                new_entries.append(entry)
+                continue
 
-                if pk_column and pk_start is not None:
-                    query = f"SELECT * FROM {table_name} WHERE {pk_column} >= ?"
-                    params = [pk_start]
-                    if pk_end is not None:
-                        query += f" AND {pk_column} < ?"
-                        params.append(pk_end)
+            table_name = meta["table"]
+            quoted_table = f'"{table_name}"'
 
-                    result = conn.execute(query, params).fetchall()
-                    columns = [desc[0] for desc in conn.description]
-                else:
-                    offset = meta.get("batch_offset", 0)
-                    limit = meta.get("batch_limit", 1000)
-                    query = f"SELECT * FROM {table_name} LIMIT ? OFFSET ?"
-                    result = conn.execute(query, [limit, offset]).fetchall()
-                    columns = [desc[0] for desc in conn.description]
+            pk_column = meta.get("pk_column")
+            pk_start = meta.get("pk_start")
+            pk_end = meta.get("pk_end")
 
-                new_entries.extend(
-                    [
-                        EntryTypedDict(
-                            id=f"{entry['id']}_{i}",
-                            raw_data=dict(zip(columns, row)),
-                            validated_data=None,
-                            position=(meta.get("batch_offset", 0) + i)
-                            if "batch_offset" in meta
-                            else i,
-                            status=EntryStatus.PENDING,
-                            errors=[],
-                            metadata=entry["metadata"].copy(),
-                        )
-                        for i, row in enumerate(result)
-                    ]
-                )
+            if pk_column and pk_start is not None:
+                quoted_pk = f'"{pk_column}"'
+                query = f"SELECT * FROM {quoted_table} WHERE {quoted_pk} >= ?"
+                params = [pk_start]
+                if pk_end is not None:
+                    query += f" AND {quoted_pk} < ?"
+                    params.append(pk_end)
 
-            return new_entries
-        finally:
-            conn.close()
+                result = conn.execute(query, params).fetchall()
+                columns = [desc[0] for desc in conn.description]
+            else:
+                offset = meta.get("batch_offset", 0)
+                limit = meta.get("batch_limit", 1000)
+                query = f"SELECT * FROM {quoted_table} LIMIT ? OFFSET ?"
+                result = conn.execute(query, [limit, offset]).fetchall()
+                columns = [desc[0] for desc in conn.description]
+
+            new_entries.extend(
+                [
+                    EntryTypedDict(
+                        id=f"{entry['id']}_{i}",
+                        raw_data=dict(zip(columns, row)),
+                        validated_data=None,
+                        position=(meta.get("batch_offset", 0) + i)
+                        if "batch_offset" in meta
+                        else i,
+                        status=EntryStatus.PENDING,
+                        errors=[],
+                        metadata=entry["metadata"].copy(),
+                    )
+                    for i, row in enumerate(result)
+                ]
+            )
+
+        return new_entries
 
     def teardown(self, store: HookStore) -> None:
         conn = store.get("duckdb_connection")

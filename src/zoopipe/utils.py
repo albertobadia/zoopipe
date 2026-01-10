@@ -76,6 +76,18 @@ class SyncAsyncBridge:
 
     def run_sync(self, coro: typing.Coroutine) -> typing.Any:
         try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if current_loop is self.loop and self.loop.is_running():
+            raise RuntimeError(
+                "Deadlock detected: run_sync() called from the same thread "
+                "running the event loop. This execution path is synchronous "
+                "and blocks the loop, preventing the coroutine from running."
+            )
+
+        try:
             return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
         except (concurrent.futures.CancelledError, RuntimeError) as e:
             if "close" in str(coro):

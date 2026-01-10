@@ -85,7 +85,7 @@ def test_concurrent_run_error():
     )
 
     report = pipe.start()
-    with pytest.raises(RuntimeError, match="Pipeis already running"):
+    with pytest.raises(RuntimeError, match="Pipe is already running"):
         pipe.start()
 
     report.wait()
