@@ -4,11 +4,12 @@ The JSONInputAdapter reads data from JSON files in two formats: JSON arrays or J
 
 ## Features
 
-- Support for JSON arrays and JSONL format
-- Streaming parsing for large JSON files using ijson
+- **High-performance native Rust parser** for optimal throughput
+- Support for JSON arrays and JSONL format with native streaming
+- Memory-efficient streaming for large datasets
 - Configurable encoding
 - Limit number of items to process
-- Memory-efficient for large datasets
+- Automatic ID generation for entries
 
 ## Usage
 

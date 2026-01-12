@@ -10,6 +10,14 @@ Pipe uses three types of adapters:
 - **Output Adapter**: Persists processed data to a destination
 - **Error Output Adapter**: Captures records that failed validation
 
+### Performance
+
+CSV and JSON adapters use **native Rust implementations** for optimal performance:
+- High-throughput parsing and writing
+- Low memory usage for large files
+- Batch writing optimizations
+- Transparent to users (no configuration needed)
+
 ---
 
 ## Input Adapters
@@ -18,9 +26,9 @@ Input adapters are responsible for reading data from various sources and convert
 
 ### [CSV Input Adapter](adapters/csv-input.md)
 
-Reads data from CSV files with extensive configuration options.
+Reads data from CSV files with extensive configuration options using a **native Rust parser**.
 
-**Features:** Configurable encoding, custom delimiters, skip rows, field mapping
+**Features:** High-performance native parser, configurable encoding, custom delimiters, skip rows, field mapping
 
 **[View Documentation →](adapters/csv-input.md)**
 
@@ -28,9 +36,9 @@ Reads data from CSV files with extensive configuration options.
 
 ### [JSON Input Adapter](adapters/json-input.md)
 
-Reads data from JSON files in both array and JSONL formats.
+Reads data from JSON files in both array and JSONL formats using a **native Rust parser**.
 
-**Features:** Streaming parsing, multiple formats (array/JSONL), memory-efficient
+**Features:** High-performance native parser, streaming parsing, multiple formats (array/JSONL), memory-efficient
 
 **[View Documentation →](adapters/json-input.md)**
 
@@ -126,9 +134,9 @@ Output adapters are responsible for persisting processed data to various destina
 
 ### [CSV Output Adapter](adapters/csv-output.md)
 
-Writes validated entries to a CSV file.
+Writes validated entries to a CSV file using a **native Rust writer**.
 
-**Features:** Automatic CSV writing, custom delimiters, efficient buffering
+**Features:** High-performance native writer, batch writing optimization, custom delimiters, efficient buffering
 
 **[View Documentation →](adapters/csv-output.md)**
 
@@ -136,9 +144,9 @@ Writes validated entries to a CSV file.
 
 ### [JSON Output Adapter](adapters/json-output.md)
 
-Writes validated entries to JSON files in array or JSONL format.
+Writes validated entries to JSON files in array or JSONL format using a **native Rust writer**.
 
-**Features:** Pretty-printing, metadata inclusion, handles UUIDs/Enums
+**Features:** High-performance native writer, batch writing optimization, pretty-printing, handles complex types
 
 **[View Documentation →](adapters/json-output.md)**
 

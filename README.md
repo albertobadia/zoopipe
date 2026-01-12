@@ -12,6 +12,7 @@ Whether you're migrating data, cleaning CSVs, or processing streams, ZooPipe pro
 - 🔌 **Pluggable Architecture**: Easily swap Input Adapters, Output Adapters, and Executors
 - ⚡ **Parallel Processing**: Scale from single-threaded to distributed computing with `MultiprocessingExecutor`, `ThreadExecutor`, `DaskExecutor` and `RayExecutor`
 - 🗜️ **High-Performance Serialization**: Uses msgpack and optional LZ4 compression for efficient inter-process communication
+- 🚀 **Native Rust Core**: High-performance CSV and JSON parsers/writers built in Rust for optimal throughput and low memory usage
 - 📊 **Built-in Format Support**: Direct support for CSV, JSON (array & JSONL), Parquet, and S3-compatible storage (Boto3, MinIO)
 - 🚨 **Automated Error Handling**: Dedicated error output adapter to capture records that fail validation
 - 🪝 **Hooks System**: Transform and enrich data at various pipeline stages with built-in and custom hooks

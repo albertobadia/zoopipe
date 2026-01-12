@@ -4,11 +4,14 @@ The CSVInputAdapter reads data from CSV files with extensive configuration optio
 
 ## Features
 
+- **High-performance native Rust parser** for optimal throughput
+- Streaming processing for memory-efficient handling of large files
 - Configurable encoding
-- Custom delimiters
+- Custom delimiters and quote characters
 - Skip rows (e.g., headers)
 - Limit number of rows to process
 - Custom field names
+- Automatic ID generation for entries
 
 ## Usage
 
@@ -27,12 +30,14 @@ input_adapter = CSVInputAdapter(
 
 ## Parameters
 
-- `filepath` (required): Path to the CSV file
+- `source` (required): Path to the CSV file
 - `encoding` (optional): File encoding. Default: `"utf-8"`
 - `delimiter` (optional): CSV delimiter character. Default: `","`
+- `quotechar` (optional): Character used to quote fields. Default: `'"'`
 - `skip_rows` (optional): Number of rows to skip from the beginning. Default: `0`
 - `max_rows` (optional): Maximum number of rows to read. `None` means all rows. Default: `None`
 - `fieldnames` (optional): Custom field names for the CSV. If `None`, uses the first row. Default: `None`
+- `generate_ids` (optional): Automatically generate IDs for entries. Default: `True`
 
 ## Examples
 

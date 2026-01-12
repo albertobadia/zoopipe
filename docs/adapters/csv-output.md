@@ -4,11 +4,14 @@ The CSVOutputAdapter writes validated entries to a CSV file.
 
 ## Features
 
+- **High-performance native Rust writer** for optimal throughput
+- **Batch writing optimization** reduces I/O overhead
 - Automatic CSV writing
 - Configurable encoding
-- Custom delimiters
+- Custom delimiters and quote characters
 - Handles Entry objects automatically
 - Efficient buffered writing
+- Optional automatic flushing
 
 ## Usage
 
@@ -24,9 +27,12 @@ output_adapter = CSVOutputAdapter(
 
 ## Parameters
 
-- `filepath` (required): Path to the output CSV file
+- `output` (required): Path to the output CSV file
 - `encoding` (optional): File encoding. Default: `"utf-8"`
 - `delimiter` (optional): CSV delimiter character. Default: `","`
+- `quotechar` (optional): Character used to quote fields. Default: `'"'`
+- `fieldnames` (optional): Explicit field names for CSV header. If `None`, inferred from first record. Default: `None`
+- `autoflush` (optional): Automatically flush after each write. Default: `True`
 
 ## Examples
 

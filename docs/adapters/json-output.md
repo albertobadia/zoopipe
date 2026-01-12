@@ -4,11 +4,12 @@ The JSONOutputAdapter writes validated entries to a JSON file in two formats: JS
 
 ## Features
 
+- **High-performance native Rust writer** for optimal throughput
+- **Batch writing optimization** reduces I/O overhead
 - Support for JSON arrays and JSONL format
 - Configurable encoding
 - Optional pretty-printing with indentation
-- Handles UUIDs and Enums automatically
-- Optional metadata inclusion
+- Handles complex types automatically
 - Efficient buffered writing
 
 ## Usage
@@ -30,7 +31,6 @@ output_adapter = JSONOutputAdapter(
 - `output` (required): Path to the output JSON file
 - `format` (optional): JSON format. Options: `"array"` or `"jsonl"`. Default: `"array"`
 - `encoding` (optional): File encoding. Default: `"utf-8"`
-- `include_metadata` (optional): Include entry metadata in output. Default: `False`
 - `indent` (optional): Number of spaces for indentation. `None` means compact output. Default: `None`
 
 ## Examples
@@ -56,17 +56,6 @@ output_adapter = JSONOutputAdapter(
 )
 ```
 
-### Including Metadata
-
-```python
-error_adapter = JSONOutputAdapter(
-    output="errors.json",
-    format="array",
-    include_metadata=True,
-    indent=2
-)
-```
-
 ### Compact Output
 
 ```python
@@ -75,32 +64,6 @@ output_adapter = JSONOutputAdapter(
     format="array",
     indent=None
 )
-```
-
-## Output Structure
-
-### With Metadata
-
-```json
-{
-  "id": "uuid-string",
-  "status": "validated",
-  "position": 0,
-  "metadata": {},
-  "data": {
-    "field1": "value1",
-    "field2": "value2"
-  }
-}
-```
-
-### Without Metadata (Default)
-
-```json
-{
-  "field1": "value1",
-  "field2": "value2"
-}
 ```
 
 ---

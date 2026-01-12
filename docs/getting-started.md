@@ -66,6 +66,15 @@ with Pipe(...) as flow:
 # Resources are automatically cleaned up here
 ```
 
+## Performance
+
+ZooPipe uses native Rust implementations for CSV and JSON adapters, providing:
+- **High throughput**: Native parsers and writers optimized for speed
+- **Low memory usage**: Efficient streaming processing of large files
+- **Batch optimization**: Optimized batch writing reduces overhead
+
+The native implementation is completely transparent to users - no configuration changes needed. Simply use `CSVInputAdapter`, `CSVOutputAdapter`, `JSONInputAdapter`, and `JSONOutputAdapter` as shown in the examples above.
+
 ## Next Steps
 - Learn about [different executors](executors.md) for parallel processing
 - Explore [input and output adapters](adapters.md)
