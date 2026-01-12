@@ -19,3 +19,4 @@ wheels/
 
 # Test files
 examples/output_data/*
+examples/sample_data/*

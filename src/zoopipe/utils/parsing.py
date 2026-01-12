@@ -16,18 +16,33 @@ def parse_csv(
     **csv_options,
 ) -> typing.Generator[dict[str, typing.Any], None, None]:
     text_stream = io.TextIOWrapper(stream, encoding=encoding, newline="")
-    for _ in range(skip_rows):
-        next(text_stream, None)
 
-    reader = csv.DictReader(
-        text_stream,
-        delimiter=delimiter,
-        quotechar=quotechar,
-        fieldnames=fieldnames,
-        **csv_options,
-    )
-    for row in reader:
-        yield dict(row)
+    for _ in range(skip_rows):
+        text_stream.readline()
+
+    if fieldnames is None:
+        header_line = text_stream.readline()
+        if not header_line:
+            return
+        reader = csv.reader(
+            [header_line], delimiter=delimiter, quotechar=quotechar, **csv_options
+        )
+        fieldnames = next(reader)
+
+    while True:
+        line = text_stream.readline()
+        if not line:
+            break
+
+        reader = csv.reader(
+            [line], delimiter=delimiter, quotechar=quotechar, **csv_options
+        )
+        try:
+            values = next(reader)
+            if values and any(values):
+                yield dict(zip(fieldnames, values))
+        except StopIteration:
+            break
 
 
 def parse_json(

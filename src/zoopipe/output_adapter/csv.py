@@ -18,6 +18,7 @@ class CSVOutputAdapter(BaseOutputAdapter):
         quotechar: str = '"',
         fieldnames: list[str] | None = None,
         include_metadata: bool = False,
+        autoflush: bool = True,
         pre_hooks: list["BaseHook"] | None = None,
         post_hooks: list["BaseHook"] | None = None,
         **csv_options,
@@ -29,6 +30,7 @@ class CSVOutputAdapter(BaseOutputAdapter):
         self.quotechar = quotechar
         self.fieldnames = fieldnames
         self.include_metadata = include_metadata
+        self.autoflush = autoflush
         self.csv_options = csv_options
 
         self._file_handle = None
@@ -96,3 +98,10 @@ class CSVOutputAdapter(BaseOutputAdapter):
             self._header_written = True
 
         self._csv_writer.writerow(data)
+
+        if self.autoflush:
+            self.flush()
+
+    def flush(self) -> None:
+        if self._file_handle is not None:
+            self._file_handle.flush()
