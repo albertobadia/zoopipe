@@ -12,6 +12,12 @@ impl PyHookAdapter {
         }
     }
 
+    pub fn clone_ref(&self, py: Python<'_>) -> Self {
+        PyHookAdapter {
+            hook: self.hook.clone_ref(py),
+        }
+    }
+
     pub fn setup(&self, py: Python<'_>, store: &Bound<'_, PyDict>) -> PyResult<()> {
         let hook = self.hook.bind(py);
         if hook.hasattr("setup")? {

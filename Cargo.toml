@@ -19,3 +19,4 @@ pyo3-async-runtimes = { version = "0.27.0", features = ["tokio-runtime"] }
 tokio = { version = "1.49.0", features = ["full"] }
 streaming-iterator = "0.1"
 uuid = { version = "1.19.0", features = ["v4", "fast-rng"] }
+crossbeam = "0.8.4"

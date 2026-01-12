@@ -234,9 +234,12 @@ class Pipe:
             is_native_source = isinstance(source_gen, (CSVReader, JSONReader))
 
             # 3. Executor check
+            from zoopipe.executor.parallel import NativeParallelExecutor
             from zoopipe.executor.rust import RustBatchExecutor
 
-            is_native_executor = isinstance(self.executor, RustBatchExecutor)
+            is_native_executor = isinstance(
+                self.executor, (RustBatchExecutor, NativeParallelExecutor)
+            )
 
             # If we have a native source and executor, we can run native loop.
             # The Rust engine allows Python output adapters (Scenario B / Hybrid).
@@ -245,9 +248,12 @@ class Pipe:
             return False
 
     def _execute_native_loop(self, report: FlowReport, ctx: "_PipeRunContext") -> None:
+        from zoopipe.executor.parallel import NativeParallelExecutor
         from zoopipe.executor.rust import RustBatchExecutor
 
-        executor = typing.cast(RustBatchExecutor, self.executor)
+        executor = typing.cast(
+            RustBatchExecutor | NativeParallelExecutor, self.executor
+        )
 
         # Extract native reader
         reader = self.input_adapter._reader
@@ -262,6 +268,7 @@ class Pipe:
             post_hooks=self.post_validation_hooks,
             validator=getattr(self.executor, "schema_model", None),
             output_adapter=self.output_adapter,
+            error_output_adapter=self.error_output_adapter,
             report=report,
         )
 

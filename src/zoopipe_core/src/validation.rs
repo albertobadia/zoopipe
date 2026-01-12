@@ -32,8 +32,6 @@ impl NativeValidator {
             Ok(validated) => {
                 let data_dict = if validated.hasattr("model_dump")? {
                     validated.call_method0("model_dump")?
-                } else if validated.hasattr("dict")? {
-                    validated.call_method0("dict")?
                 } else {
                     validated
                 };
@@ -75,8 +73,6 @@ impl NativeValidator {
                 Ok(validated) => {
                     let data_dict = if validated.hasattr("model_dump")? {
                         validated.call_method0("model_dump")?
-                    } else if validated.hasattr("dict")? {
-                        validated.call_method0("dict")?
                     } else {
                         validated
                     };

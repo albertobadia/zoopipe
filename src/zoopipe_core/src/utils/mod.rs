@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyBool, PyInt, PyFloat, PyString};
 use pyo3::exceptions::PyRuntimeError;
 use serde_json::Value;
+use serde::ser::{Serialize, Serializer, SerializeSeq, SerializeMap};
 
 pub fn wrap_py_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
@@ -71,6 +72,60 @@ pub fn python_to_serde(py: Python<'_>, obj: Bound<'_, PyAny>) -> PyResult<Value>
             python_to_serde(py, obj.getattr(pyo3::intern!(py, "value"))?)
         } else {
             Ok(Value::String(obj.to_string()))
+        }
+    }
+}
+
+pub struct PySerializable<'a>(pub Bound<'a, PyAny>);
+
+impl<'a> Serialize for PySerializable<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let obj = &self.0;
+        if obj.is_none() {
+            serializer.serialize_none()
+        } else if let Ok(b) = obj.cast::<PyBool>() {
+             serializer.serialize_bool(b.is_true())
+        } else if let Ok(i) = obj.cast::<PyInt>() {
+             if let Ok(val) = i.extract::<i64>() {
+                 serializer.serialize_i64(val)
+             } else {
+                 serializer.serialize_str(&i.to_string())
+             }
+        } else if let Ok(f) = obj.cast::<PyFloat>() {
+             if let Ok(val) = f.extract::<f64>() {
+                 serializer.serialize_f64(val)
+             } else {
+                 serializer.serialize_none()
+             }
+        } else if let Ok(s) = obj.cast::<PyString>() {
+             serializer.serialize_str(&s.to_string())
+        } else if let Ok(l) = obj.cast::<PyList>() {
+             let mut seq = serializer.serialize_seq(Some(l.len()))?;
+             for item in l.iter() {
+                 seq.serialize_element(&PySerializable(item))?;
+             }
+             seq.end()
+        } else if let Ok(d) = obj.cast::<PyDict>() {
+             let mut map = serializer.serialize_map(Some(d.len()))?;
+             for (k, v) in d.iter() {
+                 map.serialize_entry(&k.to_string(), &PySerializable(v))?;
+             }
+             map.end()
+        } else {
+            // Check for .value property (special case handling matching python_to_serde)
+            // But we can't easily do try/catch here without py context easily? 
+            // Wrapper references PyAny, so we have it.
+            // But Serialize trait doesn't return PyResult. 
+            // We must map error.
+            
+            // Note: serialize cannot easily handle PyResult internally without custom error type mapping.
+            // Using a simplified fallback logic:
+            
+            let s = obj.to_string();
+            serializer.serialize_str(&s)
         }
     }
 }

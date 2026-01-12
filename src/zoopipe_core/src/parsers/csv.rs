@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use csv::StringRecord;
 use crate::io::BoxedReader;
 use crate::utils::wrap_py_err;
+use pyo3::types::PyAnyMethods;
 
 #[pyclass]
 pub struct CSVReader {
@@ -203,13 +204,14 @@ impl CSVWriter {
         self.write_internal(py, data, &mut writer, &mut header_written, &mut fieldnames)
     }
 
-    fn write_batch(&self, py: Python<'_>, entries: Bound<'_, pyo3::types::PyList>) -> PyResult<()> {
+    fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut header_written = self.header_written.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut fieldnames = self.fieldnames.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         
-        for entry in entries.iter() {
-            self.write_internal(py, entry, &mut writer, &mut header_written, &mut fieldnames)?;
+        let iterator = entries.try_iter()?;
+        for entry in iterator {
+            self.write_internal(py, entry?, &mut writer, &mut header_written, &mut fieldnames)?;
         }
         Ok(())
     }

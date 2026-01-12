@@ -6,7 +6,8 @@ use std::sync::Mutex;
 use serde_json::Value;
 use serde::Serialize;
 use crate::io::BoxedReader;
-use crate::utils::{serde_to_py, python_to_serde, wrap_py_err};
+use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
+use pyo3::types::PyAnyMethods;
 
 #[pyclass]
 pub struct JSONReader {
@@ -146,12 +147,13 @@ impl JSONWriter {
         self.write_internal(py, data, &mut writer, &mut is_first)
     }
 
-    fn write_batch(&self, py: Python<'_>, entries: Bound<'_, pyo3::types::PyList>) -> PyResult<()> {
+    fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut is_first = self.is_first_item.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         
-        for entry in entries.iter() {
-            self.write_internal(py, entry, &mut writer, &mut is_first)?;
+        let iterator = entries.try_iter()?;
+        for entry in iterator {
+            self.write_internal(py, entry?, &mut writer, &mut is_first)?;
         }
         Ok(())
     }
@@ -178,22 +180,22 @@ impl JSONWriter {
 impl JSONWriter {
     fn write_internal(
         &self,
-        py: Python<'_>,
+        _py: Python<'_>,
         data: Bound<'_, PyAny>,
         writer: &mut std::io::BufWriter<File>,
         is_first: &mut bool,
     ) -> PyResult<()> {
-        let value = python_to_serde(py, data)?;
+        let wrapper = PySerializable(data);
 
         let json_str = if let Some(indent_size) = self.indent {
             let mut buf = Vec::new();
             let indent_bytes = b" ".repeat(indent_size);
             let formatter = serde_json::ser::PrettyFormatter::with_indent(&indent_bytes);
             let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-            value.serialize(&mut ser).map_err(wrap_py_err)?;
+            wrapper.serialize(&mut ser).map_err(wrap_py_err)?;
             String::from_utf8(buf).map_err(wrap_py_err)?
         } else {
-            serde_json::to_string(&value).map_err(wrap_py_err)?
+            serde_json::to_string(&wrapper).map_err(wrap_py_err)?
         };
 
         if self.format == "jsonl" {

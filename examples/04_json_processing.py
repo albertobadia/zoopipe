@@ -18,7 +18,9 @@ class UserSchema(BaseModel):
 
 
 pipe = Pipe(
-    input_adapter=JSONInputAdapter("examples/output_data/big_users.json"),
+    input_adapter=JSONInputAdapter(
+        "examples/output_data/big_users.jsonl", format="jsonl"
+    ),
     output_adapter=CSVOutputAdapter("examples/output_data/big_users_2.csv"),
     executor=RustBatchExecutor(UserSchema, batch_size=10000),
 )
