@@ -75,7 +75,13 @@ class Boto3FetchHook(BaseHook):
                     rows = parse_content(content, file_format)
                     for sub_i, row in enumerate(rows):
                         new_entry = entry.copy()
-                        new_entry["raw_data"] = row
+
+                        # Unwrap Rust envelope if present
+                        if isinstance(row, dict) and "raw_data" in row and "id" in row:
+                            new_entry["raw_data"] = row["raw_data"]
+                        else:
+                            new_entry["raw_data"] = row
+
                         new_entry["status"] = EntryStatus.PENDING
                         new_entry["metadata"] = entry["metadata"].copy()
                         new_entry["metadata"]["row_index"] = sub_i

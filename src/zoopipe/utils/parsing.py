@@ -1,9 +1,8 @@
-import csv
 import io
-import json
 import typing
 
-import ijson
+from zoopipe.zoopipe_rust_core import CSVReader as RustCSVReader
+from zoopipe.zoopipe_rust_core import JSONReader as RustJSONReader
 
 
 def parse_csv(
@@ -14,35 +13,28 @@ def parse_csv(
     skip_rows: int = 0,
     fieldnames: list[str] | None = None,
     **csv_options,
-) -> typing.Generator[dict[str, typing.Any], None, None]:
-    text_stream = io.TextIOWrapper(stream, encoding=encoding, newline="")
-
-    for _ in range(skip_rows):
-        text_stream.readline()
-
-    if fieldnames is None:
-        header_line = text_stream.readline()
-        if not header_line:
-            return
-        reader = csv.reader(
-            [header_line], delimiter=delimiter, quotechar=quotechar, **csv_options
+) -> typing.Any:
+    if hasattr(stream, "name") and isinstance(stream.name, str):
+        reader = RustCSVReader(
+            stream.name,
+            delimiter=ord(delimiter),
+            quote=ord(quotechar),
+            skip_rows=skip_rows,
+            fieldnames=fieldnames,
         )
-        fieldnames = next(reader)
-
-    while True:
-        line = text_stream.readline()
-        if not line:
-            break
-
-        reader = csv.reader(
-            [line], delimiter=delimiter, quotechar=quotechar, **csv_options
+    else:
+        # Fallback to reading all bytes and passing to Rust
+        # This might be slow for very large files if streamed,
+        # but for in-memory BytesIO it's fine.
+        data = stream.read()
+        reader = RustCSVReader.from_bytes(
+            data,
+            delimiter=ord(delimiter),
+            quote=ord(quotechar),
+            skip_rows=skip_rows,
+            fieldnames=fieldnames,
         )
-        try:
-            values = next(reader)
-            if values and any(values):
-                yield dict(zip(fieldnames, values))
-        except StopIteration:
-            break
+    return reader
 
 
 def parse_json(
@@ -50,20 +42,13 @@ def parse_json(
     format: str = "array",
     prefix: str = "item",
     encoding: str = "utf-8",
-) -> typing.Generator[dict[str, typing.Any], None, None]:
-    if format == "jsonl":
-        text_stream = io.TextIOWrapper(stream, encoding=encoding)
-        for line in text_stream:
-            line = line.strip()
-            if line:
-                yield json.loads(line)
+) -> typing.Any:
+    if hasattr(stream, "name") and isinstance(stream.name, str):
+        reader = RustJSONReader(stream.name)
     else:
-        items = ijson.items(stream, prefix)
-        for item in items:
-            if isinstance(item, dict):
-                yield item
-            else:
-                yield {"value": item}
+        data = stream.read()
+        reader = RustJSONReader.from_bytes(data)
+    return reader
 
 
 def parse_content(

@@ -39,6 +39,12 @@ class JSONInputAdapter(BaseInputAdapter):
             raise ValueError(f"Path is not a file: {self.source_path}")
         self._file_handle = open(self.source_path, mode="rb")
         self._item_count = 0
+        self._reader = parse_json(
+            self._file_handle,
+            format=self.format,
+            prefix=self.prefix,
+            encoding=self.encoding,
+        )
         super().open()
 
     def close(self) -> None:
@@ -55,24 +61,26 @@ class JSONInputAdapter(BaseInputAdapter):
                 "Use 'with adapter:' or call adapter.open()"
             )
         try:
-            reader = parse_json(
-                self._file_handle,
-                format=self.format,
-                prefix=self.prefix,
-                encoding=self.encoding,
-            )
-            for row in reader:
+            for row in self._reader:
                 if self.max_items is not None and self._item_count >= self.max_items:
                     break
-                yield EntryTypedDict(
-                    id=self.id_generator(),
-                    raw_data=row,
-                    validated_data=None,
-                    position=self._item_count,
-                    status=EntryStatus.PENDING,
-                    errors=[],
-                    metadata={},
-                )
+
+                if isinstance(row, dict) and "raw_data" in row and "id" in row:
+                    # Native reader already provided an envelope
+                    # We might want to override the ID if a generator was provided
+                    if self.id_generator:
+                        row["id"] = self.id_generator()
+                    yield typing.cast(EntryTypedDict, row)
+                else:
+                    yield EntryTypedDict(
+                        id=self.id_generator(),
+                        raw_data=row,
+                        validated_data=None,
+                        position=self._item_count,
+                        status=EntryStatus.PENDING,
+                        errors=[],
+                        metadata={},
+                    )
                 self._item_count += 1
         except Exception as e:
             raise ValueError(f"Error parsing JSON: {e}") from e

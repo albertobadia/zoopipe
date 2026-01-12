@@ -1,18 +1,16 @@
 import abc
-import enum
 import logging
 import typing
-import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 
-import lz4.frame
-import msgpack
 from pydantic import BaseModel, TypeAdapter
 
 from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.models.core import EntryStatus, EntryTypedDict
 from zoopipe.utils import validate_entry
+from zoopipe.zoopipe_rust_core import pack_chunk as rust_pack_chunk
+from zoopipe.zoopipe_rust_core import unpack_chunk as rust_unpack_chunk
 
 
 @lru_cache
@@ -39,17 +37,7 @@ class BaseExecutor(abc.ABC):
         if not self.do_binary_pack:
             return chunk
 
-        def _packer_default(obj):
-            if isinstance(obj, uuid.UUID):
-                return str(obj)
-            if isinstance(obj, enum.Enum):
-                return obj.value
-            return obj
-
-        packed = msgpack.packb(chunk, default=_packer_default)
-        if self.compression_algorithm == "lz4":
-            packed = lz4.frame.compress(packed)
-        return packed
+        return rust_pack_chunk(chunk, compression=self.compression_algorithm)
 
     @staticmethod
     def _unpack_data(
@@ -57,9 +45,8 @@ class BaseExecutor(abc.ABC):
     ) -> list[dict[str, typing.Any]]:
         if not do_binary_pack:
             return data
-        if compression_algorithm == "lz4":
-            data = lz4.frame.decompress(data)
-        return msgpack.unpackb(data)
+
+        return rust_unpack_chunk(data, compression=compression_algorithm)
 
     @staticmethod
     def _handle_hook_error(

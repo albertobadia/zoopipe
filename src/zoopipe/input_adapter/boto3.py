@@ -117,9 +117,18 @@ class Boto3InputAdapter(BaseInputAdapter):
                         if file_format:
                             rows = parse_content(response["Body"].read(), file_format)
                             for sub_i, row in enumerate(rows):
+                                # Check if row is an envelope from Rust reader
+                                real_raw_data = row
+                                if (
+                                    isinstance(row, dict)
+                                    and "raw_data" in row
+                                    and "id" in row
+                                ):
+                                    real_raw_data = row["raw_data"]
+
                                 yield EntryTypedDict(
                                     id=self.id_generator(),
-                                    raw_data=row,
+                                    raw_data=real_raw_data,
                                     validated_data=None,
                                     position=i,
                                     status=EntryStatus.PENDING,

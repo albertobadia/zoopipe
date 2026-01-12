@@ -44,6 +44,15 @@ class CSVInputAdapter(BaseInputAdapter):
         if not self.source_path.is_file():
             raise ValueError(f"Path is not a file: {self.source_path}")
         self._file_handle = open(self.source_path, mode="rb")
+        self._reader = parse_csv(
+            self._file_handle,
+            delimiter=self.delimiter,
+            quotechar=self.quotechar,
+            encoding=self.encoding,
+            skip_rows=self.skip_rows,
+            fieldnames=self.fieldnames,
+            **self.csv_options,
+        )
         super().open()
 
     def close(self) -> None:
@@ -55,27 +64,23 @@ class CSVInputAdapter(BaseInputAdapter):
     @property
     def generator(self) -> typing.Generator[EntryTypedDict, None, None]:
         try:
-            reader = parse_csv(
-                self._file_handle,
-                delimiter=self.delimiter,
-                quotechar=self.quotechar,
-                encoding=self.encoding,
-                skip_rows=self.skip_rows,
-                fieldnames=self.fieldnames,
-                **self.csv_options,
-            )
-            for row_num, row in enumerate(reader, start=1):
+            for row_num, row in enumerate(self._reader, start=1):
                 if self.max_rows is not None and row_num > self.max_rows:
                     break
-                yield EntryTypedDict(
-                    id=self.id_generator(),
-                    raw_data=row,
-                    validated_data=None,
-                    position=row_num - 1 + self.skip_rows,
-                    status=EntryStatus.PENDING,
-                    errors=[],
-                    metadata={},
-                )
+                if isinstance(row, dict) and "raw_data" in row and "id" in row:
+                    if self.id_generator != uuid.uuid4:
+                        row["id"] = self.id_generator()
+                    yield typing.cast(EntryTypedDict, row)
+                else:
+                    yield EntryTypedDict(
+                        id=self.id_generator(),
+                        raw_data=row,
+                        validated_data=None,
+                        position=row_num - 1 + self.skip_rows,
+                        status=EntryStatus.PENDING,
+                        errors=[],
+                        metadata={},
+                    )
         except Exception as e:
             raise RuntimeError(f"Error reading CSV: {e}") from e
 

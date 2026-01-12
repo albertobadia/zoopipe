@@ -1,10 +1,11 @@
+import pathlib
 import time
 import uuid
 
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import Pipe
-from zoopipe.executor.sync_fifo import SyncFifoExecutor
+from zoopipe.executor.rust import RustBatchExecutor
 from zoopipe.input_adapter.csv import CSVInputAdapter
 from zoopipe.output_adapter.csv import CSVOutputAdapter
 
@@ -17,7 +18,6 @@ class UserSchema(BaseModel):
 
 
 def main():
-    # We use GeneratorOutputAdapter to iterate over results as they are produced
     output_adapter = CSVOutputAdapter(
         "examples/output_data/big_users.csv", autoflush=True
     )
@@ -25,25 +25,18 @@ def main():
     pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
         output_adapter=output_adapter,
-        # error_output_adapter=CSVOutputAdapter("examples/output_data/errors.csv"),
-        executor=SyncFifoExecutor(UserSchema),
+        executor=RustBatchExecutor(UserSchema, batch_size=10000),
     )
 
-    # Start the pipein the background
     report = pipe.start()
 
-    # Iterate over the results from the adapter
-    # for entry in output_adapter:
-    #     status = entry["status"].value
-    #     progress = report.total_processed
-    #     print(
-    #         f"[{status.upper()}] Row {entry['position']} "
-    #         f"(Progress: {progress}): {entry['id']}"
-    #     )
+    ouput_path = pathlib.Path(output_adapter.output_path)
 
     while not report.is_finished:
-        time.sleep(0.1)
+        time.sleep(1)
         print(f"Progress: {report.total_processed}/{report.total_processed}")
+        print(f"Speed: {report.items_per_second:.2f} rows/s")
+        print(f"Size: {ouput_path.stat().st_size / 1024 / 1024:.2f} MB")
 
     print(f"\nFinal Report: {report}")
     print(f"Total Duration: {report.duration:.2f}s")

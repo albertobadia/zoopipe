@@ -1,11 +1,10 @@
-import json
 import pathlib
 import typing
 
 from zoopipe.hooks.base import BaseHook
 from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
-from zoopipe.utils import JSONEncoder
+from zoopipe.zoopipe_rust_core import JSONWriter as NativeJSONWriter
 
 
 class JSONOutputAdapter(BaseOutputAdapter):
@@ -26,8 +25,7 @@ class JSONOutputAdapter(BaseOutputAdapter):
         self.include_metadata = include_metadata
         self.indent = indent
 
-        self._file_handle = None
-        self._is_first_item = True
+        self._native_writer = None
 
         if format not in ["array", "jsonl"]:
             raise ValueError(f"Invalid format: {format}. Must be 'array' or 'jsonl'")
@@ -35,63 +33,42 @@ class JSONOutputAdapter(BaseOutputAdapter):
     def open(self) -> None:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._file_handle = open(self.output_path, mode="w", encoding=self.encoding)
-        self._is_first_item = True
-
-        if self.format == "array":
-            self._file_handle.write("[")
-            if self.indent is not None:
-                self._file_handle.write("\n")
-
+        self._native_writer = NativeJSONWriter(
+            str(self.output_path),
+            format=self.format,
+            indent=self.indent,
+            include_metadata=self.include_metadata,
+        )
         super().open()
 
     def close(self) -> None:
-        if self._file_handle is not None:
-            if self.format == "array":
-                if self.indent is not None:
-                    self._file_handle.write("\n")
-                self._file_handle.write("]")
-
-            self._file_handle.close()
-            self._file_handle = None
-            self._is_first_item = True
+        if self._native_writer is not None:
+            self._native_writer.close()
+            self._native_writer = None
 
         super().close()
 
     def write(self, entry: EntryTypedDict) -> None:
-        if not self._is_opened or self._file_handle is None:
+        if not self._is_opened or self._native_writer is None:
             raise RuntimeError(
                 "Adapter must be opened before writing.\n"
                 "Use 'with adapter:' or call adapter.open()"
             )
 
-        record = entry.get("validated_data") or entry.get("raw_data") or {}
-        data = {
-            "id": entry["id"],
-            "status": entry["status"],
-            "position": entry["position"],
-            "metadata": entry["metadata"],
-            "data": record,
-        }
+        self._native_writer.write(entry)
 
-        json_str = json.dumps(data, cls=JSONEncoder, indent=self.indent)
+    def write_batch(self, entries: list[EntryTypedDict]) -> None:
+        if not self._is_opened or self._native_writer is None:
+            raise RuntimeError(
+                "Adapter must be opened before writing.\n"
+                "Use 'with adapter:' or call adapter.open()"
+            )
 
-        if self.format == "jsonl":
-            self._file_handle.write(json_str)
-            self._file_handle.write("\n")
-        else:
-            if not self._is_first_item:
-                self._file_handle.write(",")
-                if self.indent is not None:
-                    self._file_handle.write("\n")
+        if not entries:
+            return
 
-            if self.indent is not None:
-                indented_lines = "\n".join(
-                    " " * self.indent + line if line else line
-                    for line in json_str.split("\n")
-                )
-                self._file_handle.write(indented_lines)
-            else:
-                self._file_handle.write(json_str)
+        self._native_writer.write_batch(entries)
 
-            self._is_first_item = False
+    def flush(self) -> None:
+        if self._native_writer is not None:
+            self._native_writer.flush()

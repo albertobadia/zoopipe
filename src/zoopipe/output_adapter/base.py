@@ -23,6 +23,10 @@ class BaseOutputAdapter(abc.ABC):
     def write(self, entry: EntryTypedDict) -> None:
         raise NotImplementedError("Subclasses must implement the write method")
 
+    def write_batch(self, entries: list[EntryTypedDict]) -> None:
+        for entry in entries:
+            self.write(entry)
+
     def open(self) -> None:
         self._is_opened = True
 
