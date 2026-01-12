@@ -21,3 +21,6 @@ target/
 # Test files
 examples/output_data/*
 examples/sample_data/*
+
+# Rust Core
+src/zoopipe/zoopipe_rust_core.abi3.so
