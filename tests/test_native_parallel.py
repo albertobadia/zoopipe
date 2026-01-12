@@ -108,9 +108,7 @@ def test_native_parallel_executor_validation_error():
             writer.writerow(["user_id", "username", "email"])
             writer.writerow([str(uuid.uuid4()), "user1", "test1@example.com"])
             writer.writerow([str(uuid.uuid4()), "user2", "test2@example.com"])
-            writer.writerow(
-                ["not-a-uuid", "user3", "test3@example.com"]
-            )
+            writer.writerow(["not-a-uuid", "user3", "test3@example.com"])
 
         output_adapter = BufferedOutputAdapter()
         error_adapter = BufferedOutputAdapter()

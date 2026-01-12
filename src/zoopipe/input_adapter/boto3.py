@@ -117,7 +117,6 @@ class Boto3InputAdapter(BaseInputAdapter):
                         if file_format:
                             rows = parse_content(response["Body"].read(), file_format)
                             for sub_i, row in enumerate(rows):
-                                # Check if row is an envelope from Rust reader
                                 real_raw_data = row
                                 if (
                                     isinstance(row, dict)

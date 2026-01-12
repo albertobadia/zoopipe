@@ -25,9 +25,6 @@ def parse_csv(
             generate_ids=generate_ids,
         )
     else:
-        # Fallback to reading all bytes and passing to Rust
-        # This might be slow for very large files if streamed,
-        # but for in-memory BytesIO it's fine.
         data = stream.read()
         reader = RustCSVReader.from_bytes(
             data,

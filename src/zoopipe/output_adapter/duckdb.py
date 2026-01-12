@@ -41,20 +41,19 @@ class DuckDBOutputAdapter(BaseOutputAdapter):
         if not self._buffer or self._conn is None:
             return
 
-        # Get all keys to ensure order and match table columns
+        if not self._buffer or self._conn is None:
+            return
+
         keys = list(self._buffer[0].keys())
         placeholders = ", ".join(["?"] * len(keys))
         columns = ", ".join(keys)
 
-        # Prepare list of tuples
         values = []
         for entry in self._buffer:
             values.append(tuple(entry.get(k) for k in keys))
 
         self._conn.execute("BEGIN TRANSACTION")
         try:
-            # We assume the table columns match the dict keys or we specify columns
-            # Specifying columns in INSERT is safer: INSERT INTO table (col1, col2) ...
             query = f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})"
             self._conn.executemany(query, values)
             self._conn.execute("COMMIT")

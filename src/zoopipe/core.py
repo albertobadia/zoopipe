@@ -33,7 +33,6 @@ class Pipe:
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         if executor is None:
-            # Default to RustBatchExecutor
             from zoopipe.executor.rust import RustBatchExecutor
 
             executor = RustBatchExecutor()
@@ -190,7 +189,6 @@ class Pipe:
         report: FlowReport,
         ctx: "_PipeRunContext",
     ) -> None:
-        # Phase 4: Native Path Optimization
         if self._can_run_native():
             self._execute_native_loop(report, ctx)
             return
@@ -225,15 +223,12 @@ class Pipe:
         self._clear_backpressure(ctx)
 
     def _can_run_native(self) -> bool:
-        # Check if we have the native engine and compatible components
         try:
             from zoopipe.zoopipe_rust_core import CSVReader, JSONReader
 
-            # 1. Source check
             source_gen = getattr(self.input_adapter, "_reader", None)
             is_native_source = isinstance(source_gen, (CSVReader, JSONReader))
 
-            # 3. Executor check
             from zoopipe.executor.parallel import NativeParallelExecutor
             from zoopipe.executor.rust import RustBatchExecutor
 
@@ -241,8 +236,6 @@ class Pipe:
                 self.executor, (RustBatchExecutor, NativeParallelExecutor)
             )
 
-            # If we have a native source and executor, we can run native loop.
-            # The Rust engine allows Python output adapters (Scenario B / Hybrid).
             return is_native_source and is_native_executor
         except ImportError:
             return False
@@ -255,11 +248,8 @@ class Pipe:
             RustBatchExecutor | NativeParallelExecutor, self.executor
         )
 
-        # Extract native reader
         reader = self.input_adapter._reader
 
-        # Orchestrate via native engine
-        # Synchronize chunk size: Rust batch size = executor chunk size
         executor.batch_size = ctx.executor_chunksize
 
         executor.run_native(

@@ -129,13 +129,11 @@ impl CSVReader {
                 let current_pos = *pos;
                 *pos += 1;
                 
-                // 1. Build raw_data
                 let raw_data = pyo3::types::PyDict::new(py);
                 for (header, value) in slf.headers.iter().zip(record.iter()) {
                     raw_data.set_item(header, value)?;
                 }
                 
-                // 2. Build Envelope
                 let envelope = pyo3::types::PyDict::new(py);
                 
                 let id = if slf.generate_ids {

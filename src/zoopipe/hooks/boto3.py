@@ -76,7 +76,6 @@ class Boto3FetchHook(BaseHook):
                     for sub_i, row in enumerate(rows):
                         new_entry = entry.copy()
 
-                        # Unwrap Rust envelope if present
                         if isinstance(row, dict) and "raw_data" in row and "id" in row:
                             new_entry["raw_data"] = row["raw_data"]
                         else:

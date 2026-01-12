@@ -66,8 +66,6 @@ class JSONInputAdapter(BaseInputAdapter):
                     break
 
                 if isinstance(row, dict) and "raw_data" in row and "id" in row:
-                    # Native reader already provided an envelope
-                    # We might want to override the ID if a generator was provided
                     if self.id_generator:
                         row["id"] = self.id_generator()
                     yield typing.cast(EntryTypedDict, row)

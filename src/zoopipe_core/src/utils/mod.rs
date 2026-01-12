@@ -115,15 +115,6 @@ impl<'a> Serialize for PySerializable<'a> {
              }
              map.end()
         } else {
-            // Check for .value property (special case handling matching python_to_serde)
-            // But we can't easily do try/catch here without py context easily? 
-            // Wrapper references PyAny, so we have it.
-            // But Serialize trait doesn't return PyResult. 
-            // We must map error.
-            
-            // Note: serialize cannot easily handle PyResult internally without custom error type mapping.
-            // Using a simplified fallback logic:
-            
             let s = obj.to_string();
             serializer.serialize_str(&s)
         }
