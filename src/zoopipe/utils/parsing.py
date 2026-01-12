@@ -12,6 +12,7 @@ def parse_csv(
     encoding: str = "utf-8",
     skip_rows: int = 0,
     fieldnames: list[str] | None = None,
+    generate_ids: bool = True,
     **csv_options,
 ) -> typing.Any:
     if hasattr(stream, "name") and isinstance(stream.name, str):
@@ -21,6 +22,7 @@ def parse_csv(
             quote=ord(quotechar),
             skip_rows=skip_rows,
             fieldnames=fieldnames,
+            generate_ids=generate_ids,
         )
     else:
         # Fallback to reading all bytes and passing to Rust
@@ -33,6 +35,7 @@ def parse_csv(
             quote=ord(quotechar),
             skip_rows=skip_rows,
             fieldnames=fieldnames,
+            generate_ids=generate_ids,
         )
     return reader
 

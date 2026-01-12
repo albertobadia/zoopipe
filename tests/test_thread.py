@@ -52,21 +52,14 @@ def test_thread_executor(tmp_path):
         pre_validation_hooks=[SlowHook()],
     )
 
-    start_time = time.time()
     report = pipe.start()
     report.wait()
-    duration = time.time() - start_time
 
     output_data = memory_adapter.results
 
     assert len(output_data) == 4
-    assert output_data[0]["status"].value == "validated"
 
-    thread_ids = {entry["metadata"]["thread_id"] for entry in output_data}
-
-    print(f"Thread execution took {duration:.2f}s using threads: {thread_ids}")
-
-    names = {entry["validated_data"]["name"] for entry in output_data}
+    names = {entry["name"] for entry in output_data}
     assert names == {"Alice", "Bob", "Charlie", "Dave"}
 
     print("ThreadExecutor test passed!")

@@ -109,19 +109,17 @@ pub struct JSONWriter {
     is_first_item: Mutex<bool>,
     format: String,
     indent: Option<usize>,
-    include_metadata: bool,
 }
 
 #[pymethods]
 impl JSONWriter {
     #[new]
-    #[pyo3(signature = (path, format="array".to_string(), indent=None, include_metadata=false))]
+    #[pyo3(signature = (path, format="array".to_string(), indent=None))]
     fn new(
         _py: Python<'_>,
         path: String,
         format: String,
         indent: Option<usize>,
-        include_metadata: bool,
     ) -> PyResult<Self> {
         let file = File::create(path).map_err(wrap_py_err)?;
         let mut writer = std::io::BufWriter::new(file);
@@ -138,15 +136,14 @@ impl JSONWriter {
             is_first_item: Mutex::new(true),
             format,
             indent,
-            include_metadata,
         })
     }
 
-    fn write(&self, py: Python<'_>, entry: Bound<'_, PyAny>) -> PyResult<()> {
+    fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut is_first = self.is_first_item.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
 
-        self.write_internal(py, entry, &mut writer, &mut is_first)
+        self.write_internal(py, data, &mut writer, &mut is_first)
     }
 
     fn write_batch(&self, py: Python<'_>, entries: Bound<'_, pyo3::types::PyList>) -> PyResult<()> {
@@ -182,35 +179,11 @@ impl JSONWriter {
     fn write_internal(
         &self,
         py: Python<'_>,
-        entry: Bound<'_, PyAny>,
+        data: Bound<'_, PyAny>,
         writer: &mut std::io::BufWriter<File>,
         is_first: &mut bool,
     ) -> PyResult<()> {
-        let entry_dict = entry.cast::<pyo3::types::PyDict>()?;
-        
-        let id = entry_dict.get_item(pyo3::intern!(py, "id"))?.ok_or_else(|| PyRuntimeError::new_err("Missing 'id'"))?;
-        let status = entry_dict.get_item(pyo3::intern!(py, "status"))?.ok_or_else(|| PyRuntimeError::new_err("Missing 'status'"))?;
-        let position = entry_dict.get_item(pyo3::intern!(py, "position"))?.ok_or_else(|| PyRuntimeError::new_err("Missing 'position'"))?;
-        
-        let record_py = if let Ok(Some(val)) = entry_dict.get_item(pyo3::intern!(py, "validated_data")) {
-            val
-        } else {
-            entry_dict.get_item(pyo3::intern!(py, "raw_data"))?.ok_or_else(|| PyRuntimeError::new_err("Missing 'raw_data'"))?
-        };
-
-        let mut map = serde_json::Map::with_capacity(5);
-        map.insert("id".to_string(), python_to_serde(py, id)?);
-        map.insert("status".to_string(), python_to_serde(py, status)?);
-        map.insert("position".to_string(), python_to_serde(py, position)?);
-        
-        if self.include_metadata {
-            if let Some(meta) = entry_dict.get_item(pyo3::intern!(py, "metadata"))? {
-                map.insert("metadata".to_string(), python_to_serde(py, meta)?);
-            }
-        }
-        
-        map.insert("data".to_string(), python_to_serde(py, record_py)?);
-        let value = Value::Object(map);
+        let value = python_to_serde(py, data)?;
 
         let json_str = if let Some(indent_size) = self.indent {
             let mut buf = Vec::new();

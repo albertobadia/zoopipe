@@ -33,16 +33,18 @@ def test_json_output_adapter_array(tmp_path):
 
     with adapter:
         for entry in entries:
-            adapter.write(entry)
+            # In the real Pipe, Pipe._handle_entry extracts the data
+            data = entry.get("validated_data") or entry.get("raw_data")
+            adapter.write(data)
 
     with open(output_file) as f:
         result = json.load(f)
 
     assert len(result) == 2
-    assert result[0]["data"]["name"] == "Alice"
-    assert result[0]["data"]["age"] == 30
-    assert result[1]["data"]["name"] == "Bob"
-    assert result[1]["data"]["age"] == 25
+    assert result[0]["name"] == "Alice"
+    assert result[0]["age"] == 30
+    assert result[1]["name"] == "Bob"
+    assert result[1]["age"] == 25
 
 
 def test_json_output_adapter_jsonl(tmp_path):
@@ -73,7 +75,8 @@ def test_json_output_adapter_jsonl(tmp_path):
 
     with adapter:
         for entry in entries:
-            adapter.write(entry)
+            data = entry.get("validated_data") or entry.get("raw_data")
+            adapter.write(data)
 
     with open(output_file) as f:
         lines = f.readlines()
@@ -82,44 +85,13 @@ def test_json_output_adapter_jsonl(tmp_path):
     obj1 = json.loads(lines[0])
     obj2 = json.loads(lines[1])
 
-    assert obj1["data"]["name"] == "Alice"
-    assert obj1["data"]["age"] == 30
-    assert obj2["data"]["name"] == "Bob"
-    assert obj2["data"]["age"] == 25
+    assert obj1["name"] == "Alice"
+    assert obj1["age"] == 30
+    assert obj2["name"] == "Bob"
+    assert obj2["age"] == 25
 
 
-def test_json_output_adapter_with_metadata(tmp_path):
-    output_file = tmp_path / "output.json"
-
-    adapter = JSONOutputAdapter(output_file, format="array", include_metadata=True)
-
-    entry_id = uuid.uuid4()
-    entries = [
-        EntryTypedDict(
-            id=entry_id,
-            raw_data=None,
-            validated_data={"name": "Alice", "age": 30},
-            position=0,
-            status=EntryStatus.VALIDATED,
-            errors=[],
-            metadata={},
-        ),
-    ]
-
-    with adapter:
-        for entry in entries:
-            adapter.write(entry)
-
-    with open(output_file) as f:
-        result = json.load(f)
-
-    assert len(result) == 1
-    assert result[0]["data"]["name"] == "Alice"
-    assert result[0]["data"]["age"] == 30
-    assert result[0]["id"] == str(entry_id)
-    assert result[0]["status"] == "validated"
-    assert result[0]["position"] == 0
-    assert "metadata" in result[0]
+# test_json_output_adapter_with_metadata removed as it's no longer supported
 
 
 def test_json_output_adapter_round_trip(tmp_path):
@@ -152,7 +124,8 @@ def test_json_output_adapter_round_trip(tmp_path):
 
     with write_adapter:
         for entry in entries:
-            write_adapter.write(entry)
+            data = entry.get("validated_data") or entry.get("raw_data")
+            write_adapter.write(data)
 
     read_adapter = JSONInputAdapter(output_file, format="array")
 
@@ -160,5 +133,5 @@ def test_json_output_adapter_round_trip(tmp_path):
         read_entries = list(read_adapter.generator)
 
     assert len(read_entries) == 2
-    assert read_entries[0]["raw_data"]["data"]["name"] == "Alice"
-    assert read_entries[1]["raw_data"]["data"]["name"] == "Bob"
+    assert read_entries[0]["raw_data"]["name"] == "Alice"
+    assert read_entries[1]["raw_data"]["name"] == "Bob"

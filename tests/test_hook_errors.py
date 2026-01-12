@@ -1,6 +1,6 @@
 import queue
 
-from zoopipe import EntryStatus, Pipe
+from zoopipe import Pipe
 from zoopipe.executor.sync_fifo import SyncFifoExecutor
 from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.input_adapter.queue import QueueInputAdapter
@@ -55,10 +55,8 @@ def test_hook_failure_marks_entry_failed():
     report2.wait()
 
     assert len(error_adapter.results) == 1
-    failed_entry = error_adapter.results[0]
-    assert failed_entry["status"] == EntryStatus.FAILED
-    assert "Intentional Failure" in failed_entry["metadata"]["hook_error_FailingHook"]
-    assert any("Intentional Failure" in e["message"] for e in failed_entry["errors"])
+    failed_data = error_adapter.results[0]
+    assert failed_data["foo"] == "bar"
 
 
 def test_flow_report_duration():

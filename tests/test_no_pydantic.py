@@ -30,7 +30,7 @@ def test_flow_no_pydantic_thread():
         assert report.success_count == 5
         assert len(output_adapter.results) == 5
         for entry in output_adapter.results:
-            assert entry["status"].value == "validated"
+            assert "val" in entry
     finally:
         if os.path.exists(input_file):
             os.remove(input_file)

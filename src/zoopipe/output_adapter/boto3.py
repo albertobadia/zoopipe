@@ -1,10 +1,11 @@
 import json
+import typing
+import uuid
 
 import boto3
 import botocore.exceptions
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.utils.validation import JSONEncoder
 
@@ -57,14 +58,12 @@ class Boto3OutputAdapter(BaseOutputAdapter):
         self._s3_client = None
         super().close()
 
-    def write(self, entry: EntryTypedDict) -> None:
+    def write(self, data: dict[str, typing.Any]) -> None:
         if not self._is_opened or self._s3_client is None:
             raise RuntimeError(
                 "Adapter must be opened before writing.\n"
                 "Use 'with adapter:' or call adapter.open()"
             )
-
-        data = entry.get("validated_data") or entry.get("raw_data") or {}
 
         if "content" in data and isinstance(data["content"], (bytes, str)):
             content = data["content"]
@@ -74,9 +73,11 @@ class Boto3OutputAdapter(BaseOutputAdapter):
             content = json.dumps(data, cls=JSONEncoder).encode("utf-8")
 
         key = (
-            entry["metadata"].get("key")
-            or entry["metadata"].get("object_name")
-            or f"{entry['id']}.json"
+            data.get("__key__")
+            or data.get("key")
+            or data.get("object_name")
+            or data.get("id")
+            or f"{uuid.uuid4()}.json"
         )
         if self.object_name_prefix:
             key = f"{self.object_name_prefix}{key}"

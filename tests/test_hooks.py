@@ -149,10 +149,8 @@ def test_hooks_integration_with_zoopipe(tmp_path):
     entries = memory_adapter.results
 
     assert len(entries) == 1
-    assert entries[0]["status"] == EntryStatus.VALIDATED
-    assert "hook_count" in entries[0]["metadata"]
-    assert entries[0]["metadata"]["hook_count"] == 1
-    assert "processed_at" in entries[0]["metadata"]
+    assert entries[0]["name"] == "Alice"
+    # Metadata is lost in data-only output
 
 
 def test_max_hook_chunk_size():

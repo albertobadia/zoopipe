@@ -1,8 +1,8 @@
 import abc
 import logging
+import typing
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 
 
 class BaseOutputAdapter(abc.ABC):
@@ -20,12 +20,12 @@ class BaseOutputAdapter(abc.ABC):
         self.logger = logger
 
     @abc.abstractmethod
-    def write(self, entry: EntryTypedDict) -> None:
+    def write(self, data: dict[str, typing.Any]) -> None:
         raise NotImplementedError("Subclasses must implement the write method")
 
-    def write_batch(self, entries: list[EntryTypedDict]) -> None:
-        for entry in entries:
-            self.write(entry)
+    def write_batch(self, batch: list[dict[str, typing.Any]]) -> None:
+        for data in batch:
+            self.write(data)
 
     def open(self) -> None:
         self._is_opened = True

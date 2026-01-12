@@ -1,11 +1,8 @@
-import csv
-import io
 from typing import Any
 
 import duckdb
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 
 
@@ -30,11 +27,10 @@ class DuckDBOutputAdapter(BaseOutputAdapter):
         self._conn.execute("PRAGMA threads=8")
         super().open()
 
-    def write(self, entry: EntryTypedDict) -> None:
+    def write(self, data: dict[str, Any]) -> None:
         if not self._is_opened or self._conn is None:
             raise RuntimeError("Adapter must be opened before writing")
 
-        data = entry.get("validated_data") or entry.get("raw_data")
         if isinstance(data, dict):
             self._buffer.append(data)
 
@@ -45,18 +41,22 @@ class DuckDBOutputAdapter(BaseOutputAdapter):
         if not self._buffer or self._conn is None:
             return
 
-        columns = list(self._buffer[0].keys())
+        # Get all keys to ensure order and match table columns
+        keys = list(self._buffer[0].keys())
+        placeholders = ", ".join(["?"] * len(keys))
+        columns = ", ".join(keys)
 
-        csv_io = io.StringIO()
-        writer = csv.DictWriter(csv_io, fieldnames=columns)
-        writer.writerows(self._buffer)
-        csv_io.seek(0)
-
-        _rel = self._conn.read_csv(csv_io, header=False, names=columns)
+        # Prepare list of tuples
+        values = []
+        for entry in self._buffer:
+            values.append(tuple(entry.get(k) for k in keys))
 
         self._conn.execute("BEGIN TRANSACTION")
         try:
-            self._conn.execute(f"INSERT INTO {self.table_name} SELECT * FROM _rel")
+            # We assume the table columns match the dict keys or we specify columns
+            # Specifying columns in INSERT is safer: INSERT INTO table (col1, col2) ...
+            query = f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})"
+            self._conn.executemany(query, values)
             self._conn.execute("COMMIT")
         except Exception:
             self._conn.execute("ROLLBACK")

@@ -51,8 +51,7 @@ def test_ray_executor_lz4(tmp_path):
     output_data = memory_adapter.results
 
     assert len(output_data) == 3
-    assert output_data[0]["status"].value == "validated"
-    assert output_data[0]["validated_data"]["name"] == "Alice"
+    assert output_data[0]["name"] == "Alice"
 
     print("Ray executor test passed!")
 

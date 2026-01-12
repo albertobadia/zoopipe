@@ -37,7 +37,7 @@ def test_sync_queue_flow():
     report.wait()
 
     assert len(results) == 2
-    assert results[0]["validated_data"]["name"] == "Alice"
-    assert results[1]["validated_data"]["name"] == "Bob"
+    assert results[0]["name"] == "Alice"
+    assert results[1]["name"] == "Bob"
     assert report.total_processed == 2
     assert report.success_count == 2

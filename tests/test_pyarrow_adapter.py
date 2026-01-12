@@ -58,7 +58,8 @@ def test_arrow_output_adapter_parquet(tmp_path):
 
     with adapter:
         for entry in entries:
-            adapter.write(entry)
+            data = entry.get("validated_data") or entry.get("raw_data")
+            adapter.write(data)
 
     assert parquet_path.exists()
     table = pq.read_table(parquet_path)
@@ -79,17 +80,7 @@ def test_arrow_output_adapter_buffering(tmp_path):
 
     with adapter:
         for i in range(5):
-            adapter.write(
-                {
-                    "id": uuid.uuid4(),
-                    "status": EntryStatus.PENDING,
-                    "position": i,
-                    "raw_data": {"val": i},
-                    "validated_data": {"val": i},
-                    "errors": [],
-                    "metadata": {},
-                }
-            )
+            adapter.write({"val": i})
 
     table = pq.read_table(parquet_path)
     assert table.num_rows == 5

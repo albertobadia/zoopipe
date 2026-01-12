@@ -1,10 +1,11 @@
 import io
 import json
+import typing
+import uuid
 
 from minio import Minio
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.utils.validation import JSONEncoder
 
@@ -48,14 +49,12 @@ class MinIOOutputAdapter(BaseOutputAdapter):
         self._client = None
         super().close()
 
-    def write(self, entry: EntryTypedDict) -> None:
+    def write(self, data: dict[str, typing.Any]) -> None:
         if not self._is_opened or self._client is None:
             raise RuntimeError(
                 "Adapter must be opened before writing.\n"
                 "Use 'with adapter:' or call adapter.open()"
             )
-
-        data = entry.get("validated_data") or entry.get("raw_data") or {}
 
         if "content" in data and isinstance(data["content"], (bytes, str)):
             content = data["content"]
@@ -65,9 +64,11 @@ class MinIOOutputAdapter(BaseOutputAdapter):
             content = json.dumps(data, cls=JSONEncoder).encode("utf-8")
 
         object_name = (
-            entry["metadata"].get("object_name")
-            or entry["metadata"].get("key")
-            or f"{entry['id']}.json"
+            data.get("__key__")
+            or data.get("object_name")
+            or data.get("key")
+            or data.get("id")
+            or f"{uuid.uuid4()}.json"
         )
         if self.object_name_prefix:
             object_name = f"{self.object_name_prefix}{object_name}"

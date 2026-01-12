@@ -58,7 +58,7 @@ def test_minio_standard_flow(mock_minio_client):
     report.wait()
 
     assert len(memory_adapter.results) == 2
-    contents = [res["raw_data"]["content"] for res in memory_adapter.results]
+    contents = [res["content"] for res in memory_adapter.results]
     assert b"data1" in contents
     assert b"data2" in contents
 
@@ -88,7 +88,7 @@ def test_minio_jit_flow(mock_minio_client):
     report.wait()
 
     assert len(memory_adapter.results) == 1
-    assert memory_adapter.results[0]["raw_data"]["content"] == b"jit_data"
+    assert memory_adapter.results[0]["content"] == b"jit_data"
 
 
 def test_minio_output_adapter(mock_minio_client):
@@ -103,15 +103,17 @@ def test_minio_output_adapter(mock_minio_client):
     mock_resp.read.return_value = b"payload"
     mock_minio_client.get_object.return_value = mock_resp
 
-    output_adapter = MinIOOutputAdapter(endpoint="localhost:9000", bucket_name="dest")
-    pipe = Pipe(
-        input_adapter=MinIOInputAdapter(endpoint="localhost:9000", bucket_name="src"),
-        output_adapter=output_adapter,
-        executor=SyncFifoExecutor(),
-    )
+    entry = {
+        "id": 10,
+        "name": "Dave",
+        "age": 40,
+        "object_name": "in.txt",
+        "content": b"payload",
+    }
 
-    report = pipe.start()
-    report.wait()
+    adapter = MinIOOutputAdapter(endpoint="localhost:9000", bucket_name="dest")
+    with adapter:
+        adapter.write(entry)
 
     # Verify put_object was called
     assert mock_minio_client.put_object.called

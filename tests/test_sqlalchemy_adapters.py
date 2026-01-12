@@ -5,7 +5,6 @@ from sqlalchemy import create_engine, text
 
 from zoopipe.hooks.sqlalchemy import SQLAlchemyFetchHook
 from zoopipe.input_adapter.sqlalchemy import SQLAlchemyInputAdapter
-from zoopipe.models.core import EntryStatus
 from zoopipe.output_adapter.sqlalchemy import SQLAlchemyOutputAdapter
 
 
@@ -80,18 +79,10 @@ def test_sqlalchemy_output_adapter_basic(db_path, tmp_path):
 
     adapter = SQLAlchemyOutputAdapter(connection_string=out_url, table_name="out_users")
 
-    entry = {
-        "id": "uuid-1",
-        "raw_data": {"id": 10, "name": "Dave", "age": 40},
-        "validated_data": {"id": 10, "name": "Dave", "age": 40},
-        "status": EntryStatus.PENDING,
-        "position": 0,
-        "errors": [],
-        "metadata": {},
-    }
+    data = {"id": 10, "name": "Dave", "age": 40}
 
     with adapter:
-        adapter.write(entry)
+        adapter.write(data)
 
     with engine.connect() as conn:
         res = conn.execute(text("SELECT * FROM out_users")).fetchone()

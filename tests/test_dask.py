@@ -61,7 +61,7 @@ def test_dask_executor(tmp_path, dask_cluster):
     assert report.success_count == 4
     assert report.error_count == 0
 
-    names = {entry["validated_data"]["name"] for entry in output_data}
+    names = {entry["name"] for entry in output_data}
     assert names == {"Alice", "Bob", "Charlie", "Dave"}
 
     print(f"DaskExecutor test passed in {duration:.2f}s")

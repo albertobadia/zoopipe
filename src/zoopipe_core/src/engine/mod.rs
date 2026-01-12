@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
+use pyo3::exceptions::PyRuntimeError;
 use crate::hooks::PyHookAdapter;
 use crate::validation::NativeValidator;
 
@@ -120,12 +121,28 @@ impl RustPipeEngine {
 
         if let Some(ref oa_py) = self.output_adapter {
             let oa = oa_py.bind(py);
+            let ent_list = entries.cast::<PyList>()?;
+            
+            // Optimization: Extract data only once
+            let data_list = PyList::empty(py);
+            let val_key = pyo3::intern!(py, "validated_data");
+            let raw_key = pyo3::intern!(py, "raw_data");
+
+            for entry in ent_list.iter() {
+                let dict = entry.cast::<PyDict>()?;
+                let data = if let Ok(Some(val)) = dict.get_item(val_key) {
+                    val
+                } else {
+                    dict.get_item(raw_key)?.ok_or_else(|| PyRuntimeError::new_err("Missing data in entry"))?
+                };
+                data_list.append(data)?;
+            }
+
             if oa.hasattr("write_batch")? {
-                oa.call_method1("write_batch", (entries,))?;
+                oa.call_method1("write_batch", (data_list,))?;
             } else {
-                let ent_list = entries.cast::<PyList>()?;
-                for entry in ent_list.iter() {
-                    oa.call_method1("write", (entry,))?;
+                for data in data_list.iter() {
+                    oa.call_method1("write", (data,))?;
                 }
             }
         }

@@ -17,9 +17,10 @@ class PriorityTrackerHook(BaseHook):
         self, entries: list[EntryTypedDict], store: HookStore
     ) -> list[EntryTypedDict]:
         for entry in entries:
-            if "execution_order" not in entry["metadata"]:
-                entry["metadata"]["execution_order"] = []
-            entry["metadata"]["execution_order"].append(self.name)
+            data = entry.get("validated_data") or entry.get("raw_data")
+            if "execution_order" not in data:
+                data["execution_order"] = []
+            data["execution_order"].append(self.name)
         return entries
 
 
@@ -59,7 +60,7 @@ def test_hook_priority_sorting():
     report.wait()
 
     result = pipe.output_adapter.results[0]
-    execution_order = result["metadata"]["execution_order"]
+    execution_order = result["execution_order"]
 
     assert execution_order == ["very_high_1", "high_1", "normal_1", "low_1"]
 
@@ -80,6 +81,6 @@ def test_hook_priority_across_adapters():
     report.wait()
 
     result = pipe.output_adapter.results[0]
-    execution_order = result["metadata"]["execution_order"]
+    execution_order = result["execution_order"]
 
     assert execution_order == ["output_very_high", "global_high", "input_low"]

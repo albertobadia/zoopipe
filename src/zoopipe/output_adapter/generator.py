@@ -2,7 +2,6 @@ import queue
 import typing
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 
 
@@ -18,14 +17,14 @@ class GeneratorOutputAdapter(BaseOutputAdapter):
         super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self._queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
 
-    def write(self, entry: EntryTypedDict) -> None:
-        self._queue.put(entry)
+    def write(self, data: dict[str, typing.Any]) -> None:
+        self._queue.put(data)
 
     def close(self) -> None:
         self._queue.put(self.STOP_SENTINEL)
         super().close()
 
-    def __iter__(self) -> typing.Generator[EntryTypedDict, None, None]:
+    def __iter__(self) -> typing.Generator[dict[str, typing.Any], None, None]:
         while True:
             entry = self._queue.get()
             if entry is self.STOP_SENTINEL:

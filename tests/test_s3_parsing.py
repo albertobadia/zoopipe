@@ -35,9 +35,9 @@ def test_boto3_csv_expansion_no_jit():
 
     # Verify: 1 file -> 3 entries
     assert len(output.results) == 3
-    assert output.results[0]["validated_data"]["name"] == "Alice"
-    assert output.results[1]["validated_data"]["name"] == "Bob"
-    assert output.results[2]["validated_data"]["name"] == "Charlie"
+    assert output.results[0]["name"] == "Alice"
+    assert output.results[1]["name"] == "Bob"
+    assert output.results[2]["name"] == "Charlie"
 
 
 @mock_aws
@@ -62,8 +62,8 @@ def test_boto3_jsonl_expansion_jit():
 
     # Verify: 1 file -> 2 entries
     assert len(output.results) == 2
-    assert output.results[0]["validated_data"]["name"] == "Alice"
-    assert output.results[1]["validated_data"]["name"] == "Bob"
+    assert output.results[0]["name"] == "Alice"
+    assert output.results[1]["name"] == "Bob"
 
 
 @mock_aws
@@ -88,6 +88,6 @@ def test_boto3_mixed_content():
 
     # Total 2 entries
     assert len(output.results) == 2
-    names = [r["validated_data"]["name"] for r in output.results]
+    names = [r["name"] for r in output.results]
     assert "Alice" in names
     assert "Bob" in names

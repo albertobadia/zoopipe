@@ -30,7 +30,14 @@ impl NativeValidator {
         let schema_val = self.validator.bind(py);
         match schema_val.call_method1("validate_python", (raw_data,)) {
             Ok(validated) => {
-                entry.set_item(pyo3::intern!(py, "validated_data"), validated)?;
+                let data_dict = if validated.hasattr("model_dump")? {
+                    validated.call_method0("model_dump")?
+                } else if validated.hasattr("dict")? {
+                    validated.call_method0("dict")?
+                } else {
+                    validated
+                };
+                entry.set_item(pyo3::intern!(py, "validated_data"), data_dict)?;
                 entry.set_item(pyo3::intern!(py, "status"), self.status_validated.bind(py))?;
                 Ok(entry)
             }
@@ -66,7 +73,14 @@ impl NativeValidator {
             let raw_data = entry.get_item(raw_data_key)?;
             match validator.call_method1("validate_python", (raw_data,)) {
                 Ok(validated) => {
-                    entry.set_item(validated_data_key, validated)?;
+                    let data_dict = if validated.hasattr("model_dump")? {
+                        validated.call_method0("model_dump")?
+                    } else if validated.hasattr("dict")? {
+                        validated.call_method0("dict")?
+                    } else {
+                        validated
+                    };
+                    entry.set_item(validated_data_key, data_dict)?;
                     entry.set_item(status_key, status_validated)?;
                 }
                 Err(e) => {

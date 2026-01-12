@@ -19,6 +19,7 @@ class CSVInputAdapter(BaseInputAdapter):
         max_rows: int | None = None,
         fieldnames: list[str] | None = None,
         id_generator: typing.Callable[[], typing.Any] | None = None,
+        generate_ids: bool = True,
         pre_hooks: list[BaseHook] | None = None,
         post_hooks: list[BaseHook] | None = None,
         **csv_options,
@@ -35,6 +36,7 @@ class CSVInputAdapter(BaseInputAdapter):
         self.max_rows = max_rows
         self.fieldnames = fieldnames
         self.id_generator = id_generator or uuid.uuid4
+        self.generate_ids = generate_ids
         self.csv_options = csv_options
         self._file_handle = None
 
@@ -51,6 +53,7 @@ class CSVInputAdapter(BaseInputAdapter):
             encoding=self.encoding,
             skip_rows=self.skip_rows,
             fieldnames=self.fieldnames,
+            generate_ids=self.generate_ids,
             **self.csv_options,
         )
         super().open()

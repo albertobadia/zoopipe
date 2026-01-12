@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from zoopipe.core import Pipe
 from zoopipe.executor.sync_fifo import SyncFifoExecutor
 from zoopipe.input_adapter.base import BaseInputAdapter
-from zoopipe.models.core import EntryStatus
 from zoopipe.output_adapter.generator import GeneratorOutputAdapter
 from zoopipe.output_adapter.memory import MemoryOutputAdapter
 from zoopipe.report import FlowStatus
@@ -47,7 +46,7 @@ def test_background_run_with_memory_adapter():
     assert report.status == FlowStatus.COMPLETED
     assert report.total_processed == 2
     assert len(output_adapter.results) == 2
-    assert output_adapter.results[0]["validated_data"]["name"] == "alice"
+    assert output_adapter.results[0]["name"] == "alice"
 
 
 def test_background_run_with_generator_adapter():
@@ -112,4 +111,4 @@ def test_error_reporting():
     assert report.success_count == 1
     assert report.error_count == 1
     assert len(error_output_adapter.results) == 1
-    assert error_output_adapter.results[0]["status"] == EntryStatus.FAILED
+    assert error_output_adapter.results[0]["age"] == 30

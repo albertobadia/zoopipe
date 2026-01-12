@@ -37,7 +37,8 @@ class SlowInputAdapter(BaseInputAdapter):
 class TrackingHook(BaseHook):
     def execute(self, entries, store):
         for entry in entries:
-            entry["metadata"]["hook_executed"] = True
+            data = entry.get("validated_data") or entry.get("raw_data")
+            data["hook_executed"] = True
         return entries
 
 
@@ -77,4 +78,4 @@ def test_multiprocessing_hook_parity():
 
     assert report.total_processed == 5
     for result in output.results:
-        assert result["metadata"].get("hook_executed") is True
+        assert result.get("hook_executed") is True

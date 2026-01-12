@@ -1,8 +1,8 @@
 import asyncio
 import queue
+import typing
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.output_adapter.base_async import BaseAsyncOutputAdapter
 
@@ -17,14 +17,14 @@ class AsyncQueueOutputAdapter(BaseAsyncOutputAdapter):
         super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self.queue = queue
 
-    async def write(self, entry: EntryTypedDict) -> None:
+    async def write(self, data: dict[str, typing.Any]) -> None:
         if not self._is_opened:
             raise RuntimeError(
                 "Adapter must be opened before writing.\n"
                 "Use 'async with adapter:' or call await adapter.open()"
             )
 
-        await self.queue.put(entry)
+        await self.queue.put(data)
 
 
 class QueueOutputAdapter(BaseOutputAdapter):
@@ -37,5 +37,5 @@ class QueueOutputAdapter(BaseOutputAdapter):
         super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self.queue = queue
 
-    def write(self, entry: EntryTypedDict) -> None:
-        self.queue.put(entry)
+    def write(self, data: dict[str, typing.Any]) -> None:
+        self.queue.put(data)

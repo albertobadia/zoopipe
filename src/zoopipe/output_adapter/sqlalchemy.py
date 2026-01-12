@@ -3,7 +3,6 @@ from typing import Any
 from sqlalchemy import MetaData, Table, create_engine, insert
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 
 
@@ -31,11 +30,10 @@ class SQLAlchemyOutputAdapter(BaseOutputAdapter):
         self._table = Table(self.table_name, metadata, autoload_with=self._engine)
         super().open()
 
-    def write(self, entry: EntryTypedDict) -> None:
+    def write(self, data: dict[str, Any]) -> None:
         if not self._is_opened or self._engine is None:
             raise RuntimeError("Adapter must be opened before writing")
 
-        data = entry.get("validated_data") or entry.get("raw_data")
         if isinstance(data, dict):
             self._buffer.append(data)
 

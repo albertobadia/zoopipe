@@ -5,7 +5,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 from zoopipe.output_adapter.base import BaseOutputAdapter
 
 
@@ -54,15 +53,14 @@ class ArrowOutputAdapter(BaseOutputAdapter):
 
         self._buffer = []
 
-    def write(self, entry: EntryTypedDict) -> None:
+    def write(self, data: dict[str, typing.Any]) -> None:
         if not self._is_opened:
             raise RuntimeError(
                 "Adapter must be opened before writing.\n"
                 "Use 'with adapter:' or call adapter.open()"
             )
 
-        row = entry.get("validated_data") or entry.get("raw_data") or {}
-        self._buffer.append(row)
+        self._buffer.append(data)
 
         if len(self._buffer) >= self.batch_size:
             self._flush()

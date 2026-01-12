@@ -3,7 +3,6 @@ import pytest
 
 from zoopipe.hooks.duckdb import DuckDBFetchHook
 from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
-from zoopipe.models.core import EntryStatus
 from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
 
 
@@ -77,18 +76,10 @@ def test_duckdb_output_adapter_basic(db_path, tmp_path):
 
     adapter = DuckDBOutputAdapter(database=out_path, table_name="out_users")
 
-    entry = {
-        "id": "uuid-1",
-        "raw_data": {"id": 10, "name": "Dave", "age": 40},
-        "validated_data": {"id": 10, "name": "Dave", "age": 40},
-        "status": EntryStatus.PENDING,
-        "position": 0,
-        "errors": [],
-        "metadata": {},
-    }
+    data = {"id": 10, "name": "Dave", "age": 40}
 
     with adapter:
-        adapter.write(entry)
+        adapter.write(data)
 
     conn = duckdb.connect(out_path)
     res = conn.execute("SELECT * FROM out_users").fetchone()

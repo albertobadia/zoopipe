@@ -30,9 +30,13 @@ class RustBatchExecutor(BaseExecutor):
     ):
         # Convert validator to NativeValidator if it has a schema
         native_validator = None
-        if validator and hasattr(validator, "schema_validator"):
-            # We assume NativeValidator can wrap a pydantic SchemaValidator
-            native_validator = NativeValidator(validator.schema_validator)
+        if validator:
+            if hasattr(validator, "__pydantic_validator__"):
+                # Pydantic V2
+                native_validator = NativeValidator(validator.__pydantic_validator__)
+            elif hasattr(validator, "schema_validator"):
+                # Pydantic V1 or other
+                native_validator = NativeValidator(validator.schema_validator)
 
         self._engine = RustPipeEngine(
             pre_hooks=pre_hooks,

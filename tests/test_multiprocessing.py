@@ -40,8 +40,7 @@ def test_multiprocessing_executor(tmp_path):
     report.wait()
 
     assert len(output_data) == 3
-    assert output_data[0]["status"].value == "validated"
-    assert output_data[0]["validated_data"]["name"] == "Alice"
+    assert output_data[0]["name"] == "Alice"
 
     print("Multiprocessing test passed!")
     print(output_data)

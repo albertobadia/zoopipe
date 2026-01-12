@@ -1,24 +1,23 @@
 import asyncio
 import os
+import uuid
 
 import duckdb
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from zoopipe.core import Pipe
-from zoopipe.executor.thread import ThreadExecutor
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
+from zoopipe.executor.rust import RustBatchExecutor
+from zoopipe.input_adapter.csv import CSVInputAdapter
 from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
 
 
 class UserSchema(BaseModel):
-    id: int
-    name: str
+    model_config = ConfigDict(extra="ignore")
+    user_id: uuid.UUID
+    username: str
     email: str
-    age: int
-    balance: float
 
 
-INPUT_DB = os.path.abspath("examples/data/sample_data.duckdb")
 OUTPUT_DB = os.path.abspath("examples/output_data/processed_duckdb.duckdb")
 TABLE_NAME = "users"
 
@@ -30,11 +29,9 @@ def setup_output_db():
     conn.execute("DROP TABLE IF EXISTS processed_users")
     conn.execute("""
         CREATE TABLE processed_users (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            email TEXT,
-            age INTEGER,
-            balance DOUBLE
+            user_id UUID,
+            username TEXT,
+            email TEXT
         )
     """)
     conn.close()
@@ -45,9 +42,7 @@ async def run_duckdb_jit_example():
     print("=== Starting DuckDB JIT Example ===")
     setup_output_db()
 
-    input_adapter = DuckDBInputAdapter(
-        database=INPUT_DB, table_name=TABLE_NAME, batch_size=20000
-    )
+    input_adapter = CSVInputAdapter("examples/sample_data/users_data.csv")
 
     output_adapter = DuckDBOutputAdapter(
         database=OUTPUT_DB, table_name="processed_users", batch_size=20000
@@ -55,9 +50,8 @@ async def run_duckdb_jit_example():
 
     pipe = Pipe(
         input_adapter=input_adapter,
-        executor=ThreadExecutor(UserSchema, max_workers=8, use_batch_validation=True),
+        executor=RustBatchExecutor(UserSchema, batch_size=20000),
         output_adapter=output_adapter,
-        max_hook_chunk_size=5000,
     )
 
     print("Running pipeline...")
@@ -81,10 +75,4 @@ async def run_duckdb_jit_example():
 
 
 if __name__ == "__main__":
-    if not os.path.exists(INPUT_DB):
-        print(
-            f"Error: DuckDB data not found at {INPUT_DB}. "
-            "Run 'uv run examples/scripts/generate_duckdb_data.py' first."
-        )
-    else:
-        asyncio.run(run_duckdb_jit_example())
+    asyncio.run(run_duckdb_jit_example())

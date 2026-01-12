@@ -139,13 +139,15 @@ class Pipe:
         ctx: "_PipeRunContext",
     ) -> None:
         report.total_processed += 1
+        data = entry.get("validated_data") or entry.get("raw_data")
+
         if entry["status"] == EntryStatus.FAILED:
             report.error_count += 1
             if self.error_output_adapter:
-                self.error_output_adapter.write(entry)
+                self.error_output_adapter.write(data)
         else:
             report.success_count += 1
-            self.output_adapter.write(entry)
+            self.output_adapter.write(data)
 
         if ctx.max_bytes_in_flight:
             entry_id = str(entry["id"])

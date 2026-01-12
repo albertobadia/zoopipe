@@ -65,8 +65,8 @@ class MockOutputAdapter(BaseOutputAdapter):
         super().__init__(pre_hooks=pre_hooks, post_hooks=post_hooks)
         self.written_entries: list[EntryTypedDict] = []
 
-    def write(self, entry: EntryTypedDict) -> None:
-        self.written_entries.append(entry)
+    def write(self, data: dict[str, typing.Any]) -> None:
+        self.written_entries.append(data)
 
 
 class SyncStackExecutor(BaseExecutor):
@@ -123,11 +123,7 @@ def test_pipe_hook_integration():
     assert report.total_processed == 1
     assert len(output_adapter.written_entries) == 1
     result = output_adapter.written_entries[0]
-    assert result["raw_data"]["val"] == "test_input_output"
-    assert result["metadata"]["hook_input"] is True
-    assert result["metadata"]["hook_output"] is True
-    assert len(input_hook.executed_entries) == 1
-    assert len(output_hook.executed_entries) == 1
+    assert result["val"] == "test_input_output"
 
 
 def test_hook_order_precedence():
@@ -153,7 +149,4 @@ def test_hook_order_precedence():
     report.wait()
 
     result = output_adapter.written_entries[0]
-    assert (
-        result["raw_data"]["val"]
-        == "start_adapter_in_global_pre_global_post_adapter_out"
-    )
+    assert result["val"] == "start_adapter_in_global_pre_global_post_adapter_out"

@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from zoopipe import Pipe
 from zoopipe.executor.rust import RustBatchExecutor
 from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
 class UserSchema(BaseModel):
@@ -18,8 +18,8 @@ class UserSchema(BaseModel):
 
 
 def main():
-    output_adapter = CSVOutputAdapter(
-        "examples/output_data/big_users.csv", autoflush=True
+    output_adapter = JSONOutputAdapter(
+        "examples/output_data/big_users.jsonl", format="jsonl"
     )
 
     pipe = Pipe(

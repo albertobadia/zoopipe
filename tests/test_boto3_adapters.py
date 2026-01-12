@@ -45,8 +45,8 @@ def test_boto3_standard_flow(s3_client):
     report.wait()
 
     assert len(memory_adapter.results) == 2
-    # The content is bytes in raw_data
-    results = [res["raw_data"]["content"] for res in memory_adapter.results]
+    # The content is bytes directly in the result dictionary
+    results = [res["content"] for res in memory_adapter.results]
     assert b'{"name": "test1"}' in results
     assert b'{"name": "test2"}' in results
 
@@ -69,7 +69,7 @@ def test_boto3_jit_flow(s3_client):
     report.wait()
 
     assert len(memory_adapter.results) == 2
-    results = [res["raw_data"]["content"] for res in memory_adapter.results]
+    results = [res["content"] for res in memory_adapter.results]
     assert b'{"id": 1}' in results
     assert b'{"id": 2}' in results
 

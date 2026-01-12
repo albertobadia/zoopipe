@@ -1,8 +1,8 @@
 import abc
 import logging
+import typing
 
 from zoopipe.hooks.base import BaseHook
-from zoopipe.models.core import EntryTypedDict
 
 
 class BaseAsyncOutputAdapter(abc.ABC):
@@ -20,7 +20,7 @@ class BaseAsyncOutputAdapter(abc.ABC):
         self.logger = logger
 
     @abc.abstractmethod
-    async def write(self, entry: EntryTypedDict) -> None:
+    async def write(self, data: dict[str, typing.Any]) -> None:
         raise NotImplementedError("Subclasses must implement the write method")
 
     async def open(self) -> None:
