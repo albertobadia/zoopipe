@@ -11,7 +11,7 @@
 - 🪝 **Python Hooks**: Transform and enrich data at any stage using standard Python functions or classes.
 - ⚡ **Zero-Copy Intent**: Minimal overhead between the Rust processing engine and Python validation/hooks.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
-- 📊 **CSV & JSONL Support**: Optimized for the most common data exchange formats.
+- 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases (via SQLx with batch inserts).
 - 🔧 **Pluggable Executors**: Choose between single-threaded or multi-threaded execution strategies.
 
 ---
@@ -59,6 +59,14 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 
 - [**Executors Guide**](docs/executors.md) - Choose and configure execution strategies
 
+### Adapters
+
+- [**CSV Adapters**](docs/csv.md) - High-performance CSV reading and writing
+- [**JSON Adapters**](docs/json.md) - JSONL and JSON array format support
+- [**SQL Adapters**](docs/sql.md) - Read from and write to SQL databases with batch optimization
+- [**DuckDB Adapters**](docs/duckdb.md) - Analytical database for OLAP workloads
+- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for zero-copy interoperability
+
 ---
 
 ## 🛠 Architecture
@@ -67,7 +75,7 @@ ZooPipe is designed as a thin Python wrapper around a powerful Rust core:
 
 1. **Python Layer**: Configuration, Pydantic models, and custom Hooks.
 2. **Rust Core**: 
-   - **Adapters**: High-speed CSV/JSON Readers and Writers.
+   - **Adapters**: High-speed CSV/JSON/SQL Readers and Writers with optimized batch operations.
    - **NativePipe**: Orchestrates the loop, fetching chunks, calling a consolidated Python batch processor, and routing result batches.
    - **Executors**: Single-threaded or multi-threaded batch processing strategies.
 

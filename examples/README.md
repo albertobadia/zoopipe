@@ -41,11 +41,77 @@ This example demonstrates:
 - Using `MultiThreadExecutor` with different worker counts
 - Performance comparison and throughput metrics
 
-### 04_hooks_enrichment.py
-Using Python hooks to enrich data before validation.
+### 04_csv_to_duckdb.py
+Write CSV data to a DuckDB analytical database.
 
-### 05_error_handling.py
-Advanced error handling and routing to an error output.
+```bash
+uv run python examples/04_csv_to_duckdb.py
+```
+
+This example demonstrates:
+- Using `DuckDBOutputAdapter` for columnar storage
+- Optimized for analytical queries and aggregations
+- Fast batch loading into DuckDB
+
+### 05_duckdb_to_jsonl.py
+Export data from DuckDB to JSONL format.
+
+```bash
+uv run python examples/05_duckdb_to_jsonl.py
+```
+
+This example demonstrates:
+- Using `DuckDBInputAdapter` to read from analytical databases
+- Executing analytical queries with DuckDB SQL
+- Exporting query results to JSONL
+
+### 06_csv_to_arrow.py
+Convert CSV data to Apache Arrow IPC format.
+
+```bash
+uv run python examples/06_csv_to_arrow.py
+```
+
+This example demonstrates:
+- Using `ArrowOutputAdapter` for high-performance columnar storage
+- Zero-copy interoperability with Pandas, Polars, R, etc.
+- Efficient compression and fast writes
+
+### 07_arrow_to_jsonl.py
+Read Arrow IPC files and export to JSONL.
+
+```bash
+uv run python examples/07_arrow_to_jsonl.py
+```
+
+This example demonstrates:
+- Using `ArrowInputAdapter` for ultra-fast reads
+- Zero-copy memory access
+- Converting columnar data to row-based JSONL
+
+### 08_csv_to_sql.py
+Write CSV data to a SQL database with optimized batch inserts.
+
+```bash
+uv run python examples/08_csv_to_sql.py
+```
+
+This example demonstrates:
+- Using `SQLOutputAdapter` to write to SQLite databases
+- Batch insert optimization for high-performance writes
+- Database table creation with configurable modes (`replace`, `append`, `fail`)
+
+### 09_sql_to_jsonl.py
+Read data from SQL databases and export to JSONL format.
+
+```bash
+uv run python examples/09_sql_to_jsonl.py
+```
+
+This example demonstrates:
+- Using `SQLInputAdapter` to read from SQLite databases
+- Support for custom queries or table names
+- Streaming large datasets from SQL to JSON
 
 ## Sample Data
 
