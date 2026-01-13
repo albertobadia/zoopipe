@@ -7,6 +7,7 @@ use crate::parsers::csv::{CSVReader, CSVWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
+use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
 use std::sync::Mutex;
 
 
@@ -18,6 +19,7 @@ pub enum PipeReader {
     DuckDB(Py<DuckDBReader>),
     Arrow(Py<ArrowReader>),
     SQL(Py<SQLReader>),
+    PyGen(Py<PyGeneratorReader>),
 }
 
 #[derive(FromPyObject)]
@@ -27,6 +29,7 @@ pub enum PipeWriter {
     DuckDB(Py<DuckDBWriter>),
     Arrow(Py<ArrowWriter>),
     SQL(Py<SQLWriter>),
+    PyGen(Py<PyGeneratorWriter>),
 }
 
 #[derive(FromPyObject)]
@@ -129,6 +132,7 @@ impl NativePipe {
                 PipeReader::DuckDB(r) => DuckDBReader::__next__(r.bind(py).borrow()),
                 PipeReader::Arrow(r) => ArrowReader::__next__(r.bind(py).borrow()),
                 PipeReader::SQL(r) => SQLReader::__next__(r.bind(py).borrow()),
+                PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
             }?;
 
             match next_item {
@@ -156,6 +160,7 @@ impl NativePipe {
             PipeWriter::DuckDB(w) => w.bind(py).borrow().close()?,
             PipeWriter::Arrow(w) => w.bind(py).borrow().close()?,
             PipeWriter::SQL(w) => w.bind(py).borrow().close()?,
+            PipeWriter::PyGen(w) => w.bind(py).borrow().close()?,
         }
 
         if let Some(ref ew) = self.error_writer {
@@ -165,6 +170,7 @@ impl NativePipe {
                 PipeWriter::DuckDB(w) => w.bind(py).borrow().close()?,
                 PipeWriter::Arrow(w) => w.bind(py).borrow().close()?,
                 PipeWriter::SQL(w) => w.bind(py).borrow().close()?,
+                PipeWriter::PyGen(w) => w.bind(py).borrow().close()?,
             }
         }
 
@@ -215,6 +221,7 @@ impl NativePipe {
                 PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 
@@ -226,6 +233,7 @@ impl NativePipe {
                 PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 
