@@ -17,3 +17,4 @@ uuid = { version = "1.19.0", features = ["v4", "fast-rng"] }
 rayon = "1.11.0"
 crossbeam-channel = "0.5.15"
 duckdb = { version = "1.4.3", features = ["bundled"] }
+memory-stats = "1.2.0"

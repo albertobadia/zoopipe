@@ -243,18 +243,9 @@ impl NativePipe {
 }
 
 fn get_process_ram_rss() -> usize {
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(content) = std::fs::read_to_string("/proc/self/status") {
-            for line in content.lines() {
-                if line.starts_with("VmRSS:")
-                    && let Some(kb_part) = line.split_whitespace().nth(1)
-                        && let Ok(kb) = kb_part.parse::<usize>() {
-                            return kb * 1024;
-                        }
-            }
-        }
+    if let Some(stats) = memory_stats::memory_stats() {
+        stats.physical_mem
+    } else {
+        0
     }
-    
-    0
 }

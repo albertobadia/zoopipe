@@ -20,7 +20,7 @@ def main():
 
     pathlib.Path("examples/output_data").mkdir(parents=True, exist_ok=True)
 
-    input_path = "examples/output_data/users_processed.csv"
+    input_path = "examples/sample_data/users_data.csv"
     output_path = "examples/output_data/users_processed.db"
 
     print("--- Starting CSV to DuckDB Pipeline ---")

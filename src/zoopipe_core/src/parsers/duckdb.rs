@@ -3,16 +3,19 @@ use pyo3::exceptions::PyRuntimeError;
 use std::sync::Mutex;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use duckdb::Connection;
-
 use duckdb::types::Value;
 
-type DuckDBRow = Vec<(String, Value)>;
+enum DuckDBData {
+    Metadata(Vec<String>),
+    Row(Vec<Value>),
+}
 
 #[pyclass]
 pub struct DuckDBReader {
-    connection: Mutex<Connection>,
+    db_path: String,
     query: String,
-    rows: Mutex<Option<std::collections::VecDeque<DuckDBRow>>>,
+    receiver: Mutex<Option<crossbeam_channel::Receiver<DuckDBData>>>,
+    column_names: Mutex<Option<Vec<Py<PyString>>>>,
     position: Mutex<usize>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
@@ -28,17 +31,15 @@ impl DuckDBReader {
         query: String,
         generate_ids: bool,
     ) -> PyResult<Self> {
-        let connection = Connection::open(&db_path)
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to open DuckDB database: {}", e)))?;
-
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(DuckDBReader {
-            connection: Mutex::new(connection),
+            db_path,
             query,
-            rows: Mutex::new(None),
+            receiver: Mutex::new(None),
+            column_names: Mutex::new(None),
             position: Mutex::new(0),
             status_pending,
             generate_ids,
@@ -50,86 +51,130 @@ impl DuckDBReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut rows = slf.rows.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-
-        if rows.is_none() {
-            let connection = slf.connection.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut receiver_opt = slf.receiver.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        
+        if receiver_opt.is_none() {
+            let (tx, rx) = crossbeam_channel::bounded(1000);
+            let db_path = slf.db_path.clone();
+            let query = slf.query.clone();
             
-            let mut stmt = connection.prepare(&slf.query)
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to prepare query: {}", e)))?;
-            
-            let mut query_rows = stmt.query([])
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to execute query: {}", e)))?;
-
-            let column_names: Vec<String> = query_rows.as_ref()
-                .ok_or_else(|| PyRuntimeError::new_err("Failed to get column metadata"))?
-                .column_names();
-
-            let mut collected_rows: std::collections::VecDeque<DuckDBRow> = std::collections::VecDeque::new();
-            while let Some(row) = query_rows.next().map_err(|e| PyRuntimeError::new_err(format!("Failed to fetch row: {}", e)))? {
-                let mut record: DuckDBRow = Vec::new();
-                for (i, name) in column_names.iter().enumerate() {
-                    let value: Value = row.get(i)
-                        .map_err(|e| PyRuntimeError::new_err(format!("Failed to get value for column {}: {}", name, e)))?;
-                    record.push((name.clone(), value));
-                }
-                collected_rows.push_back(record);
-            }
-
-            *rows = Some(collected_rows);
-        }
-
-        if let Some(all_rows) = rows.as_mut() {
-            if let Some(row_data) = all_rows.pop_front() {
-                let py = slf.py();
-                let current_pos = *pos;
-                *pos += 1;
-                let raw_data = PyDict::new(py);
-                for (col_name, value) in row_data.into_iter() {
-                    match value {
-                        Value::Null => raw_data.set_item(col_name, py.None())?,
-                        Value::Boolean(b) => raw_data.set_item(col_name, b)?,
-                        Value::TinyInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::SmallInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::Int(i) => raw_data.set_item(col_name, i)?,
-                        Value::BigInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::UTinyInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::USmallInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::UInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::UBigInt(i) => raw_data.set_item(col_name, i)?,
-                        Value::Float(f) => raw_data.set_item(col_name, f)?,
-                        Value::Double(f) => raw_data.set_item(col_name, f)?,
-                        Value::Text(s) => raw_data.set_item(col_name, s)?,
-                        Value::Timestamp(_, i) => raw_data.set_item(col_name, i)?,
-                        Value::Date32(i) => raw_data.set_item(col_name, i)?,
-                        Value::Time64(_, i) => raw_data.set_item(col_name, i)?,
-                        Value::Blob(b) => raw_data.set_item(col_name, b)?,
-                        _ => raw_data.set_item(col_name, py.None())?,
-                    };
-                }
-
-                let envelope = PyDict::new(py);
-                
-                let id = if slf.generate_ids {
-                    uuid::Uuid::new_v4().to_string()
-                } else {
-                    String::new()
+            std::thread::spawn(move || {
+                let conn = match Connection::open(&db_path) {
+                    Ok(c) => c,
+                    Err(_) => return,
                 };
 
-                envelope.set_item(pyo3::intern!(py, "id"), id)?;
-                envelope.set_item(pyo3::intern!(py, "status"), slf.status_pending.bind(py))?;
-                envelope.set_item(pyo3::intern!(py, "raw_data"), raw_data)?;
-                envelope.set_item(pyo3::intern!(py, "metadata"), PyDict::new(py))?;
-                envelope.set_item(pyo3::intern!(py, "position"), current_pos)?;
-                envelope.set_item(pyo3::intern!(py, "errors"), PyList::empty(py))?;
+                // Use a separate local connection for metadata if needed, or just get it from the same connection
+                // but in a way that doesn't block. Actually, we can just open metadata first, then data.
+                let meta_query = format!("SELECT * FROM ({}) LIMIT 0", query);
+                let col_count = {
+                    let meta_conn = match Connection::open(&db_path) {
+                        Ok(c) => c,
+                        Err(_) => return,
+                    };
+                    let mut meta_stmt = match meta_conn.prepare(&meta_query) {
+                        Ok(s) => s,
+                        Err(_) => return,
+                    };
+                    let _ = meta_stmt.query([]); // Execute to populate schema
+                    let cols: Vec<String> = meta_stmt.column_names().iter().map(|s| s.to_string()).collect();
+                    let count = cols.len();
+                    if tx.send(DuckDBData::Metadata(cols)).is_err() {
+                        return;
+                    }
+                    count
+                };
 
-                Ok(Some(envelope.into_any()))
-            } else {
-                Ok(None)
+                let mut stmt = match conn.prepare(&query) {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                
+                let mut rows = match stmt.query([]) {
+                    Ok(r) => r,
+                    Err(_) => return,
+                };
+
+                // Now we can stream rows without collecting them
+                while let Ok(Some(row)) = rows.next() {
+                    let mut record = Vec::with_capacity(col_count);
+                    for i in 0..col_count {
+                        record.push(row.get::<usize, Value>(i).unwrap_or(Value::Null));
+                    }
+                    if tx.send(DuckDBData::Row(record)).is_err() {
+                        break;
+                    }
+                }
+            });
+
+            *receiver_opt = Some(rx);
+        }
+
+        let rx = receiver_opt.as_ref().unwrap();
+        
+        loop {
+            match rx.recv() {
+                Ok(DuckDBData::Metadata(cols)) => {
+                    let py = slf.py();
+                    let py_cols: Vec<Py<PyString>> = cols.into_iter()
+                        .map(|s| PyString::new(py, &s).unbind())
+                        .collect();
+                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    *column_names_opt = Some(py_cols);
+                    // Continue loop to get first row
+                }
+                Ok(DuckDBData::Row(row_values)) => {
+                    let py = slf.py();
+                    let column_names_opt = slf.column_names.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let cols = column_names_opt.as_ref().expect("Column names should be received before rows");
+                    
+                    let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let current_pos = *pos;
+                    *pos += 1;
+                    
+                    let raw_data = PyDict::new(py);
+                    for (i, value) in row_values.into_iter().enumerate() {
+                        let col_name = cols[i].bind(py);
+                        match value {
+                            Value::Null => raw_data.set_item(col_name, py.None())?,
+                            Value::Boolean(b) => raw_data.set_item(col_name, b)?,
+                            Value::TinyInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::SmallInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::Int(i) => raw_data.set_item(col_name, i)?,
+                            Value::BigInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::UTinyInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::USmallInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::UInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::UBigInt(i) => raw_data.set_item(col_name, i)?,
+                            Value::Float(f) => raw_data.set_item(col_name, f)?,
+                            Value::Double(f) => raw_data.set_item(col_name, f)?,
+                            Value::Text(s) => raw_data.set_item(col_name, s)?,
+                            Value::Timestamp(_, i) => raw_data.set_item(col_name, i)?,
+                            Value::Date32(i) => raw_data.set_item(col_name, i)?,
+                            Value::Time64(_, i) => raw_data.set_item(col_name, i)?,
+                            Value::Blob(b) => raw_data.set_item(col_name, b)?,
+                            _ => raw_data.set_item(col_name, py.None())?,
+                        };
+                    }
+
+                    let envelope = PyDict::new(py);
+                    let id = if slf.generate_ids {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        String::new()
+                    };
+
+                    envelope.set_item(pyo3::intern!(py, "id"), id)?;
+                    envelope.set_item(pyo3::intern!(py, "status"), slf.status_pending.bind(py))?;
+                    envelope.set_item(pyo3::intern!(py, "raw_data"), raw_data)?;
+                    envelope.set_item(pyo3::intern!(py, "metadata"), PyDict::new(py))?;
+                    envelope.set_item(pyo3::intern!(py, "position"), current_pos)?;
+                    envelope.set_item(pyo3::intern!(py, "errors"), PyList::empty(py))?;
+
+                    return Ok(Some(envelope.into_any()));
+                }
+                Err(_) => return Ok(None),
             }
-        } else {
-            Ok(None)
         }
     }
 }
@@ -140,7 +185,7 @@ pub struct DuckDBWriter {
     table_name: String,
     mode: String,
     table_created: Mutex<bool>,
-    fieldnames: Mutex<Option<Vec<String>>>,
+    fieldnames: Mutex<Option<Vec<Py<PyString>>>>,
 }
 
 #[pymethods]
@@ -171,14 +216,8 @@ impl DuckDBWriter {
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut connection = self.connection.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut table_created = self.table_created.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut fieldnames = self.fieldnames.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-
-        self.write_internal(py, data, &mut connection, &mut table_created, &mut fieldnames)
+        let entries = PyList::new(py, [data])?;
+        self.write_batch(py, entries.into_any())
     }
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
@@ -189,78 +228,74 @@ impl DuckDBWriter {
         let mut fieldnames = self.fieldnames.lock()
             .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
 
-        let iterator = entries.try_iter()?;
-        let mut batch_data = Vec::new();
-
-        for entry in iterator {
-            let entry = entry?;
-            let record = entry.cast::<PyDict>()?;
-            
-            // Ensure table is created using the first record if not already done
-            if !*table_created {
-                self.ensure_table_created(py, record, &mut connection, &mut table_created, &mut fieldnames)?;
-            }
-            
-            batch_data.push(record.clone().unbind());
-        }
-
-        if batch_data.is_empty() {
-            return Ok(());
-        }
-
-        // Use Appender for high-speed bulk loading
-        let mut appender = connection.appender(&self.table_name)
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to create appender: {}", e)))?;
-
-        let fields = fieldnames.as_ref().unwrap();
+        let mut it = entries.try_iter()?;
+        
         let py_bool = py.get_type::<pyo3::types::PyBool>();
         let py_int = py.get_type::<pyo3::types::PyInt>();
         let py_float = py.get_type::<pyo3::types::PyFloat>();
 
-        for record_ref in batch_data {
-            let record = record_ref.bind(py);
-            let mut row_params: Vec<Box<dyn duckdb::ToSql>> = Vec::with_capacity(fields.len());
-            
-            for field in fields {
+        // Handle the first entry to ensure table creation
+        let first_entry = if let Some(res) = it.next() {
+            let entry = res?;
+            let record = entry.cast::<PyDict>()?;
+            if !*table_created {
+                self.ensure_table_created(py, record, &mut connection, &mut table_created, &mut fieldnames)?;
+            }
+            Some(record.clone())
+        } else {
+            return Ok(());
+        };
+
+        // Create appender - Connection is now free from mutable borrow of ensure_table_created
+        let mut appender = connection.appender(&self.table_name)
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to create appender: {}", e)))?;
+
+        let fields = fieldnames.as_ref().unwrap();
+
+        // Helper function for appending - avoids duplication
+        fn append_dict(record: &Bound<'_, PyDict>, fields: &[Py<PyString>], app: &mut duckdb::Appender, py_bool: &Bound<'_, pyo3::types::PyType>, py_int: &Bound<'_, pyo3::types::PyType>, py_float: &Bound<'_, pyo3::types::PyType>, py: Python<'_>) -> PyResult<()> {
+            let mut row_values: Vec<Value> = Vec::with_capacity(fields.len());
+            for field_py in fields {
+                let field = field_py.bind(py);
                 if let Some(value) = record.get_item(field)? {
-                    if value.is_instance(&py_bool)? {
-                        row_params.push(Box::new(value.extract::<bool>()?));
-                    } else if value.is_instance(&py_int)? {
-                        row_params.push(Box::new(value.extract::<i64>()?));
-                    } else if value.is_instance(&py_float)? {
-                        row_params.push(Box::new(value.extract::<f64>()?));
+                    if value.is_instance(py_bool)? {
+                        row_values.push(Value::Boolean(value.extract::<bool>()?));
+                    } else if value.is_instance(py_int)? {
+                        row_values.push(Value::BigInt(value.extract::<i64>()?));
+                    } else if value.is_instance(py_float)? {
+                        row_values.push(Value::Double(value.extract::<f64>()?));
                     } else if let Ok(s) = value.cast::<PyString>() {
-                        row_params.push(Box::new(s.to_str()?.to_string()));
+                        row_values.push(Value::Text(s.to_str()?.to_string()));
                     } else {
-                        row_params.push(Box::new(value.to_string()));
+                        row_values.push(Value::Text(value.to_string()));
                     }
                 } else {
-                    row_params.push(Box::new(Option::<String>::None));
+                    row_values.push(Value::Null);
                 }
             }
-
-            let params_refs: Vec<&dyn duckdb::ToSql> = row_params
-                .iter()
-                .map(|p| p.as_ref())
-                .collect();
-
-            appender.append_row(params_refs.as_slice())
+            let params_refs: Vec<&dyn duckdb::ToSql> = row_values.iter().map(|p| p as &dyn duckdb::ToSql).collect();
+            app.append_row(params_refs.as_slice())
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to append row: {}", e)))?;
+            Ok(())
+        }
+
+        if let Some(record) = first_entry {
+            append_dict(&record, fields, &mut appender, &py_bool, &py_int, &py_float, py)?;
+        }
+
+        for entry_res in it {
+            let entry = entry_res?;
+            let record = entry.cast::<PyDict>()?;
+            append_dict(record, fields, &mut appender, &py_bool, &py_int, &py_float, py)?;
         }
 
         appender.flush()
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to flush appender: {}", e)))?;
-
         Ok(())
     }
 
-    pub fn flush(&self) -> PyResult<()> {
-        Ok(())
-    }
-
-    pub fn close(&self) -> PyResult<()> {
-        self.flush()
-    }
+    pub fn flush(&self) -> PyResult<()> { Ok(()) }
+    pub fn close(&self) -> PyResult<()> { self.flush() }
 }
 
 impl DuckDBWriter {
@@ -270,16 +305,19 @@ impl DuckDBWriter {
         record: &Bound<'_, PyDict>,
         connection: &mut Connection,
         table_created: &mut bool,
-        fieldnames: &mut Option<Vec<String>>,
+        fieldnames: &mut Option<Vec<Py<PyString>>>,
     ) -> PyResult<()> {
         if fieldnames.is_none() {
+            let py = record.py();
             let keys_list = record.keys();
-            let mut record_keys: Vec<String> = Vec::new();
+            let mut record_keys: Vec<Py<PyString>> = Vec::new();
             for k in keys_list.iter() {
-                let key_str = k.cast::<PyString>()?.to_str()?.to_string();
-                record_keys.push(key_str);
+                record_keys.push(k.cast::<PyString>()?.clone().unbind());
             }
-            record_keys.sort();
+            record_keys.sort_by(|a, b| {
+                a.bind(py).to_str().unwrap_or_default()
+                    .cmp(b.bind(py).to_str().unwrap_or_default())
+            });
             *fieldnames = Some(record_keys);
         }
 
@@ -306,26 +344,16 @@ impl DuckDBWriter {
         let py_int = _py.get_type::<pyo3::types::PyInt>();
         let py_float = _py.get_type::<pyo3::types::PyFloat>();
 
-        let columns = fields
-            .iter()
-            .map(|f| {
-                let duckdb_type = if let Ok(Some(value)) = record.get_item(f) {
-                    if value.is_instance(&py_bool).unwrap_or(false) {
-                        "BOOLEAN"
-                    } else if value.is_instance(&py_int).unwrap_or(false) {
-                        "BIGINT"
-                    } else if value.is_instance(&py_float).unwrap_or(false) {
-                        "DOUBLE"
-                    } else {
-                        "VARCHAR"
-                    }
-                } else {
-                    "VARCHAR"
-                };
-                format!("{} {}", f, duckdb_type)
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+        let columns = fields.iter().map(|f_py| {
+            let f = f_py.bind(_py);
+            let duckdb_type = if let Ok(Some(value)) = record.get_item(f) {
+                if value.is_instance(&py_bool).unwrap_or(false) { "BOOLEAN" }
+                else if value.is_instance(&py_int).unwrap_or(false) { "BIGINT" }
+                else if value.is_instance(&py_float).unwrap_or(false) { "DOUBLE" }
+                else { "VARCHAR" }
+            } else { "VARCHAR" };
+            format!("{} {}", f.to_str().unwrap_or_default(), duckdb_type)
+        }).collect::<Vec<_>>().join(", ");
         
         let create_sql = format!("CREATE TABLE IF NOT EXISTS {} ({})", self.table_name, columns);
         connection.execute(&create_sql, [])
@@ -335,65 +363,6 @@ impl DuckDBWriter {
         Ok(())
     }
 
-    fn write_internal(
-        &self,
-        py: Python<'_>,
-        data: Bound<'_, PyAny>,
-        connection: &mut Connection,
-        table_created: &mut bool,
-        fieldnames: &mut Option<Vec<String>>,
-    ) -> PyResult<()> {
-        let record = data.cast::<PyDict>()?;
-
-        if !*table_created {
-            self.ensure_table_created(py, record, connection, table_created, fieldnames)?;
-        }
-
-        if let Some(fields) = fieldnames.as_ref() {
-            let placeholders = (0..fields.len())
-                .map(|_| "?")
-                .collect::<Vec<_>>()
-                .join(", ");
-            
-            let insert_sql = format!(
-                "INSERT INTO {} ({}) VALUES ({})",
-                self.table_name,
-                fields.join(", "),
-                placeholders
-            );
-
-            let py_bool = py.get_type::<pyo3::types::PyBool>();
-            let py_int = py.get_type::<pyo3::types::PyInt>();
-            let py_float = py.get_type::<pyo3::types::PyFloat>();
-
-            let mut params: Vec<Box<dyn duckdb::ToSql>> = Vec::new();
-            for field in fields {
-                if let Some(value) = record.get_item(field)? {
-                    if value.is_instance(&py_bool)? {
-                        params.push(Box::new(value.extract::<bool>()?));
-                    } else if value.is_instance(&py_int)? {
-                        params.push(Box::new(value.extract::<i64>()?));
-                    } else if value.is_instance(&py_float)? {
-                        params.push(Box::new(value.extract::<f64>()?));
-                    } else if let Ok(s) = value.cast::<PyString>() {
-                        params.push(Box::new(s.to_str()?.to_string()));
-                    } else {
-                        params.push(Box::new(value.to_string()));
-                    }
-                } else {
-                    params.push(Box::new(Option::<String>::None));
-                }
-            }
-
-            let params_refs: Vec<&dyn duckdb::ToSql> = params
-                .iter()
-                .map(|p| p.as_ref())
-                .collect();
-
-            connection.execute(&insert_sql, params_refs.as_slice())
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to insert row: {}", e)))?;
-        }
-
-        Ok(())
-    }
+    // write_internal is no longer needed as write_batch handles the logic
+    // and write now calls write_batch.
 }
