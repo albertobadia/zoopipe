@@ -1,45 +1,8 @@
 import abc
-import logging
 import typing
-
-from zoopipe.hooks.base import BaseHook
 
 
 class BaseOutputAdapter(abc.ABC):
-    def __init__(
-        self,
-        pre_hooks: list[BaseHook] | None = None,
-        post_hooks: list[BaseHook] | None = None,
-    ) -> None:
-        self._is_opened: bool = False
-        self.logger: logging.Logger | None = None
-        self.pre_hooks: list[BaseHook] = pre_hooks or []
-        self.post_hooks: list[BaseHook] = post_hooks or []
-
-    def set_logger(self, logger: logging.Logger) -> None:
-        self.logger = logger
-
     @abc.abstractmethod
-    def write(self, data: dict[str, typing.Any]) -> None:
-        raise NotImplementedError("Subclasses must implement the write method")
-
-    def write_batch(self, batch: list[dict[str, typing.Any]]) -> None:
-        for data in batch:
-            self.write(data)
-
-    def open(self) -> None:
-        self._is_opened = True
-
-    def close(self) -> None:
-        self._is_opened = False
-
-    def __enter__(self):
-        self.open()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        return False
-
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}>"
+    def get_native_writer(self) -> typing.Any:
+        raise NotImplementedError

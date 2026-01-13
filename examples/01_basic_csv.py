@@ -1,35 +1,19 @@
 import datetime
-import pathlib
 import time
 import uuid
 
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import Pipe
-from zoopipe.executor.rust import RustBatchExecutor
-from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.hooks.base import BaseHook
 from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.models.core import EntryTypedDict
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
-class TimestampHook(BaseHook):
-    def __init__(self, field_name: str = "processed_at", priority: int = 50):
-        super().__init__(priority=priority)
-        self.field_name = field_name
-
-    def execute(
-        self, entries: list[EntryTypedDict], store: HookStore
-    ) -> list[EntryTypedDict]:
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+class TimeStampHook(BaseHook):
+    def execute(self, entries: list[dict], store: dict) -> list[dict]:
         for entry in entries:
-            target = entry.get("validated_data")
-            if target is None:
-                target = entry.get("raw_data")
-
-            if isinstance(target, dict):
-                target[self.field_name] = now
-
+            entry["validated_data"]["processed_at"] = datetime.datetime.now()
         return entries
 
 
@@ -42,24 +26,26 @@ class UserSchema(BaseModel):
 
 def main():
     pipe = Pipe(
-        input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
-        output_adapter=CSVOutputAdapter("examples/output_data/users.csv"),
-        executor=RustBatchExecutor(UserSchema, batch_size=10000),
-        post_validation_hooks=[TimestampHook()],
+        input_adapter=CSVInputAdapter("examples/output_data/users_processed.csv"),
+        output_adapter=JSONOutputAdapter(
+            "examples/output_data/users_processed.jsonl", format="jsonl"
+        ),
+        schema_model=UserSchema,
+        batch_size=1000,
+        post_validation_hooks=[TimeStampHook()],
     )
 
-    report = pipe.start()
+    pipe.start()
 
-    ouput_path = pathlib.Path(pipe.output_adapter.output_path)
+    while not pipe.report.is_finished:
+        print(
+            f"Processed: {pipe.report.total_processed} | "
+            f"Speed: {pipe.report.items_per_second:.2f} rows/s"
+        )
+        time.sleep(0.5)
 
-    while not report.is_finished:
-        time.sleep(1)
-        print(f"Progress: {report.total_processed}/{report.total_processed}")
-        print(f"Speed: {report.items_per_second:.2f} rows/s")
-        print(f"Size: {ouput_path.stat().st_size / 1024 / 1024:.2f} MB")
-
-    print(f"\nFinal Report: {report}")
-    print(f"Total Duration: {report.duration:.2f}s")
+    print("\nPipeline Finished!")
+    print(pipe.report)
 
 
 if __name__ == "__main__":

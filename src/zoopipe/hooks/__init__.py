@@ -1,3 +1,3 @@
-from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.hooks.base import BaseHook, HookPriority, HookStore
 
-__all__ = ["BaseHook", "HookStore"]
+__all__ = ["BaseHook", "HookStore", "HookPriority"]

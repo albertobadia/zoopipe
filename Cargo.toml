@@ -13,10 +13,4 @@ pyo3 = { version = "0.27.2", features = ["extension-module", "abi3-py310"] }
 csv = "1.4.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-rmp-serde = "1.3.1"
-lz4_flex = "0.12.0"
-pyo3-async-runtimes = { version = "0.27.0", features = ["tokio-runtime"] }
-tokio = { version = "1.49.0", features = ["full"] }
-streaming-iterator = "0.1"
 uuid = { version = "1.19.0", features = ["v4", "fast-rng"] }
-crossbeam = "0.8.4"

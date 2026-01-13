@@ -1,63 +1,26 @@
-# Pipe Examples
+# ZooPipe Examples
 
-This directory contains executable examples demonstrating various Pipe features.
+This directory contains examples of how to use ZooPipe with its 100% Rust core.
 
 ## Running Examples
-
-All examples can be run from the project root directory:
-
+Make sure you have ZooPipe installed:
 ```bash
-uv run examples/01_basic_csv.py
+uv run maturin develop
+```
+
+Then run any example:
+```bash
+uv run python examples/01_basic_csv.py
 ```
 
 ## Available Examples
 
-### 01–14 Examples
-Detailed descriptions of all examples can be found in the [Documentation](https://github.com/albertobadia/zoopipe/blob/main/docs/examples.md).
+1. **[01_basic_csv.py](01_basic_csv.py)**: Basic CSV to CSV processing with Pydantic validation.
+2. **[02_jsonl_to_csv.py](02_jsonl_to_csv.py)**: Reading JSONL files and writing to CSV.
+3. **[03_hooks_enrichment.py](03_hooks_enrichment.py)**: Using Python hooks to enrich data before validation.
+4. **[04_error_handling.py](04_error_handling.py)**: Advanced error handling and routing to an error output.
 
-## ⚡ Quick Run (All Examples)
-You can run all examples sequentially with:
-```bash
-./run_examples.sh
-```
-
-## 📂 Available Examples
-- **01 Basic CSV**: CSV processing, Pydantic validation, error handling.
-- **02 Multiprocessing**: Multi-core parallel processing.
-- **03 Ray**: Distributed computing across clusters.
-- **04 JSON**: JSON Array and JSONL parsing/writing.
-- **05 Hooks**: Data transformation and enrichment.
-- **06 SQLite Hook**: Custom persistence via hooks.
-- **07 JIT Ingestion**: Zero-copy parallel data fetching.
-- **08 Partitioning**: Large file split into byte-range chunks.
-- **09 Async Queues**: High-concurrency async ingestion.
-- **10 Sync Queues**: Thread-safe queue communication.
-- **11 Handling Errors**: Error analysis and DLQs.
-- **12 Schema-less**: Dictionaries without Pydantic.
-- **12 Threads**: IO-bound concurrent operations.
-- **13 No Output**: Hooks/Executor-only persistence.
-- **13 PyArrow**: High-speed Parquet processing.
-- **14 Remote Fetch**: Adapter-level fetching hooks.
-- **15 SQLAlchemy JIT**: Database JIT fetching.
-- **16 DuckDB JIT**: DuckDB parallel fetching.
-- **17 Asyncio Executor**: Async I/O operations.
-- **18 Boto3 S3 Mocked**: S3 processing with moto (no real AWS needed).
-- **19 MinIO S3 Mocked**: MinIO processing with mocks (no server needed).
-
-## Sample Data
-
-Examples use the sample data files in `examples/data/`:
-- `sample_data.csv` - Sample CSV with user records
-- `sample_data.json` - Sample JSON array
-- `sample_data.jsonl` - Sample JSONL data
-
-## Output Files
-
-Running the examples will create output files in `examples/output_data/`:
-- `output.csv` - Validated CSV output
-- `output.json` - JSON output
-- `output.jsonl` - JSONL output
-- `output_with_hooks.json` - JSON output with hook metadata
-- `errors.csv` - CSV validation errors
-- `errors.json` - JSON validation errors
-- `errors.jsonl` - JSONL validation errors
+## Directory Structure
+- `sample_data/`: Contains input files for the examples.
+- `output_data/`: Where processed results are saved.
+- `models.py`: Shared Pydantic models.

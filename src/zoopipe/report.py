@@ -1,16 +1,45 @@
-import asyncio
 import enum
+import logging
+import sys
 import threading
+import typing
 from datetime import datetime
+
+
+def get_logger(name: str = "zoopipe") -> logging.Logger:
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    return logger
+
+
+class EntryStatus(enum.Enum):
+    PENDING = "pending"
+    VALIDATED = "validated"
+    FAILED = "failed"
+
+
+class EntryTypedDict(typing.TypedDict):
+    id: typing.Any
+    position: int | None
+    status: EntryStatus
+    raw_data: dict[str, typing.Any]
+    validated_data: dict[str, typing.Any] | None
+    errors: list[dict[str, typing.Any]]
+    metadata: dict[str, typing.Any]
 
 
 class FlowStatus(enum.Enum):
     PENDING = "pending"
     RUNNING = "running"
-    STOPPED = "stopped"
-    CANCELLED = "cancelled"
     COMPLETED = "completed"
     FAILED = "failed"
+    ABORTED = "aborted"
 
 
 class FlowReport:
@@ -23,7 +52,6 @@ class FlowReport:
         self.start_time: datetime | None = None
         self.end_time: datetime | None = None
         self._finished_event = threading.Event()
-        self._stop_condition = threading.Condition()
 
     @property
     def duration(self) -> float:
@@ -47,10 +75,6 @@ class FlowReport:
     def wait(self, timeout: float | None = None) -> bool:
         return self._finished_event.wait(timeout)
 
-    async def wait_async(self, timeout: float | None = None) -> bool:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.wait, timeout)
-
     def _mark_running(self) -> None:
         self.status = FlowStatus.RUNNING
         self.start_time = datetime.now()
@@ -60,36 +84,10 @@ class FlowReport:
         self.end_time = datetime.now()
         self._finished_event.set()
 
-    def _mark_stopped(self) -> None:
-        self.status = FlowStatus.STOPPED
+    def abort(self) -> None:
+        self.status = FlowStatus.ABORTED
         self.end_time = datetime.now()
         self._finished_event.set()
-
-    def stop(self) -> None:
-        with self._stop_condition:
-            self.status = FlowStatus.STOPPED
-
-    def abort(self) -> None:
-        with self._stop_condition:
-            self.status = FlowStatus.CANCELLED
-            self.end_time = datetime.now()
-            self._finished_event.set()
-            self._stop_condition.notify_all()
-
-    def continue_(self) -> None:
-        with self._stop_condition:
-            if self.status == FlowStatus.STOPPED:
-                self.status = FlowStatus.RUNNING
-                self._stop_condition.notify_all()
-
-    @property
-    def is_stopped(self) -> bool:
-        return self.status == FlowStatus.STOPPED
-
-    def _wait_if_stopped(self) -> None:
-        with self._stop_condition:
-            while self.status == FlowStatus.STOPPED:
-                self._stop_condition.wait()
 
     def _mark_failed(self, exception: Exception) -> None:
         self.status = FlowStatus.FAILED

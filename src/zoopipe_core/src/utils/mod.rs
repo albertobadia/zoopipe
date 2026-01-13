@@ -39,42 +39,6 @@ pub fn serde_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, Py
     }
 }
 
-pub fn python_to_serde(py: Python<'_>, obj: Bound<'_, PyAny>) -> PyResult<Value> {
-    if obj.is_none() {
-        Ok(Value::Null)
-    } else if let Ok(b) = obj.cast::<PyBool>() {
-        Ok(Value::Bool(b.is_true()))
-    } else if let Ok(i) = obj.cast::<PyInt>() {
-        Ok(Value::Number(serde_json::Number::from(i.extract::<i64>()?)))
-    } else if let Ok(f) = obj.cast::<PyFloat>() {
-        let f_val = f.extract::<f64>()?;
-        if let Some(n) = serde_json::Number::from_f64(f_val) {
-            Ok(Value::Number(n))
-        } else {
-            Ok(Value::Null)
-        }
-    } else if let Ok(s) = obj.cast::<PyString>() {
-        Ok(Value::String(s.to_string()))
-    } else if let Ok(l) = obj.cast::<PyList>() {
-        let mut vec = Vec::with_capacity(l.len());
-        for item in l.iter() {
-            vec.push(python_to_serde(py, item)?);
-        }
-        Ok(Value::Array(vec))
-    } else if let Ok(d) = obj.cast::<PyDict>() {
-        let mut map = serde_json::Map::with_capacity(d.len());
-        for (k, v) in d.iter() {
-            map.insert(k.to_string(), python_to_serde(py, v)?);
-        }
-        Ok(Value::Object(map))
-    } else {
-        if obj.hasattr(pyo3::intern!(py, "value"))? {
-            python_to_serde(py, obj.getattr(pyo3::intern!(py, "value"))?)
-        } else {
-            Ok(Value::String(obj.to_string()))
-        }
-    }
-}
 
 pub struct PySerializable<'a>(pub Bound<'a, PyAny>);
 

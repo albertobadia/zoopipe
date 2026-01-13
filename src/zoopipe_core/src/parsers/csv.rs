@@ -54,7 +54,7 @@ impl CSVReader {
                 .collect()
         };
 
-        let models = py.import("zoopipe.models.core")?;
+        let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
@@ -101,7 +101,7 @@ impl CSVReader {
                 .collect()
         };
 
-        let models = py.import("zoopipe.models.core")?;
+        let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
@@ -118,7 +118,7 @@ impl CSVReader {
         slf
     }
 
-    fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
+    pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let mut reader = slf.reader.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         
@@ -162,17 +162,13 @@ pub struct CSVWriter {
     writer: Mutex<csv::Writer<std::io::BufWriter<File>>>,
     fieldnames: Mutex<Option<Vec<String>>>,
     header_written: Mutex<bool>,
-    #[allow(dead_code)]
-    delimiter: u8,
-    #[allow(dead_code)]
-    quote: u8,
 }
 
 #[pymethods]
 impl CSVWriter {
     #[new]
     #[pyo3(signature = (path, delimiter=b',', quote=b'"', fieldnames=None))]
-    fn new(
+    pub fn new(
         _py: Python<'_>,
         path: String,
         delimiter: u8,
@@ -189,12 +185,10 @@ impl CSVWriter {
             writer: Mutex::new(writer),
             fieldnames: Mutex::new(fieldnames),
             header_written: Mutex::new(false),
-            delimiter,
-            quote,
         })
     }
 
-    fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
+    pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut header_written = self.header_written.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut fieldnames = self.fieldnames.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
@@ -202,7 +196,7 @@ impl CSVWriter {
         self.write_internal(py, data, &mut writer, &mut header_written, &mut fieldnames)
     }
 
-    fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
+    pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut header_written = self.header_written.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         let mut fieldnames = self.fieldnames.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
@@ -214,13 +208,13 @@ impl CSVWriter {
         Ok(())
     }
 
-    fn flush(&self) -> PyResult<()> {
+    pub fn flush(&self) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
         writer.flush().map_err(wrap_py_err)?;
         Ok(())
     }
 
-    fn close(&self) -> PyResult<()> {
+    pub fn close(&self) -> PyResult<()> {
         self.flush()
     }
 }
