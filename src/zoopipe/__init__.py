@@ -4,12 +4,14 @@ from zoopipe.input_adapter.arrow import ArrowInputAdapter
 from zoopipe.input_adapter.csv import CSVInputAdapter
 from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
 from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.input_adapter.parquet import ParquetInputAdapter
 from zoopipe.input_adapter.pygen import PyGeneratorInputAdapter
 from zoopipe.input_adapter.sql import SQLInputAdapter
 from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 from zoopipe.output_adapter.csv import CSVOutputAdapter
 from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
 from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe.output_adapter.parquet import ParquetOutputAdapter
 from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
 from zoopipe.output_adapter.sql import SQLOutputAdapter
 from zoopipe.report import (
@@ -39,6 +41,7 @@ __all__ = [
     "JSONInputAdapter",
     "PyGeneratorInputAdapter",
     "SQLInputAdapter",
+    "ParquetInputAdapter",
     # Output Adapters
     "ArrowOutputAdapter",
     "CSVOutputAdapter",
@@ -46,4 +49,5 @@ __all__ = [
     "JSONOutputAdapter",
     "PyGeneratorOutputAdapter",
     "SQLOutputAdapter",
+    "ParquetOutputAdapter",
 ]

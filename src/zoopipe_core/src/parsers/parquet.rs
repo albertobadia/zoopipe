@@ -2,18 +2,20 @@ use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
 use std::sync::Mutex;
-use arrow::ipc::reader::FileReader;
-use arrow::ipc::writer::FileWriter;
 use arrow::record_batch::RecordBatch;
+use arrow::array::RecordBatchReader;
 use arrow::datatypes::*;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::ArrowWriter;
+use parquet::file::properties::WriterProperties;
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
-use pyo3::types::{PyString, PyDict, PyList, PyAnyMethods};
-use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch};
+use pyo3::types::{PyDict, PyList, PyString, PyAnyMethods};
+use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch, infer_type};
 
 #[pyclass]
-pub struct ArrowReader {
-    reader: Mutex<FileReader<File>>,
+pub struct ParquetReader {
+    reader: Mutex<Box<dyn Iterator<Item = Result<RecordBatch, arrow::error::ArrowError>> + Send>>,
     current_batch: Mutex<Option<(RecordBatch, usize)>>,
     headers: Vec<Py<PyString>>,
     position: Mutex<usize>,
@@ -22,24 +24,26 @@ pub struct ArrowReader {
 }
 
 #[pymethods]
-impl ArrowReader {
+impl ParquetReader {
     #[new]
     #[pyo3(signature = (path, generate_ids=true))]
     fn new(py: Python<'_>, path: String, generate_ids: bool) -> PyResult<Self> {
         let file = File::open(&path).map_err(wrap_py_err)?;
-        let reader = FileReader::try_new(file, None).map_err(wrap_py_err)?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(wrap_py_err)?;
+        let reader = builder.build().map_err(wrap_py_err)?;
+        
         let schema = reader.schema();
         let headers: Vec<Py<PyString>> = schema.fields()
             .iter()
-            .map(|f| PyString::new(py, f.name()).unbind())
+            .map(|f: &FieldRef| PyString::new(py, f.name()).unbind())
             .collect();
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
-        Ok(ArrowReader {
-            reader: Mutex::new(reader),
+        Ok(ParquetReader {
+            reader: Mutex::new(Box::new(reader)),
             current_batch: Mutex::new(None),
             headers,
             position: Mutex::new(0),
@@ -112,17 +116,17 @@ impl ArrowReader {
 }
 
 #[pyclass]
-pub struct ArrowWriter {
+pub struct ParquetWriter {
     path: String,
-    writer: Mutex<Option<FileWriter<File>>>,
+    writer: Mutex<Option<ArrowWriter<File>>>,
     schema: Mutex<Option<SchemaRef>>,
 }
 
 #[pymethods]
-impl ArrowWriter {
+impl ParquetWriter {
     #[new]
     pub fn new(path: String) -> Self {
-        ArrowWriter {
+        ParquetWriter {
             path,
             writer: Mutex::new(None),
             schema: Mutex::new(None),
@@ -145,11 +149,7 @@ impl ArrowWriter {
             
             for key in &keys {
                 if let Some(val) = dict.get_item(key)? {
-                    // Logic from original arrow.rs
-                    let dt = if val.is_instance_of::<pyo3::types::PyBool>() { DataType::Boolean }
-                    else if val.is_instance_of::<pyo3::types::PyInt>() { DataType::Int64 }
-                    else if val.is_instance_of::<pyo3::types::PyFloat>() { DataType::Float64 }
-                    else { DataType::Utf8 };
+                    let dt = infer_type(&val);
                     fields.push(Field::new(key.clone(), dt, true));
                 } else {
                     fields.push(Field::new(key.clone(), DataType::Utf8, true));
@@ -157,7 +157,13 @@ impl ArrowWriter {
             }
             let schema = SchemaRef::new(Schema::new(fields));
             let file = File::create(&self.path).map_err(wrap_py_err)?;
-            *writer_guard = Some(FileWriter::try_new(file, &schema).map_err(wrap_py_err)?);
+            
+            // Tuned properties to reduce RAM usage (smaller row groups)
+            let props = WriterProperties::builder()
+                .set_max_row_group_size(100_000) // Default is 1M
+                .build();
+
+            *writer_guard = Some(ArrowWriter::try_new(file, schema.clone(), Some(props)).map_err(wrap_py_err)?);
             *schema_guard = Some(schema);
         }
 
@@ -172,8 +178,8 @@ impl ArrowWriter {
 
     pub fn close(&self) -> PyResult<()> {
         let mut writer_guard = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-        if let Some(mut w) = writer_guard.take() {
-            w.finish().map_err(wrap_py_err)?;
+        if let Some(w) = writer_guard.take() {
+            w.close().map_err(wrap_py_err)?;
         }
         Ok(())
     }
