@@ -48,6 +48,7 @@ class FlowReport:
         self.total_processed = 0
         self.success_count = 0
         self.error_count = 0
+        self.ram_bytes = 0
         self.exception: Exception | None = None
         self.start_time: datetime | None = None
         self.end_time: datetime | None = None
@@ -101,6 +102,7 @@ class FlowReport:
             f"processed={self.total_processed} "
             f"success={self.success_count} "
             f"error={self.error_count} "
+            f"ram={self.ram_bytes / 1024 / 1024:.2f}MB "
             f"fps={self.items_per_second:.2f} "
             f"duration={self.duration:.2f}s>"
         )

@@ -144,13 +144,11 @@ impl NativePipe {
             }
         }
 
-        if !error_list.is_empty() {
-            if let Some(ref ew) = self.error_writer {
-                let data_list = PyList::new(py, error_list.iter())?;
-                match ew {
-                    PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                    PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                }
+        if !error_list.is_empty() && let Some(ref ew) = self.error_writer {
+            let data_list = PyList::new(py, error_list.iter())?;
+            match ew {
+                PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 
@@ -161,7 +159,21 @@ impl NativePipe {
         report.setattr("total_processed", total_processed_val + processed_list.len())?;
         report.setattr("success_count", success_count_val + success_data.len())?;
         report.setattr("error_count", error_count_val + error_list.len())?;
+        report.setattr("ram_bytes", get_process_ram_rss())?;
 
         Ok(())
     }
+}
+
+fn get_process_ram_rss() -> usize {
+    if let Ok(content) = std::fs::read_to_string("/proc/self/status") {
+        for line in content.lines() {
+            if line.starts_with("VmRSS:")
+                && let Some(kb_part) = line.split_whitespace().nth(1)
+                    && let Ok(kb) = kb_part.parse::<usize>() {
+                        return kb * 1024;
+                    }
+        }
+    }
+    0
 }

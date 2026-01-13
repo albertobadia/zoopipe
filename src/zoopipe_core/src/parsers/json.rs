@@ -63,7 +63,7 @@ impl JSONReader {
             if let Some(val) = ai.next() {
                 let current_pos = *pos_lock;
                 *pos_lock += 1;
-                return Ok(Some(wrap_in_envelope(py, val, current_pos, &slf.status_pending.bind(py))?));
+                return Ok(Some(wrap_in_envelope(py, val, current_pos, slf.status_pending.bind(py))?));
             } else {
                 *array_iter_lock = None;
             }
@@ -78,14 +78,14 @@ impl JSONReader {
                         *array_iter_lock = Some(ai);
                         let current_pos = *pos_lock;
                         *pos_lock += 1;
-                        return Ok(Some(wrap_in_envelope(py, val, current_pos, &slf.status_pending.bind(py))?));
+                        return Ok(Some(wrap_in_envelope(py, val, current_pos, slf.status_pending.bind(py))?));
                     } else {
                         return Ok(None);
                     }
                 }
                 let current_pos = *pos_lock;
                 *pos_lock += 1;
-                Ok(Some(wrap_in_envelope(py, value, current_pos, &slf.status_pending.bind(py))?))
+                Ok(Some(wrap_in_envelope(py, value, current_pos, slf.status_pending.bind(py))?))
             }
             Some(Err(e)) => Err(wrap_py_err(e)),
             None => Ok(None),

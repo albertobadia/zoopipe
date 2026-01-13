@@ -6,12 +6,12 @@ use std::sync::Mutex;
 use csv::StringRecord;
 use crate::io::BoxedReader;
 use crate::utils::wrap_py_err;
-use pyo3::types::PyAnyMethods;
+use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 
 #[pyclass]
 pub struct CSVReader {
     pub(crate) reader: Mutex<csv::Reader<BoxedReader>>,
-    pub(crate) headers: Vec<String>,
+    pub(crate) headers: Vec<Py<PyString>>,
     pub(crate) position: Mutex<usize>,
     pub(crate) status_pending: Py<PyAny>,
     pub(crate) generate_ids: bool,
@@ -43,7 +43,7 @@ impl CSVReader {
             }
         }
 
-        let headers = if let Some(fields) = fieldnames {
+        let headers_str = if let Some(fields) = fieldnames {
             fields
         } else {
             reader
@@ -53,6 +53,11 @@ impl CSVReader {
                 .map(|s| s.to_string())
                 .collect()
         };
+
+        let headers: Vec<Py<PyString>> = headers_str
+            .into_iter()
+            .map(|s| PyString::new(py, &s).unbind())
+            .collect();
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
@@ -90,7 +95,7 @@ impl CSVReader {
             }
         }
 
-        let headers = if let Some(fields) = fieldnames {
+        let headers_str = if let Some(fields) = fieldnames {
             fields
         } else {
             reader
@@ -100,6 +105,11 @@ impl CSVReader {
                 .map(|s| s.to_string())
                 .collect()
         };
+
+        let headers: Vec<Py<PyString>> = headers_str
+            .into_iter()
+            .map(|s| PyString::new(py, &s).unbind())
+            .collect();
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
@@ -129,12 +139,12 @@ impl CSVReader {
                 let current_pos = *pos;
                 *pos += 1;
                 
-                let raw_data = pyo3::types::PyDict::new(py);
-                for (header, value) in slf.headers.iter().zip(record.iter()) {
-                    raw_data.set_item(header, value)?;
+                let raw_data = PyDict::new(py);
+                for (header_py, value) in slf.headers.iter().zip(record.iter()) {
+                    raw_data.set_item(header_py.bind(py), value)?;
                 }
                 
-                let envelope = pyo3::types::PyDict::new(py);
+                let envelope = PyDict::new(py);
                 
                 let id = if slf.generate_ids {
                     uuid::Uuid::new_v4().to_string()
@@ -145,9 +155,9 @@ impl CSVReader {
                 envelope.set_item(pyo3::intern!(py, "id"), id)?;
                 envelope.set_item(pyo3::intern!(py, "status"), slf.status_pending.bind(py))?;
                 envelope.set_item(pyo3::intern!(py, "raw_data"), raw_data)?;
-                envelope.set_item(pyo3::intern!(py, "metadata"), pyo3::types::PyDict::new(py))?;
+                envelope.set_item(pyo3::intern!(py, "metadata"), PyDict::new(py))?;
                 envelope.set_item(pyo3::intern!(py, "position"), current_pos)?;
-                envelope.set_item(pyo3::intern!(py, "errors"), pyo3::types::PyList::empty(py))?;
+                envelope.set_item(pyo3::intern!(py, "errors"), PyList::empty(py))?;
 
                 Ok(Some(envelope.into_any()))
             }
@@ -160,7 +170,7 @@ impl CSVReader {
 #[pyclass]
 pub struct CSVWriter {
     writer: Mutex<csv::Writer<std::io::BufWriter<File>>>,
-    fieldnames: Mutex<Option<Vec<String>>>,
+    fieldnames: Mutex<Option<Vec<Py<PyString>>>>,
     header_written: Mutex<bool>,
 }
 
@@ -169,7 +179,7 @@ impl CSVWriter {
     #[new]
     #[pyo3(signature = (path, delimiter=b',', quote=b'"', fieldnames=None))]
     pub fn new(
-        _py: Python<'_>,
+        py: Python<'_>,
         path: String,
         delimiter: u8,
         quote: u8,
@@ -181,9 +191,13 @@ impl CSVWriter {
             .quote(quote)
             .from_writer(std::io::BufWriter::new(file));
         
+        let py_fieldnames = fieldnames.map(|names| {
+            names.into_iter().map(|s| PyString::new(py, &s).unbind()).collect()
+        });
+
         Ok(CSVWriter {
             writer: Mutex::new(writer),
-            fieldnames: Mutex::new(fieldnames),
+            fieldnames: Mutex::new(py_fieldnames),
             header_written: Mutex::new(false),
         })
     }
@@ -219,37 +233,65 @@ impl CSVWriter {
     }
 }
 
+use std::borrow::Cow;
+
 impl CSVWriter {
     fn write_internal(
         &self,
-        _py: Python<'_>,
+        py: Python<'_>,
         data: Bound<'_, PyAny>,
         writer: &mut csv::Writer<std::io::BufWriter<File>>,
         header_written: &mut bool,
-        fieldnames: &mut Option<Vec<String>>,
+        fieldnames: &mut Option<Vec<Py<PyString>>>,
     ) -> PyResult<()> {
-        let record = data.cast::<pyo3::types::PyDict>()?;
+        let record = data.cast::<PyDict>()?;
 
         if !*header_written {
-            let names = if let Some(ref names) = *fieldnames {
-                names.clone()
-            } else {
-                let mut record_keys: Vec<String> = record.keys().iter().map(|k| k.to_string()).collect();
-                record_keys.sort();
-                *fieldnames = Some(record_keys.clone());
-                record_keys
-            };
-            writer.write_record(&names).map_err(wrap_py_err)?;
+            if fieldnames.is_none() {
+                let keys_list = record.keys();
+                let mut record_keys = Vec::with_capacity(keys_list.len());
+                for k in keys_list.iter() {
+                    record_keys.push(k.cast::<PyString>()?.clone());
+                }
+                
+                record_keys.sort_by(|a, b| {
+                    let s1 = a.to_str().unwrap_or_default();
+                    let s2 = b.to_str().unwrap_or_default();
+                    s1.cmp(s2)
+                });
+                let interned: Vec<Py<PyString>> = record_keys.into_iter().map(|s| s.unbind()).collect();
+                *fieldnames = Some(interned);
+            }
+            
+            let names = fieldnames.as_ref().unwrap();
+            let bounds: Vec<Bound<'_, PyString>> = names.iter().map(|n| n.bind(py).clone()).collect();
+            let mut name_strs = Vec::with_capacity(names.len());
+            for b in &bounds {
+                name_strs.push(b.to_str().unwrap_or_default());
+            }
+            writer.write_record(&name_strs).map_err(wrap_py_err)?;
             *header_written = true;
         }
 
-        if let Some(ref names) = *fieldnames {
-            let mut row = Vec::with_capacity(names.len());
-            for name in names {
-                let val = record.get_item(name)?.map(|v| v.to_string()).unwrap_or_default();
-                row.push(val);
+        if let Some(names) = fieldnames.as_ref() {
+            let mut row_bounds: Vec<Option<Bound<'_, PyAny>>> = Vec::with_capacity(names.len());
+            for name_py in names {
+                row_bounds.push(record.get_item(name_py.bind(py))?);
             }
-            writer.write_record(&row).map_err(wrap_py_err)?;
+
+            let mut row_out: Vec<Cow<str>> = Vec::with_capacity(names.len());
+            for opt_val in &row_bounds {
+                if let Some(v) = opt_val {
+                    if let Ok(s) = v.cast::<PyString>() {
+                        row_out.push(Cow::Borrowed(s.to_str().unwrap_or("")));
+                    } else {
+                        row_out.push(Cow::Owned(v.to_string()));
+                    }
+                } else {
+                    row_out.push(Cow::Borrowed(""));
+                }
+            }
+            writer.write_record(row_out.iter().map(|c| c.as_bytes())).map_err(wrap_py_err)?;
         }
 
         Ok(())
