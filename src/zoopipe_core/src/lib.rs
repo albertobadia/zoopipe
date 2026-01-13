@@ -9,6 +9,7 @@ pub mod executor;
 use crate::parsers::csv::{CSVReader, CSVWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
+use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::pipeline::NativePipe;
 use crate::executor::{SingleThreadExecutor, MultiThreadExecutor};
 
@@ -22,9 +23,11 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CSVReader>()?;
     m.add_class::<JSONReader>()?;
     m.add_class::<DuckDBReader>()?;
+    m.add_class::<ArrowReader>()?;
     m.add_class::<CSVWriter>()?;
     m.add_class::<JSONWriter>()?;
     m.add_class::<DuckDBWriter>()?;
+    m.add_class::<ArrowWriter>()?;
 
 
     m.add_class::<NativePipe>()?;

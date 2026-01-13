@@ -25,15 +25,12 @@ class UserSchema(BaseModel):
 
 
 def main():
-    from zoopipe import SingleThreadExecutor
-
     pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
         output_adapter=JSONOutputAdapter(
             "examples/output_data/users_processed.jsonl", format="jsonl"
         ),
         schema_model=UserSchema,
-        executor=SingleThreadExecutor(batch_size=1000),
         post_validation_hooks=[TimeStampHook()],
         report_update_interval=10,
     )
@@ -43,7 +40,7 @@ def main():
     while not pipe.report.is_finished:
         print(
             f"Processed: {pipe.report.total_processed} | "
-            f"Speed: {pipe.report.items_per_second:.2f} rows/s"
+            f"Speed: {pipe.report.items_per_second:.2f} rows/s | "
             f"Ram Usage: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB"
         )
         time.sleep(0.5)

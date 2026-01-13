@@ -1,3 +1,4 @@
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.output_adapter.csv import CSVOutputAdapter
 from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
@@ -8,4 +9,5 @@ __all__ = [
     "CSVOutputAdapter",
     "JSONOutputAdapter",
     "DuckDBOutputAdapter",
+    "ArrowOutputAdapter",
 ]

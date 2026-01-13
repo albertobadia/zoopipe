@@ -2,9 +2,9 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import MultiThreadExecutor, Pipe
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
 
 
 class UserSchema(BaseModel):
@@ -16,9 +16,12 @@ class UserSchema(BaseModel):
 
 def main():
     pipe = Pipe(
-        input_adapter=JSONInputAdapter("examples/output_data/users_processed.jsonl"),
-        output_adapter=CSVOutputAdapter("examples/output_data/users_processed.csv"),
+        input_adapter=ArrowInputAdapter("examples/output_data/users_processed.arrow"),
+        output_adapter=JSONOutputAdapter(
+            "examples/output_data/users_processed.jsonl", format="jsonl"
+        ),
         schema_model=UserSchema,
+        executor=MultiThreadExecutor(max_workers=4),
     )
 
     pipe.start()

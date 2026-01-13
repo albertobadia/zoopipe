@@ -1,0 +1,19 @@
+📦 Including license file `LICENSE`
+🍹 Building a mixed python/rust project
+🔗 Found pyo3 bindings with abi3 support
+🐍 Found CPython 3.13 at /Users/bctm/Documents/zoopipe/.venv/bin/python
+Audited 1 package in 1ms
+   Compiling zoopipe_rust_core v2026.1.12 (/Users/bctm/Documents/zoopipe)
+warning: use of deprecated type alias `pyo3::PyObject`: use `Py<PyAny>` instead
+   --> src/zoopipe_core/src/parsers/arrow.rs:106:75
+    |
+106 | fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<PyObject> {
+    |                                                                           ^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: `zoopipe_rust_core` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.79s
+📦 Built wheel for abi3 Python ≥ 3.10 to /var/folders/s1/3g9zgmt9497_8d2gtmm73wyr0000gn/T/.tmpK7ZqRQ/zoopipe-2026.1.12-cp310-abi3-macosx_11_0_arm64.whl
+✏️ Setting installed package as editable
+🛠 Installed zoopipe-2026.1.12

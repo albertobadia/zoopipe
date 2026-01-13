@@ -15,14 +15,13 @@ class UserSchema(BaseModel):
 
 
 def main():
-    input_path = "examples/output_data/users_processed.db"
-    output_path = "examples/output_data/users_processed.jsonl"
-
-    print("--- Starting DuckDB to JSONL Pipeline ---")
-
     pipe = Pipe(
-        input_adapter=DuckDBInputAdapter(input_path, table_name="users"),
-        output_adapter=JSONOutputAdapter(output_path, format="jsonl"),
+        input_adapter=DuckDBInputAdapter(
+            "examples/output_data/users_processed.db", table_name="users"
+        ),
+        output_adapter=JSONOutputAdapter(
+            "examples/output_data/users_processed.jsonl", format="jsonl"
+        ),
         schema_model=UserSchema,
     )
 
@@ -31,7 +30,7 @@ def main():
     while not pipe.report.is_finished:
         print(
             f"Processed: {pipe.report.total_processed} | "
-            f"Speed: {pipe.report.items_per_second:.2f} rows/s "
+            f"Speed: {pipe.report.items_per_second:.2f} rows/s | "
             f"Ram Usage: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB"
         )
         time.sleep(0.5)
