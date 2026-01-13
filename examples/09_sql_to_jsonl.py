@@ -3,9 +3,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import MultiThreadExecutor, Pipe
-from zoopipe.input_adapter.sql import SQLInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONOutputAdapter, MultiThreadExecutor, Pipe, SQLInputAdapter
 
 
 class UserSchema(BaseModel):

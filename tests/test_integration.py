@@ -2,11 +2,14 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import BaseHook, Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import (
+    BaseHook,
+    CSVInputAdapter,
+    CSVOutputAdapter,
+    JSONInputAdapter,
+    JSONOutputAdapter,
+    Pipe,
+)
 
 
 class UserSchema(BaseModel):

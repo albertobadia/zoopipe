@@ -2,9 +2,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import Pipe
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import DuckDBInputAdapter, JSONOutputAdapter, Pipe
 
 
 class UserSchema(BaseModel):

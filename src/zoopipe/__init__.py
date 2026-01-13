@@ -1,5 +1,17 @@
 from zoopipe.core import Pipe
 from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.input_adapter.arrow import ArrowInputAdapter
+from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
+from zoopipe.input_adapter.json import JSONInputAdapter
+from zoopipe.input_adapter.pygen import PyGeneratorInputAdapter
+from zoopipe.input_adapter.sql import SQLInputAdapter
+from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
+from zoopipe.output_adapter.sql import SQLOutputAdapter
 from zoopipe.report import (
     EntryStatus,
     EntryTypedDict,
@@ -20,4 +32,18 @@ __all__ = [
     "get_logger",
     "SingleThreadExecutor",
     "MultiThreadExecutor",
+    # Input Adapters
+    "ArrowInputAdapter",
+    "CSVInputAdapter",
+    "DuckDBInputAdapter",
+    "JSONInputAdapter",
+    "PyGeneratorInputAdapter",
+    "SQLInputAdapter",
+    # Output Adapters
+    "ArrowOutputAdapter",
+    "CSVOutputAdapter",
+    "DuckDBOutputAdapter",
+    "JSONOutputAdapter",
+    "PyGeneratorOutputAdapter",
+    "SQLOutputAdapter",
 ]

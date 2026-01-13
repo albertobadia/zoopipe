@@ -2,9 +2,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import MultiThreadExecutor, Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, MultiThreadExecutor, Pipe
 
 
 class UserSchema(BaseModel):

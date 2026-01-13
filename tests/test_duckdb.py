@@ -3,12 +3,14 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import (
+    CSVInputAdapter,
+    CSVOutputAdapter,
+    DuckDBInputAdapter,
+    DuckDBOutputAdapter,
+    JSONOutputAdapter,
+    Pipe,
+)
 
 
 class UserSchema(BaseModel):

@@ -9,9 +9,7 @@ Read data from DuckDB databases using either table names or custom analytical qu
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import DuckDBInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=DuckDBInputAdapter(
@@ -99,9 +97,7 @@ Write data to DuckDB databases with optimized batch operations.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("data.csv"),
@@ -128,9 +124,7 @@ pipe = Pipe(
 ### Performance Example
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, MultiThreadExecutor, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("large_dataset.csv"),
@@ -150,9 +144,7 @@ pipe = Pipe(
 ```python
 import time
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, MultiThreadExecutor, Pipe
 
 class SalesRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -188,9 +180,7 @@ print(f"Loaded {pipe.report.total_processed} records into DuckDB")
 ### DuckDB Analytics to JSONL
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import DuckDBInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=DuckDBInputAdapter(
@@ -218,10 +208,7 @@ with pipe:
 ### Incremental Data Loading
 
 ```python
-from datetime import datetime
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, MultiThreadExecutor, Pipe
 
 today = datetime.now().strftime("%Y-%m-%d")
 
@@ -290,9 +277,7 @@ Use **SQLite** for: Transaction processing, configuration storage, rapid writes
 ### ETL Pipeline with DuckDB
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("raw_events.csv"),
@@ -332,10 +317,8 @@ with aggregated_pipe:
 ### Multi-Source Data Consolidation
 
 ```python
+from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, Pipe
 from pathlib import Path
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
 
 for csv_file in Path("data_sources").glob("*.csv"):
     pipe = Pipe(
@@ -356,9 +339,7 @@ for csv_file in Path("data_sources").glob("*.csv"):
 ### Querying External Files
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import DuckDBInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=DuckDBInputAdapter(

@@ -19,9 +19,7 @@ Read data from Arrow IPC files (also known as Feather v2 files).
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.arrow import ArrowInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import ArrowInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=ArrowInputAdapter("data.arrow"),
@@ -49,9 +47,7 @@ df = pd.DataFrame({
 })
 df.to_feather('users.arrow')
 
-from zoopipe import Pipe
-from zoopipe.input_adapter.arrow import ArrowInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import ArrowInputAdapter, CSVOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=ArrowInputAdapter("users.arrow"),
@@ -77,9 +73,7 @@ Write data to Arrow IPC files for efficient storage and interoperability.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("data.csv"),
@@ -96,9 +90,7 @@ pipe = Pipe(
 ### Writing for Pandas Consumption
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, JSONInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("data.jsonl"),
@@ -120,9 +112,7 @@ print(df.head())
 ```python
 import time
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, MultiThreadExecutor, Pipe
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -152,9 +142,7 @@ print(f"Wrote {pipe.report.total_processed} records to Arrow format")
 ### Arrow to JSONL Export
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.arrow import ArrowInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import ArrowInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=ArrowInputAdapter("processed_data.arrow"),
@@ -168,11 +156,7 @@ with pipe:
 ### Multi-Stage Pipeline with Arrow Intermediate
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.input_adapter.arrow import ArrowInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import ArrowInputAdapter, ArrowOutputAdapter, CSVInputAdapter, JSONOutputAdapter, MultiThreadExecutor, Pipe
 
 stage1 = Pipe(
     input_adapter=CSVInputAdapter("raw_data.csv"),
@@ -236,9 +220,7 @@ with stage2:
 
 ```python
 import pandas as pd
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("data.csv"),
@@ -265,9 +247,7 @@ with pipe2:
 
 ```python
 import polars as pl
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, JSONInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("data.jsonl"),
@@ -286,9 +266,7 @@ result.write_ipc("filtered.arrow")
 
 ```python
 import duckdb
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("sales.csv"),
@@ -332,9 +310,7 @@ print(result)
 
 ```python
 from pathlib import Path
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.sql import SQLInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import Pipe, MultiThreadExecutor, SQLInputAdapter, ArrowOutputAdapter
 
 tables = ['users', 'orders', 'products']
 
@@ -357,11 +333,7 @@ for table in tables:
 ### High-Performance ETL
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.input_adapter.arrow import ArrowInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
-from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe import Pipe, MultiThreadExecutor, CSVInputAdapter, ArrowInputAdapter, ArrowOutputAdapter, DuckDBOutputAdapter
 
 extract_pipe = Pipe(
     input_adapter=CSVInputAdapter("raw_data.csv"),
@@ -389,9 +361,7 @@ with load_pipe:
 ### Cross-Language Workflow
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("python_data.csv"),
@@ -454,9 +424,7 @@ Common errors:
 Arrow preserves complex schemas that other formats lose:
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.arrow import ArrowInputAdapter
-from zoopipe.output_adapter.arrow import ArrowOutputAdapter
+from zoopipe import ArrowOutputAdapter, CSVInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=ArrowInputAdapter("complex_data.arrow"),

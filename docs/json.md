@@ -9,9 +9,7 @@ Read JSONL files with automatic line-by-line streaming.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVOutputAdapter, JSONInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("data.jsonl"),
@@ -51,9 +49,7 @@ Write data to JSON files in either JSONL or pretty-printed array format.
 ### Basic Usage (JSONL)
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import CSVInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("data.csv"),
@@ -131,9 +127,7 @@ Output:
 ```python
 import time
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import CSVInputAdapter, JSONOutputAdapter, MultiThreadExecutor, Pipe
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -158,9 +152,7 @@ while not pipe.report.is_finished:
 ### JSONL to Pretty JSON
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("data.jsonl"),
@@ -226,9 +218,7 @@ pipe = Pipe(
 ### API Data Export
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.sql import SQLInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONInputAdapter, JSONOutputAdapter, Pipe, SQLInputAdapter
 
 pipe = Pipe(
     input_adapter=SQLInputAdapter(
@@ -242,9 +232,7 @@ pipe = Pipe(
 ### Log File Processing
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVOutputAdapter, JSONInputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("application.log.jsonl"),
@@ -255,9 +243,7 @@ pipe = Pipe(
 ### Data Migration
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.sql import SQLOutputAdapter
+from zoopipe import JSONInputAdapter, MultiThreadExecutor, Pipe, SQLOutputAdapter
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("legacy_data.jsonl"),
@@ -303,9 +289,7 @@ Common errors:
 
 ```python
 import pandas as pd
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("input.jsonl"),
@@ -332,9 +316,7 @@ cat output.jsonl | jq 'select(.age > 18) | {id, name}'
 ### With Streaming APIs
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("stream_dump.jsonl"),

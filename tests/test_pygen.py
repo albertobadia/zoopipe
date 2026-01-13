@@ -1,8 +1,6 @@
 from pydantic import BaseModel
 
-from zoopipe import Pipe
-from zoopipe.input_adapter.pygen import PyGeneratorInputAdapter
-from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
+from zoopipe import Pipe, PyGeneratorInputAdapter, PyGeneratorOutputAdapter
 
 
 class UserSchema(BaseModel):

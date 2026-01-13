@@ -2,9 +2,13 @@ import csv
 import os
 import sqlite3
 
-from zoopipe import Pipe
-from zoopipe.input_adapter import CSVInputAdapter, SQLInputAdapter
-from zoopipe.output_adapter import CSVOutputAdapter, SQLOutputAdapter
+from zoopipe import (
+    CSVInputAdapter,
+    CSVOutputAdapter,
+    Pipe,
+    SQLInputAdapter,
+    SQLOutputAdapter,
+)
 
 DB_FILE = os.path.abspath("test_sql.db")
 URI = f"sqlite:{DB_FILE}?mode=rwc"

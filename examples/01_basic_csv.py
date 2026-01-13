@@ -4,10 +4,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import Pipe
-from zoopipe.hooks.base import BaseHook
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import BaseHook, CSVInputAdapter, JSONOutputAdapter, Pipe
 
 
 class TimeStampHook(BaseHook):

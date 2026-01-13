@@ -9,9 +9,7 @@ Read CSV files with configurable delimiters, quotes, and field handling.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import CSVInputAdapter, JSONOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("data.csv"),
@@ -77,9 +75,7 @@ Write data to CSV files with high performance batch operations.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, Pipe, JSONInputAdapter
 
 pipe = Pipe(
     input_adapter=JSONInputAdapter("data.jsonl"),
@@ -118,9 +114,7 @@ This ensures the CSV columns appear in the exact order specified, regardless of 
 ```python
 import time
 from pydantic import BaseModel, ConfigDict, EmailStr
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, MultiThreadExecutor, Pipe
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -156,9 +150,7 @@ print(f"Finished! Processed {pipe.report.total_processed} records")
 ### TSV to CSV Conversion
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("data.tsv", delimiter="\t"),
@@ -225,9 +217,7 @@ pipe = Pipe(
 
 ```python
 from pathlib import Path
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, Pipe
 
 for i, csv_file in enumerate(Path("input_dir").glob("*.csv")):
     pipe = Pipe(

@@ -2,9 +2,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import Pipe
-from zoopipe.input_adapter.json import JSONInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVOutputAdapter, JSONInputAdapter, Pipe
 
 
 class UserSchema(BaseModel):

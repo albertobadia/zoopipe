@@ -17,9 +17,7 @@ Read data from SQL databases using either table names or custom queries.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.sql import SQLInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONOutputAdapter, Pipe, SQLInputAdapter
 
 pipe = Pipe(
     input_adapter=SQLInputAdapter(
@@ -80,9 +78,7 @@ Write data to SQL databases with optimized batch insert operations.
 ### Basic Usage
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.sql import SQLOutputAdapter
+from zoopipe import CSVInputAdapter, Pipe, SQLOutputAdapter
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("input.csv"),
@@ -117,9 +113,7 @@ The SQLWriter implements high-performance batch inserts:
 ### Performance Example
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.sql import SQLOutputAdapter
+from zoopipe import CSVInputAdapter, MultiThreadExecutor, Pipe, SQLOutputAdapter
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("large_dataset.csv"),
@@ -159,9 +153,7 @@ Table schemas are automatically inferred from the first record:
 import os
 import time
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.sql import SQLOutputAdapter
+from zoopipe import CSVInputAdapter, MultiThreadExecutor, Pipe, SQLOutputAdapter
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -196,9 +188,7 @@ print(f"Finished! Wrote {pipe.report.total_processed} records to database")
 ### SQL to JSONL Export
 
 ```python
-from zoopipe import Pipe
-from zoopipe.input_adapter.sql import SQLInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import JSONOutputAdapter, Pipe, SQLInputAdapter
 
 pipe = Pipe(
     input_adapter=SQLInputAdapter(

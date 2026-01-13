@@ -7,9 +7,7 @@ This document demonstrates how to use the Single Thread and MultiThread executor
 ### SingleThreadExecutor (Default)
 
 ```python
-from zoopipe import Pipe, SingleThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, Pipe, SingleThreadExecutor
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("input.csv"),
@@ -24,9 +22,7 @@ with pipe:
 ### MultiThreadExecutor
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.json import JSONOutputAdapter
+from zoopipe import CSVInputAdapter, JSONOutputAdapter, MultiThreadExecutor, Pipe
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("users.csv"),
@@ -96,9 +92,7 @@ executor = MultiThreadExecutor(max_workers=os.cpu_count() * 2)
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, MultiThreadExecutor, Pipe
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")

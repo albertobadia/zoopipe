@@ -29,9 +29,7 @@ uv run maturin develop --release
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe, MultiThreadExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, MultiThreadExecutor, Pipe
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
