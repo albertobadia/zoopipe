@@ -1,11 +1,11 @@
 use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Mutex;
 use csv::StringRecord;
 use crate::io::BoxedReader;
 use crate::utils::wrap_py_err;
+use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 
 #[pyclass]
@@ -129,8 +129,8 @@ impl CSVReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut reader = slf.reader.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut reader = slf.reader.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
         
         let mut record = StringRecord::new();
         match reader.read_record(&mut record) {
@@ -203,17 +203,17 @@ impl CSVWriter {
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut header_written = self.header_written.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut fieldnames = self.fieldnames.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut header_written = self.header_written.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut fieldnames = self.fieldnames.lock().map_err(|_| PipeError::MutexLock)?;
 
         self.write_internal(py, data, &mut writer, &mut header_written, &mut fieldnames)
     }
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut header_written = self.header_written.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut fieldnames = self.fieldnames.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut header_written = self.header_written.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut fieldnames = self.fieldnames.lock().map_err(|_| PipeError::MutexLock)?;
         
         let iterator = entries.try_iter()?;
         for entry in iterator {
@@ -223,7 +223,7 @@ impl CSVWriter {
     }
 
     pub fn flush(&self) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
         writer.flush().map_err(wrap_py_err)?;
         Ok(())
     }
@@ -255,19 +255,20 @@ impl CSVWriter {
                 }
                 
                 record_keys.sort_by(|a, b| {
-                    let s1 = a.to_str().unwrap_or_default();
-                    let s2 = b.to_str().unwrap_or_default();
+                    let s1 = a.to_str().unwrap_or("");
+                    let s2 = b.to_str().unwrap_or("");
                     s1.cmp(s2)
                 });
                 let interned: Vec<Py<PyString>> = record_keys.into_iter().map(|s| s.unbind()).collect();
                 *fieldnames = Some(interned);
             }
             
-            let names = fieldnames.as_ref().unwrap();
+            let names = fieldnames.as_ref()
+                .expect("Fieldnames should be initialized before header write");
             let bounds: Vec<Bound<'_, PyString>> = names.iter().map(|n| n.bind(py).clone()).collect();
             let mut name_strs = Vec::with_capacity(names.len());
             for b in &bounds {
-                name_strs.push(b.to_str().unwrap_or_default());
+                name_strs.push(b.to_str().unwrap_or(""));
             }
             writer.write_record(&name_strs).map_err(wrap_py_err)?;
             *header_written = true;

@@ -1,5 +1,4 @@
 use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::sync::Mutex;
@@ -7,6 +6,7 @@ use serde_json::Value;
 use serde::Serialize;
 use crate::io::BoxedReader;
 use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
+use crate::error::PipeError;
 use pyo3::types::PyAnyMethods;
 
 #[pyclass]
@@ -55,8 +55,8 @@ impl JSONReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut array_iter_lock = slf.array_iter.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut pos_lock = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut array_iter_lock = slf.array_iter.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut pos_lock = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
         
         let py = slf.py();
         if let Some(ref mut ai) = *array_iter_lock {
@@ -69,7 +69,7 @@ impl JSONReader {
             }
         }
 
-        let mut iter = slf.iter.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut iter = slf.iter.lock().map_err(|_| PipeError::MutexLock)?;
         match iter.next() {
             Some(Ok(value)) => {
                 if let Value::Array(arr) = value {
@@ -141,15 +141,15 @@ impl JSONWriter {
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut is_first = self.is_first_item.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut is_first = self.is_first_item.lock().map_err(|_| PipeError::MutexLock)?;
 
         self.write_internal(py, data, &mut writer, &mut is_first)
     }
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut is_first = self.is_first_item.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut is_first = self.is_first_item.lock().map_err(|_| PipeError::MutexLock)?;
         
         let iterator = entries.try_iter()?;
         for entry in iterator {
@@ -159,13 +159,13 @@ impl JSONWriter {
     }
 
     pub fn flush(&self) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
         writer.flush().map_err(wrap_py_err)?;
         Ok(())
     }
 
     pub fn close(&self) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
         if self.format == "array" {
             if self.indent.is_some() {
                 writer.write_all(b"\n").map_err(wrap_py_err)?;

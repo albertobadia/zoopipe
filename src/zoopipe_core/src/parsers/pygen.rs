@@ -3,6 +3,7 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList};
 use pyo3::exceptions::PyRuntimeError;
 use std::sync::Mutex;
 use crossbeam_channel::{bounded, Sender, Receiver};
+use crate::error::PipeError;
 
 #[pyclass]
 pub struct PyGeneratorReader {
@@ -37,20 +38,22 @@ impl PyGeneratorReader {
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
-        let mut iter_lock = slf.iterator.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut iter_lock = slf.iterator.lock().map_err(|_| PipeError::MutexLock)?;
         
         if iter_lock.is_none() {
             let iter = slf.iterable.bind(py).try_iter()?;
             *iter_lock = Some(iter.into());
         }
 
-        let iter_bound = iter_lock.as_ref().unwrap().bind(py);
+        let iter_bound = iter_lock.as_ref()
+            .expect("Iterator should be initialized after is_none() check")
+            .bind(py);
         let iterator = iter_bound.cast::<pyo3::types::PyIterator>()?;
         
         match iterator.clone().next() {
             Some(item_res) => {
                 let raw_data = item_res?;
-                let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
                 let current_pos = *pos;
                 *pos += 1;
 
@@ -96,7 +99,7 @@ impl PyGeneratorWriter {
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
         let sender = {
-            let lock = self.sender.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            let lock = self.sender.lock().map_err(|_| PipeError::MutexLock)?;
             lock.clone()
         };
 
@@ -123,7 +126,7 @@ impl PyGeneratorWriter {
     }
 
     pub fn close(&self) -> PyResult<()> {
-        let mut lock = self.sender.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut lock = self.sender.lock().map_err(|_| PipeError::MutexLock)?;
         *lock = None;
         Ok(())
     }

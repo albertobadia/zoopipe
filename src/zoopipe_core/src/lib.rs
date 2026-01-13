@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 
+pub mod error;
 pub mod io;
 pub mod utils;
 pub mod parsers;

@@ -8,6 +8,7 @@ use arrow::record_batch::RecordBatch;
 use arrow::array::*;
 use arrow::datatypes::*;
 use crate::utils::wrap_py_err;
+use crate::error::PipeError;
 use pyo3::types::{PyString, PyDict, PyList};
 
 #[pyclass]
@@ -53,9 +54,9 @@ impl ArrowReader {
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
-        let mut reader = slf.reader.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut current_opt = slf.current_batch.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut reader = slf.reader.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut current_opt = slf.current_batch.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
 
         if current_opt.is_none() {
             if let Some(batch_res) = reader.next() {
@@ -110,7 +111,9 @@ fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<PyA
 
     macro_rules! to_py_obj {
         ($array_type:ty, $row:expr) => {{
-            let val = array.as_any().downcast_ref::<$array_type>().unwrap().value($row);
+            let val = array.as_any().downcast_ref::<$array_type>()
+                .expect("Array type should match DataType variant in match arm")
+                .value($row);
             let py_val = val.into_pyobject(py).map_err(wrap_py_err)?;
             Ok(py_val.to_owned().into_any().unbind())
         }};
@@ -128,7 +131,9 @@ fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<PyA
         DataType::Float32 => to_py_obj!(Float32Array, row),
         DataType::Float64 => to_py_obj!(Float64Array, row),
         DataType::Boolean => {
-            let val = array.as_any().downcast_ref::<BooleanArray>().unwrap().value(row);
+            let val = array.as_any().downcast_ref::<BooleanArray>()
+                .expect("Array type should be BooleanArray for DataType::Boolean")
+                .value(row);
             let py_val = val.into_pyobject(py).map_err(wrap_py_err)?;
             Ok(py_val.to_owned().into_any().unbind())
         }
@@ -168,16 +173,20 @@ impl ArrowWriter {
             keys.sort();
             
             for key in &keys {
-                let val = dict.get_item(key)?.unwrap();
-                let dt = infer_type(&val);
-                fields.push(Field::new(key.clone(), dt, true));
+                if let Some(val) = dict.get_item(key)? {
+                    let dt = infer_type(&val);
+                    fields.push(Field::new(key.clone(), dt, true));
+                } else {
+                    fields.push(Field::new(key.clone(), DataType::Utf8, true));
+                }
             }
             let schema = SchemaRef::new(Schema::new(fields));
             let file = File::create(&self.path).map_err(wrap_py_err)?;
             *writer_guard = Some(FileWriter::try_new(file, &schema).map_err(wrap_py_err)?);
         }
 
-        let writer = writer_guard.as_mut().unwrap();
+        let writer = writer_guard.as_mut()
+            .expect("Writer should be initialized after checking is_none()");
         let schema = writer.schema();
         let num_rows = list.len();
         
@@ -223,7 +232,16 @@ fn make_builder(dt: &DataType, cap: usize) -> Box<dyn ArrayBuilder> {
 }
 
 fn append_val(builder: &mut dyn ArrayBuilder, val: Option<Bound<'_, PyAny>>, _py: Python<'_>) -> PyResult<()> {
-    if val.is_none() || val.as_ref().unwrap().is_none() {
+    let Some(v) = val else {
+        let any = builder.as_any_mut();
+        if let Some(b) = any.downcast_mut::<BooleanBuilder>() { b.append_null(); }
+        else if let Some(b) = any.downcast_mut::<Int64Builder>() { b.append_null(); }
+        else if let Some(b) = any.downcast_mut::<Float64Builder>() { b.append_null(); }
+        else if let Some(b) = any.downcast_mut::<StringBuilder>() { b.append_null(); }
+        return Ok(());
+    };
+    
+    if v.is_none() {
         let any = builder.as_any_mut();
         if let Some(b) = any.downcast_mut::<BooleanBuilder>() { b.append_null(); }
         else if let Some(b) = any.downcast_mut::<Int64Builder>() { b.append_null(); }
@@ -231,7 +249,7 @@ fn append_val(builder: &mut dyn ArrayBuilder, val: Option<Bound<'_, PyAny>>, _py
         else if let Some(b) = any.downcast_mut::<StringBuilder>() { b.append_null(); }
         return Ok(());
     }
-    let v = val.unwrap();
+    
     let any = builder.as_any_mut();
     if let Some(b) = any.downcast_mut::<BooleanBuilder>() { b.append_value(v.extract::<bool>()?); }
     else if let Some(b) = any.downcast_mut::<Int64Builder>() { b.append_value(v.extract::<i64>()?); }

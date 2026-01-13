@@ -5,6 +5,7 @@ use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use tokio::runtime::Runtime;
 use futures_util::StreamExt;
 use sqlx::{Row, Column, ValueRef, AnyPool, query, any::AnyPoolOptions, QueryBuilder, Any};
+use crate::error::PipeError;
 
 fn init_drivers() {
     static INIT: OnceLock<()> = OnceLock::new();
@@ -87,7 +88,7 @@ impl SQLReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut receiver_opt = slf.receiver.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut receiver_opt = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
         
         if receiver_opt.is_none() {
             let (tx, rx) = crossbeam_channel::bounded(1000);
@@ -130,7 +131,14 @@ impl SQLReader {
 
                         let mut record = Vec::with_capacity(row.columns().len());
                         for i in 0..row.columns().len() {
-                            let val_ref = row.try_get_raw(i).unwrap();
+                            let val_ref = match row.try_get_raw(i) {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    record.push(None);
+                                    continue;
+                                }
+                            };
+                            
                             if val_ref.is_null() {
                                 record.push(None);
                                 continue;
@@ -145,7 +153,7 @@ impl SQLReader {
                                             Ok(v) => v.to_string(),
                                             Err(_) => match row.try_get::<bool, usize>(i) {
                                                 Ok(v) => v.to_string(),
-                                                Err(_) => "Unsupported".to_string(),
+                                                Err(_) => String::from(""),
                                             }
                                         }
                                     }
@@ -164,7 +172,8 @@ impl SQLReader {
             *receiver_opt = Some(rx);
         }
 
-        let rx = receiver_opt.as_ref().unwrap();
+        let rx = receiver_opt.as_ref()
+            .expect("Receiver should be initialized before reading rows");
         
         loop {
             match rx.recv() {
@@ -173,15 +182,15 @@ impl SQLReader {
                     let py_cols: Vec<Py<PyString>> = cols.into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
                     *column_names_opt = Some(py_cols);
                 }
                 Ok(SQLData::Row(row_values)) => {
                     let py = slf.py();
-                    let column_names_opt = slf.column_names.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
                     let cols = column_names_opt.as_ref().expect("Column names should be received before rows");
                     
-                    let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
                     let current_pos = *pos;
                     *pos += 1;
                     
@@ -224,16 +233,18 @@ pub struct SQLWriter {
     mode: String,
     table_created: Mutex<bool>,
     fieldnames: Mutex<Option<Vec<Py<PyString>>>>,
+    batch_size: usize,
 }
 
 #[pymethods]
 impl SQLWriter {
     #[new]
-    #[pyo3(signature = (uri, table_name, mode="replace"))]
+    #[pyo3(signature = (uri, table_name, mode="replace", batch_size=500))]
     pub fn new(
         uri: String,
         table_name: String,
         mode: &str,
+        batch_size: usize,
     ) -> PyResult<Self> {
         init_drivers();
         if mode != "replace" && mode != "append" && mode != "fail" {
@@ -248,6 +259,7 @@ impl SQLWriter {
             mode: mode.to_string(),
             table_created: Mutex::new(false),
             fieldnames: Mutex::new(None),
+            batch_size,
         })
     }
 
@@ -258,9 +270,9 @@ impl SQLWriter {
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut table_created = self.table_created.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            .map_err(|_| PipeError::MutexLock)?;
         let mut fieldnames = self.fieldnames.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            .map_err(|_| PipeError::MutexLock)?;
 
         let mut it = entries.try_iter()?;
         
@@ -284,7 +296,12 @@ impl SQLWriter {
             all_records.push(entry.cast::<PyDict>()?.clone().unbind());
         }
 
-        let fields: Vec<String> = fieldnames.as_ref().unwrap().iter().map(|f| f.bind(py).to_str().unwrap().to_string()).collect();
+        let field_names = fieldnames.as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Fieldnames not initialized"))?;
+        let fields: Vec<String> = field_names
+            .iter()
+            .map(|f| Ok(f.bind(py).to_str()?.to_string()))
+            .collect::<PyResult<Vec<_>>>()?;
         let uri = self.uri.clone();
         let table_name = self.table_name.clone();
 
@@ -292,8 +309,7 @@ impl SQLWriter {
         rt.block_on(async {
             let pool = AnyPool::connect(&uri).await.map_err(|e| PyRuntimeError::new_err(format!("Failed to connect: {}", e)))?;
             let mut tx = pool.begin().await.map_err(|e| PyRuntimeError::new_err(format!("Failed to start transaction: {}", e)))?;
-            let chunk_size = 500;
-            for chunk in all_records.chunks(chunk_size) {
+            for chunk in all_records.chunks(self.batch_size) {
                 let mut query_builder: QueryBuilder<Any> = QueryBuilder::new(format!("INSERT INTO {} ({}) ", table_name, fields.join(", ")));
                 
                 query_builder.push_values(chunk, |mut b, record_py| {
@@ -348,7 +364,8 @@ impl SQLWriter {
             *fieldnames = Some(record_keys);
         }
 
-        let fields = fieldnames.as_ref().unwrap();
+        let fields = fieldnames.as_ref()
+            .expect("Fieldnames should be set by ensure_table_created()");
         let uri = self.uri.clone();
         let table_name = self.table_name.clone();
         let mode = self.mode.clone();
@@ -365,7 +382,7 @@ impl SQLWriter {
             let mut columns = Vec::new();
             for f_py in fields {
                 let f = f_py.bind(py);
-                columns.push(format!("{} TEXT", f.to_str().unwrap()));
+                columns.push(format!("{} TEXT", f.to_str().unwrap_or("column")));
             }
             
             let create_sql = format!("CREATE TABLE IF NOT EXISTS {} ({})", table_name, columns.join(", "));

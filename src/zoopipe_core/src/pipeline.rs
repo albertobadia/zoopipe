@@ -8,8 +8,7 @@ use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
-use std::sync::Mutex;
-
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 
 #[derive(FromPyObject)]
@@ -60,10 +59,21 @@ impl PipeExecutor {
 }
 
 struct PipeCounters {
-    total_processed: usize,
-    success_count: usize,
-    error_count: usize,
-    batches_processed: usize,
+    total_processed: AtomicUsize,
+    success_count: AtomicUsize,
+    error_count: AtomicUsize,
+    batches_processed: AtomicUsize,
+}
+
+impl PipeCounters {
+    fn new() -> Self {
+        Self {
+            total_processed: AtomicUsize::new(0),
+            success_count: AtomicUsize::new(0),
+            error_count: AtomicUsize::new(0),
+            batches_processed: AtomicUsize::new(0),
+        }
+    }
 }
 
 #[pyclass]
@@ -75,7 +85,7 @@ pub struct NativePipe {
     report: Py<PyAny>,
     status_failed: Py<PyAny>,
     status_validated: Py<PyAny>,
-    counters: Mutex<PipeCounters>,
+    counters: PipeCounters,
     report_update_interval: usize,
     executor: PipeExecutor,
 }
@@ -107,12 +117,7 @@ impl NativePipe {
             report,
             status_failed,
             status_validated,
-            counters: Mutex::new(PipeCounters {
-                total_processed: 0,
-                success_count: 0,
-                error_count: 0,
-                batches_processed: 0,
-            }),
+            counters: PipeCounters::new(),
             report_update_interval,
             executor,
         })
@@ -237,15 +242,16 @@ impl NativePipe {
             }
         }
 
-        let should_sync = {
-            let mut counters = self.counters.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-            counters.total_processed += processed_list.len();
-            counters.success_count += success_data.len();
-            counters.error_count += error_list.len();
-            counters.batches_processed += 1;
-            
-            self.report_update_interval > 0 && counters.batches_processed % self.report_update_interval == 0
-        };
+        let batch_len = processed_list.len();
+        let success_len = success_data.len();
+        let error_len = error_list.len();
+        
+        self.counters.total_processed.fetch_add(batch_len, Ordering::Relaxed);
+        self.counters.success_count.fetch_add(success_len, Ordering::Relaxed);
+        self.counters.error_count.fetch_add(error_len, Ordering::Relaxed);
+        let batches_count = self.counters.batches_processed.fetch_add(1, Ordering::Relaxed) + 1;
+
+        let should_sync = self.report_update_interval > 0 && batches_count.is_multiple_of(self.report_update_interval);
 
         if should_sync {
             self.sync_report(py, report)?;
@@ -255,11 +261,9 @@ impl NativePipe {
     }
 
     fn sync_report(&self, _py: Python<'_>, report: &Bound<'_, PyAny>) -> PyResult<()> {
-        let counters = self.counters.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
-        
-        report.setattr("total_processed", counters.total_processed)?;
-        report.setattr("success_count", counters.success_count)?;
-        report.setattr("error_count", counters.error_count)?;
+        report.setattr("total_processed", self.counters.total_processed.load(Ordering::Relaxed))?;
+        report.setattr("success_count", self.counters.success_count.load(Ordering::Relaxed))?;
+        report.setattr("error_count", self.counters.error_count.load(Ordering::Relaxed))?;
         report.setattr("ram_bytes", get_process_ram_rss())?;
         
         Ok(())

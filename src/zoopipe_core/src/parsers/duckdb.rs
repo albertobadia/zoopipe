@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use duckdb::Connection;
 use duckdb::types::Value;
+use crate::error::PipeError;
 
 enum DuckDBData {
     Metadata(Vec<String>),
@@ -51,7 +52,7 @@ impl DuckDBReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut receiver_opt = slf.receiver.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        let mut receiver_opt = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
         
         if receiver_opt.is_none() {
             let (tx, rx) = crossbeam_channel::bounded(1000);
@@ -110,7 +111,8 @@ impl DuckDBReader {
             *receiver_opt = Some(rx);
         }
 
-        let rx = receiver_opt.as_ref().unwrap();
+        let rx = receiver_opt.as_ref()
+            .expect("Receiver should be initialized before reading rows");
         
         loop {
             match rx.recv() {
@@ -119,16 +121,15 @@ impl DuckDBReader {
                     let py_cols: Vec<Py<PyString>> = cols.into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
                     *column_names_opt = Some(py_cols);
-                    // Continue loop to get first row
                 }
                 Ok(DuckDBData::Row(row_values)) => {
                     let py = slf.py();
-                    let column_names_opt = slf.column_names.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
                     let cols = column_names_opt.as_ref().expect("Column names should be received before rows");
                     
-                    let mut pos = slf.position.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+                    let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
                     let current_pos = *pos;
                     *pos += 1;
                     
@@ -222,11 +223,11 @@ impl DuckDBWriter {
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut connection = self.connection.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            .map_err(|_| PipeError::MutexLock)?;
         let mut table_created = self.table_created.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            .map_err(|_| PipeError::MutexLock)?;
         let mut fieldnames = self.fieldnames.lock()
-            .map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            .map_err(|_| PipeError::MutexLock)?;
 
         let mut it = entries.try_iter()?;
         
@@ -246,13 +247,12 @@ impl DuckDBWriter {
             return Ok(());
         };
 
-        // Create appender - Connection is now free from mutable borrow of ensure_table_created
         let mut appender = connection.appender(&self.table_name)
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to create appender: {}", e)))?;
 
-        let fields = fieldnames.as_ref().unwrap();
+        let fields = fieldnames.as_ref()
+            .expect("Fieldnames should be initialized by first record");
 
-        // Helper function for appending - avoids duplication
         fn append_dict(record: &Bound<'_, PyDict>, fields: &[Py<PyString>], app: &mut duckdb::Appender, py_bool: &Bound<'_, pyo3::types::PyType>, py_int: &Bound<'_, pyo3::types::PyType>, py_float: &Bound<'_, pyo3::types::PyType>, py: Python<'_>) -> PyResult<()> {
             let mut row_values: Vec<Value> = Vec::with_capacity(fields.len());
             for field_py in fields {
@@ -315,13 +315,14 @@ impl DuckDBWriter {
                 record_keys.push(k.cast::<PyString>()?.clone().unbind());
             }
             record_keys.sort_by(|a, b| {
-                a.bind(py).to_str().unwrap_or_default()
-                    .cmp(b.bind(py).to_str().unwrap_or_default())
+                a.bind(py).to_str().unwrap_or("")
+                    .cmp(b.bind(py).to_str().unwrap_or(""))
             });
             *fieldnames = Some(record_keys);
         }
 
-        let fields = fieldnames.as_ref().unwrap();
+        let fields = fieldnames.as_ref()
+            .expect("Fieldnames should be set before table creation");
         
         if self.mode == "replace" {
             connection.execute(&format!("DROP TABLE IF EXISTS {}", self.table_name), [])
@@ -352,7 +353,7 @@ impl DuckDBWriter {
                 else if value.is_instance(&py_float).unwrap_or(false) { "DOUBLE" }
                 else { "VARCHAR" }
             } else { "VARCHAR" };
-            format!("{} {}", f.to_str().unwrap_or_default(), duckdb_type)
+            format!("{} {}", f.to_str().unwrap_or(""), duckdb_type)
         }).collect::<Vec<_>>().join(", ");
         
         let create_sql = format!("CREATE TABLE IF NOT EXISTS {} ({})", self.table_name, columns);
@@ -363,6 +364,4 @@ impl DuckDBWriter {
         Ok(())
     }
 
-    // write_internal is no longer needed as write_batch handles the logic
-    // and write now calls write_batch.
 }
