@@ -12,6 +12,7 @@
 - ⚡ **Zero-Copy Intent**: Minimal overhead between the Rust processing engine and Python validation/hooks.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
 - 📊 **CSV & JSONL Support**: Optimized for the most common data exchange formats.
+- 🔧 **Pluggable Executors**: Choose between single-threaded or multi-threaded execution strategies.
 
 ---
 
@@ -28,7 +29,7 @@ uv run maturin develop --release
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from zoopipe import Pipe
+from zoopipe import Pipe, MultiThreadExecutor
 from zoopipe.input_adapter.csv import CSVInputAdapter
 from zoopipe.output_adapter.csv import CSVOutputAdapter
 
@@ -43,6 +44,7 @@ pipe = Pipe(
     output_adapter=CSVOutputAdapter("processed_users.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"),
     schema_model=UserSchema,
+    executor=MultiThreadExecutor(max_workers=8, batch_size=2000),
 )
 
 with pipe:
@@ -50,6 +52,12 @@ with pipe:
 
 print(f"Finished! Processed {pipe.report.total_processed} items.")
 ```
+
+---
+
+## 📚 Documentation
+
+- [**Executors Guide**](docs/executors.md) - Choose and configure execution strategies
 
 ---
 
@@ -61,6 +69,7 @@ ZooPipe is designed as a thin Python wrapper around a powerful Rust core:
 2. **Rust Core**: 
    - **Adapters**: High-speed CSV/JSON Readers and Writers.
    - **NativePipe**: Orchestrates the loop, fetching chunks, calling a consolidated Python batch processor, and routing result batches.
+   - **Executors**: Single-threaded or multi-threaded batch processing strategies.
 
 ---
 
@@ -69,6 +78,7 @@ ZooPipe is designed as a thin Python wrapper around a powerful Rust core:
 By moving the entire processing loop to Rust and eliminating Python I/O fallbacks, ZooPipe achieves significantly higher throughput than pure Python implementations:
 
 - **~230k rows/s** for typical CSV processing with Pydantic validation (Single Thread).
+- **~800k+ rows/s** with MultiThreadExecutor on multi-core systems.
 
 ---
 

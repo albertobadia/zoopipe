@@ -4,6 +4,9 @@ use pyo3::exceptions::PyRuntimeError;
 
 use crate::parsers::csv::{CSVReader, CSVWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
+use std::sync::Mutex;
+
+
 
 #[derive(FromPyObject)]
 pub enum PipeReader {
@@ -17,6 +20,40 @@ pub enum PipeWriter {
     JSON(Py<JSONWriter>),
 }
 
+#[derive(FromPyObject)]
+pub enum PipeExecutor {
+    SingleThread(Py<crate::executor::SingleThreadExecutor>),
+    MultiThread(Py<crate::executor::MultiThreadExecutor>),
+}
+
+impl PipeExecutor {
+    pub fn process_batches<'py>(
+        &self,
+        py: Python<'py>,
+        batches: Vec<Bound<'py, PyList>>,
+        processor: &Bound<'py, PyAny>,
+    ) -> PyResult<Vec<Bound<'py, PyAny>>> {
+        match self {
+            PipeExecutor::SingleThread(e) => e.bind(py).borrow().process_batches(py, batches, processor),
+            PipeExecutor::MultiThread(e) => e.bind(py).borrow().process_batches(py, batches, processor),
+        }
+    }
+
+    pub fn get_batch_size(&self, py: Python<'_>) -> PyResult<usize> {
+        match self {
+            PipeExecutor::SingleThread(e) => Ok(e.bind(py).borrow().get_batch_size()),
+            PipeExecutor::MultiThread(e) => Ok(e.bind(py).borrow().get_batch_size()),
+        }
+    }
+}
+
+struct PipeCounters {
+    total_processed: usize,
+    success_count: usize,
+    error_count: usize,
+    batches_processed: usize,
+}
+
 #[pyclass]
 pub struct NativePipe {
     reader: PipeReader,
@@ -26,6 +63,9 @@ pub struct NativePipe {
     report: Py<PyAny>,
     status_failed: Py<PyAny>,
     status_validated: Py<PyAny>,
+    counters: Mutex<PipeCounters>,
+    report_update_interval: usize,
+    executor: PipeExecutor,
 }
 
 #[pymethods]
@@ -38,6 +78,8 @@ impl NativePipe {
         error_writer: Option<PipeWriter>,
         batch_processor: Py<PyAny>,
         report: Py<PyAny>,
+        report_update_interval: usize,
+        executor: PipeExecutor,
     ) -> PyResult<Self> {
         let models = py.import("zoopipe.report")?;
         let entry_status = models.getattr("EntryStatus")?;
@@ -52,13 +94,22 @@ impl NativePipe {
             report,
             status_failed,
             status_validated,
+            counters: Mutex::new(PipeCounters {
+                total_processed: 0,
+                success_count: 0,
+                error_count: 0,
+                batches_processed: 0,
+            }),
+            report_update_interval,
+            executor,
         })
     }
 
-    fn run(&self, py: Python<'_>, batch_size: usize) -> PyResult<()> {
+    fn run(&self, py: Python<'_>) -> PyResult<()> {
         let report = self.report.bind(py);
         report.call_method0("_mark_running")?;
 
+        let batch_size = self.executor.get_batch_size(py)?;
         let mut batch_entries = Vec::with_capacity(batch_size);
         
         loop {
@@ -83,6 +134,7 @@ impl NativePipe {
             self.process_batch(py, &mut batch_entries, report)?;
         }
 
+        self.sync_report(py, report)?;
         report.call_method0("_mark_completed")?;
 
         match &self.writer {
@@ -152,15 +204,31 @@ impl NativePipe {
             }
         }
 
-        let total_processed_val: usize = report.getattr("total_processed")?.extract()?;
-        let success_count_val: usize = report.getattr("success_count")?.extract()?;
-        let error_count_val: usize = report.getattr("error_count")?.extract()?;
-        
-        report.setattr("total_processed", total_processed_val + processed_list.len())?;
-        report.setattr("success_count", success_count_val + success_data.len())?;
-        report.setattr("error_count", error_count_val + error_list.len())?;
-        report.setattr("ram_bytes", get_process_ram_rss())?;
+        let should_sync = {
+            let mut counters = self.counters.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+            counters.total_processed += processed_list.len();
+            counters.success_count += success_data.len();
+            counters.error_count += error_list.len();
+            counters.batches_processed += 1;
+            
+            self.report_update_interval > 0 && counters.batches_processed % self.report_update_interval == 0
+        };
 
+        if should_sync {
+            self.sync_report(py, report)?;
+        }
+
+        Ok(())
+    }
+
+    fn sync_report(&self, _py: Python<'_>, report: &Bound<'_, PyAny>) -> PyResult<()> {
+        let counters = self.counters.lock().map_err(|_| PyRuntimeError::new_err("Mutex lock failed"))?;
+        
+        report.setattr("total_processed", counters.total_processed)?;
+        report.setattr("success_count", counters.success_count)?;
+        report.setattr("error_count", counters.error_count)?;
+        report.setattr("ram_bytes", get_process_ram_rss())?;
+        
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 # ZooPipe Examples
 
-This directory contains examples of how to use ZooPipe with its 100% Rust core.
+This directory contains examples demonstrating various features of ZooPipe.
 
 ## Running Examples
 Make sure you have ZooPipe installed:
@@ -15,10 +15,42 @@ uv run python examples/01_basic_csv.py
 
 ## Available Examples
 
-1. **[01_basic_csv.py](01_basic_csv.py)**: Basic CSV to CSV processing with Pydantic validation.
-2. **[02_jsonl_to_csv.py](02_jsonl_to_csv.py)**: Reading JSONL files and writing to CSV.
-3. **[03_hooks_enrichment.py](03_hooks_enrichment.py)**: Using Python hooks to enrich data before validation.
-4. **[04_error_handling.py](04_error_handling.py)**: Advanced error handling and routing to an error output.
+### 01_basic_csv.py
+Basic CSV processing with Pydantic validation and hooks.
+
+```bash
+uv run python examples/01_basic_csv.py
+```
+
+### 02_jsonl_to_csv.py
+Convert JSONL to CSV format with schema validation.
+
+```bash
+uv run python examples/02_jsonl_to_csv.py
+```
+
+### 03_executor_comparison.py
+Compare performance between SingleThreadExecutor and MultiThreadExecutor.
+
+```bash
+uv run python examples/03_executor_comparison.py
+```
+
+This example demonstrates:
+- Using `SingleThreadExecutor` for baseline performance
+- Using `MultiThreadExecutor` with different worker counts
+- Performance comparison and throughput metrics
+
+### 04_hooks_enrichment.py
+Using Python hooks to enrich data before validation.
+
+### 05_error_handling.py
+Advanced error handling and routing to an error output.
+
+## Sample Data
+
+The `sample_data/` directory contains example CSV and JSONL files for testing.
+The `output_data/` directory will contain the processed results.
 
 ## Directory Structure
 - `sample_data/`: Contains input files for the examples.

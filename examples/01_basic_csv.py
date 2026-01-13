@@ -25,14 +25,17 @@ class UserSchema(BaseModel):
 
 
 def main():
+    from zoopipe import SingleThreadExecutor
+
     pipe = Pipe(
-        input_adapter=CSVInputAdapter("examples/output_data/users_processed.csv"),
+        input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
         output_adapter=JSONOutputAdapter(
             "examples/output_data/users_processed.jsonl", format="jsonl"
         ),
         schema_model=UserSchema,
-        batch_size=1000,
+        executor=SingleThreadExecutor(batch_size=1000),
         post_validation_hooks=[TimeStampHook()],
+        report_update_interval=10,
     )
 
     pipe.start()

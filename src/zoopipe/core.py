@@ -5,7 +5,11 @@ import typing
 from pydantic import TypeAdapter
 
 from zoopipe.report import EntryStatus, FlowReport, get_logger
-from zoopipe.zoopipe_rust_core import NativePipe
+from zoopipe.zoopipe_rust_core import (
+    MultiThreadExecutor,
+    NativePipe,
+    SingleThreadExecutor,
+)
 
 
 class Pipe:
@@ -18,8 +22,11 @@ class Pipe:
         pre_validation_hooks: list[typing.Any] | None = None,
         post_validation_hooks: list[typing.Any] | None = None,
         logger: logging.Logger | None = None,
-        batch_size: int = 1000,
+        report_update_interval: int = 1,
+        executor: typing.Any = None,
     ) -> None:
+        from zoopipe.zoopipe_rust_core import SingleThreadExecutor
+
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
         self.error_output_adapter = error_output_adapter
@@ -29,7 +36,9 @@ class Pipe:
         self.post_validation_hooks = post_validation_hooks or []
 
         self.logger = logger or get_logger()
-        self.batch_size = batch_size
+
+        self.report_update_interval = report_update_interval
+        self.executor = executor or SingleThreadExecutor()
         self._report = FlowReport()
         self._thread: threading.Thread | None = None
         self._store: dict[str, typing.Any] = {}
@@ -78,23 +87,25 @@ class Pipe:
             error_writer=error_writer,
             batch_processor=self._process_batch,
             report=self._report,
+            report_update_interval=self.report_update_interval,
+            executor=self.executor,
         )
 
         self._thread = threading.Thread(
             target=self._run_native,
-            args=(native_pipe, self.batch_size),
+            args=(native_pipe,),
             daemon=True,
         )
         self._thread.start()
 
-    def _run_native(self, native_pipe: NativePipe, batch_size: int) -> None:
+    def _run_native(self, native_pipe: NativePipe) -> None:
         try:
             for hook in self.pre_validation_hooks:
                 hook.setup(self._store)
             for hook in self.post_validation_hooks:
                 hook.setup(self._store)
 
-            native_pipe.run(batch_size)
+            native_pipe.run()
         except Exception as e:
             self.logger.error(f"Pipeline execution failed: {e}")
             self._report._mark_failed(e)
@@ -123,4 +134,4 @@ class Pipe:
         return f"<Pipe input={self.input_adapter} output={self.output_adapter}>"
 
 
-__all__ = ["Pipe"]
+__all__ = ["Pipe", "SingleThreadExecutor", "MultiThreadExecutor"]

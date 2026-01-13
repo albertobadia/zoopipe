@@ -7,6 +7,7 @@ from zoopipe.report import (
     FlowStatus,
     get_logger,
 )
+from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 
 __all__ = [
     "Pipe",
@@ -17,4 +18,6 @@ __all__ = [
     "EntryStatus",
     "EntryTypedDict",
     "get_logger",
+    "SingleThreadExecutor",
+    "MultiThreadExecutor",
 ]
