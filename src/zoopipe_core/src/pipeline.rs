@@ -4,6 +4,7 @@ use pyo3::exceptions::PyRuntimeError;
 
 use crate::parsers::csv::{CSVReader, CSVWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
+use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use std::sync::Mutex;
 
 
@@ -12,12 +13,14 @@ use std::sync::Mutex;
 pub enum PipeReader {
     CSV(Py<CSVReader>),
     JSON(Py<JSONReader>),
+    DuckDB(Py<DuckDBReader>),
 }
 
 #[derive(FromPyObject)]
 pub enum PipeWriter {
     CSV(Py<CSVWriter>),
     JSON(Py<JSONWriter>),
+    DuckDB(Py<DuckDBWriter>),
 }
 
 #[derive(FromPyObject)]
@@ -71,6 +74,7 @@ pub struct NativePipe {
 #[pymethods]
 impl NativePipe {
     #[new]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         reader: PipeReader,
@@ -116,6 +120,7 @@ impl NativePipe {
             let next_item = match &self.reader {
                 PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
                 PipeReader::JSON(r) => JSONReader::__next__(r.bind(py).borrow()),
+                PipeReader::DuckDB(r) => DuckDBReader::__next__(r.bind(py).borrow()),
             }?;
 
             match next_item {
@@ -140,12 +145,14 @@ impl NativePipe {
         match &self.writer {
             PipeWriter::CSV(w) => w.bind(py).borrow().close()?,
             PipeWriter::JSON(w) => w.bind(py).borrow().close()?,
+            PipeWriter::DuckDB(w) => w.bind(py).borrow().close()?,
         }
 
         if let Some(ref ew) = self.error_writer {
             match ew {
                 PipeWriter::CSV(w) => w.bind(py).borrow().close()?,
                 PipeWriter::JSON(w) => w.bind(py).borrow().close()?,
+                PipeWriter::DuckDB(w) => w.bind(py).borrow().close()?,
             }
         }
 
@@ -193,6 +200,7 @@ impl NativePipe {
             match &self.writer {
                 PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 
@@ -201,6 +209,7 @@ impl NativePipe {
             match ew {
                 PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 
@@ -234,14 +243,18 @@ impl NativePipe {
 }
 
 fn get_process_ram_rss() -> usize {
-    if let Ok(content) = std::fs::read_to_string("/proc/self/status") {
-        for line in content.lines() {
-            if line.starts_with("VmRSS:")
-                && let Some(kb_part) = line.split_whitespace().nth(1)
-                    && let Ok(kb) = kb_part.parse::<usize>() {
-                        return kb * 1024;
-                    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = std::fs::read_to_string("/proc/self/status") {
+            for line in content.lines() {
+                if line.starts_with("VmRSS:")
+                    && let Some(kb_part) = line.split_whitespace().nth(1)
+                        && let Ok(kb) = kb_part.parse::<usize>() {
+                            return kb * 1024;
+                        }
+            }
         }
     }
+    
     0
 }
