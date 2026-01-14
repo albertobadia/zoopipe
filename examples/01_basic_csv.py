@@ -1,37 +1,49 @@
-from models import UserSchema
+import datetime
+import time
+import uuid
 
-from zoopipe import Pipe
-from zoopipe.executor.sync_fifo import SyncFifoExecutor
-from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.output_adapter.csv import CSVOutputAdapter
-from zoopipe.output_adapter.generator import GeneratorOutputAdapter
+from pydantic import BaseModel, ConfigDict
+
+from zoopipe import BaseHook, CSVInputAdapter, JSONOutputAdapter, Pipe
+
+
+class TimeStampHook(BaseHook):
+    def execute(self, entries: list[dict], store: dict) -> list[dict]:
+        for entry in entries:
+            entry["validated_data"]["processed_at"] = datetime.datetime.now()
+        return entries
+
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: uuid.UUID
+    username: str
+    email: str
 
 
 def main():
-    # We use GeneratorOutputAdapter to iterate over results as they are produced
-    output_adapter = GeneratorOutputAdapter()
-
     pipe = Pipe(
-        input_adapter=CSVInputAdapter("examples/data/sample_data.csv"),
-        output_adapter=output_adapter,
-        error_output_adapter=CSVOutputAdapter("examples/output_data/errors.csv"),
-        executor=SyncFifoExecutor(UserSchema),
+        input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
+        output_adapter=JSONOutputAdapter(
+            "examples/output_data/users_processed.jsonl", format="jsonl"
+        ),
+        schema_model=UserSchema,
+        post_validation_hooks=[TimeStampHook()],
+        report_update_interval=10,
     )
 
-    # Start the pipein the background
-    report = pipe.start()
+    pipe.start()
 
-    # Iterate over the results from the adapter
-    for entry in output_adapter:
-        status = entry["status"].value
-        progress = report.total_processed
+    while not pipe.report.is_finished:
         print(
-            f"[{status.upper()}] Row {entry['position']} "
-            f"(Progress: {progress}): {entry['id']}"
+            f"Processed: {pipe.report.total_processed} | "
+            f"Speed: {pipe.report.items_per_second:.2f} rows/s | "
+            f"Ram Usage: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB"
         )
+        time.sleep(0.5)
 
-    print(f"\nFinal Report: {report}")
-    print(f"Total Duration: {report.duration:.2f}s")
+    print("\nPipeline Finished!")
+    print(pipe.report)
 
 
 if __name__ == "__main__":
