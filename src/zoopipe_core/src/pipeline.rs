@@ -61,15 +61,21 @@ impl PipeExecutor {
     }
 }
 
-struct PipeCounters {
-    total_processed: AtomicUsize,
-    success_count: AtomicUsize,
-    error_count: AtomicUsize,
-    batches_processed: AtomicUsize,
+pub struct PipeCounters {
+    pub total_processed: AtomicUsize,
+    pub success_count: AtomicUsize,
+    pub error_count: AtomicUsize,
+    pub batches_processed: AtomicUsize,
+}
+
+impl Default for PipeCounters {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PipeCounters {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             total_processed: AtomicUsize::new(0),
             success_count: AtomicUsize::new(0),
@@ -278,7 +284,7 @@ impl NativePipe {
     }
 }
 
-fn get_process_ram_rss() -> usize {
+pub fn get_process_ram_rss() -> usize {
     if let Some(stats) = memory_stats::memory_stats() {
         stats.physical_mem
     } else {
