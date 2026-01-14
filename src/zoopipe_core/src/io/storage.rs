@@ -61,12 +61,8 @@ mod tests {
     fn test_s3_path_parsing() {
         let result = StorageController::new("s3://my-bucket/path/to/file.csv");
         
-        match result {
-            Ok(controller) => {
-                assert_eq!(controller.path(), "path/to/file.csv");
-            }
-            Err(_) => {
-            }
+        if let Ok(controller) = result {
+            assert_eq!(controller.path(), "path/to/file.csv");
         }
     }
 
@@ -74,12 +70,8 @@ mod tests {
     fn test_s3_path_with_root() {
         let result = StorageController::new("s3://my-bucket/file.csv");
         
-        match result {
-            Ok(controller) => {
-                assert_eq!(controller.path(), "file.csv");
-            }
-            Err(_) => {
-            }
+        if let Ok(controller) = result {
+            assert_eq!(controller.path(), "file.csv");
         }
     }
 
@@ -111,12 +103,8 @@ mod tests {
     fn test_s3_path_no_prefix() {
         let result = StorageController::new("s3://my-bucket/");
         
-        match result {
-            Ok(controller) => {
-                assert_eq!(controller.path(), "");
-            }
-            Err(_) => {
-            }
+        if let Ok(controller) = result {
+            assert_eq!(controller.path(), "");
         }
     }
 
@@ -124,12 +112,8 @@ mod tests {
     fn test_s3_path_deep_nesting() {
         let result = StorageController::new("s3://my-bucket/level1/level2/level3/file.csv");
         
-        match result {
-            Ok(controller) => {
-                assert_eq!(controller.path(), "level1/level2/level3/file.csv");
-            }
-            Err(_) => {
-            }
+        if let Ok(controller) = result {
+            assert_eq!(controller.path(), "level1/level2/level3/file.csv");
         }
     }
 
