@@ -29,7 +29,8 @@ uv run maturin develop --release
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from zoopipe import CSVInputAdapter, CSVOutputAdapter, MultiThreadExecutor, Pipe
+from zoopipe import CSVInputAdapter, CSVOutputAdapter, Pipe
+
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -37,17 +38,16 @@ class UserSchema(BaseModel):
     username: str
     age: int
 
+
 pipe = Pipe(
     input_adapter=CSVInputAdapter("users.csv"),
     output_adapter=CSVOutputAdapter("processed_users.csv"),
     error_output_adapter=CSVOutputAdapter("errors.csv"),
     schema_model=UserSchema,
-    executor=MultiThreadExecutor(max_workers=8, batch_size=2000),
 )
 
 pipe.start()
-with pipe:
-    pipe.wait()
+pipe.wait()
 
 print(f"Finished! Processed {pipe.report.total_processed} items.")
 ```
@@ -90,15 +90,6 @@ ZooPipe is designed as a thin Python wrapper around a powerful Rust core:
    - **Adapters**: High-speed CSV/JSON/SQL Readers and Writers with optimized batch operations.
    - **NativePipe**: Orchestrates the loop, fetching chunks, calling a consolidated Python batch processor, and routing result batches.
    - **Executors**: Single-threaded or multi-threaded batch processing strategies.
-
----
-
-## 📊 Performance
-
-By moving the entire processing loop to Rust and eliminating Python I/O fallbacks, ZooPipe achieves significantly higher throughput than pure Python implementations:
-
-- **~230k rows/s** for typical CSV processing with Pydantic validation (Single Thread).
-- **~800k+ rows/s** with MultiThreadExecutor on multi-core systems.
 
 ---
 

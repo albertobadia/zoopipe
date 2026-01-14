@@ -529,19 +529,6 @@ aws s3 cp test.txt s3://your-bucket/test.txt
 aws s3 rm s3://your-bucket/test.txt
 ```
 
-## Performance Benchmarks
-
-Typical throughput for S3 operations (with 8 worker threads):
-
-| Format | Read Speed | Write Speed | Compression |
-|--------|-----------|-------------|-------------|
-| **CSV** | ~100k rows/s | ~80k rows/s | None |
-| **JSON** | ~90k rows/s | ~70k rows/s | None |
-| **Parquet** | ~300k rows/s | ~200k rows/s | 5-10x |
-| **Arrow** | ~400k rows/s | ~300k rows/s | 2-3x |
-
-> **Note**: Actual performance depends on network bandwidth, record size, and AWS region proximity.
-
 ## Cost Estimation
 
 Approximate AWS S3 costs (us-east-1, as of 2024):

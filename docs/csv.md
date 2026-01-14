@@ -168,7 +168,6 @@ with pipe:
 - **Streaming**: Constant memory usage regardless of file size
 - **Type Handling**: All fields are read as strings (type conversion handled by Pydantic)
 - **Quote Handling**: Proper RFC 4180 CSV escaping and unescaping
-- **Throughput**: ~230k rows/s single-threaded, ~800k+ rows/s multi-threaded
 
 ### Writing
 - **Batch Operations**: Efficient buffered writes
