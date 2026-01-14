@@ -274,3 +274,168 @@ impl Write for BoxedWriter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, BufRead, Seek, SeekFrom};
+
+    #[test]
+    fn test_boxed_reader_cursor_read() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data.clone());
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        let mut buf = vec![0u8; 3];
+        let n = reader.read(&mut buf).unwrap();
+        
+        assert_eq!(n, 3);
+        assert_eq!(buf, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_read_all() {
+        let data = vec![10, 20, 30];
+        let cursor = std::io::Cursor::new(data.clone());
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).unwrap();
+        
+        assert_eq!(buf, data);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_seek() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data);
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        let pos = reader.seek(SeekFrom::Start(2)).unwrap();
+        assert_eq!(pos, 2);
+        
+        let mut buf = vec![0u8; 2];
+        reader.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, vec![3, 4]);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_seek_from_end() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data);
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        let pos = reader.seek(SeekFrom::End(-2)).unwrap();
+        assert_eq!(pos, 3);
+        
+        let mut buf = vec![0u8; 2];
+        reader.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, vec![4, 5]);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_seek_current() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data);
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        reader.seek(SeekFrom::Start(1)).unwrap();
+        let pos = reader.seek(SeekFrom::Current(2)).unwrap();
+        assert_eq!(pos, 3);
+        
+        let mut buf = vec![0u8; 1];
+        reader.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, vec![4]);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_bufread() {
+        let data = b"hello\nworld\n".to_vec();
+        let cursor = std::io::Cursor::new(data);
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        let mut line = String::new();
+        std::io::BufRead::read_line(&mut reader, &mut line).unwrap();
+        
+        assert_eq!(line, "hello\n");
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_fill_buf() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data.clone());
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        let buf = reader.fill_buf().unwrap();
+        assert_eq!(buf, &data[..]);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_consume() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data);
+        let mut reader = BoxedReader::Cursor(cursor);
+        
+        reader.consume(2);
+        
+        let mut buf = vec![0u8; 3];
+        reader.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_length() {
+        let data = vec![1, 2, 3, 4, 5];
+        let cursor = std::io::Cursor::new(data);
+        let reader = BoxedReader::Cursor(cursor);
+        
+        assert_eq!(reader.len(), 5);
+    }
+
+    #[test]
+    fn test_boxed_reader_cursor_empty() {
+        let data: Vec<u8> = vec![];
+        let cursor = std::io::Cursor::new(data);
+        let reader = BoxedReader::Cursor(cursor);
+        
+        assert_eq!(reader.len(), 0);
+    }
+
+    #[test]
+    fn test_boxed_reader_child_read() {
+        let data = bytes::Bytes::from(vec![1, 2, 3, 4, 5]);
+        let mut child = BoxedReaderChild::Bytes(data);
+        
+        let mut buf = vec![0u8; 3];
+        let n = child.read(&mut buf).unwrap();
+        
+        assert_eq!(n, 3);
+        assert_eq!(buf, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_boxed_reader_child_read_partial() {
+        let data = bytes::Bytes::from(vec![1, 2]);
+        let mut child = BoxedReaderChild::Bytes(data);
+        
+        let mut buf = vec![0u8; 10];
+        let n = child.read(&mut buf).unwrap();
+        
+        assert_eq!(n, 2);
+        assert_eq!(&buf[..2], &[1, 2]);
+    }
+
+    #[test]
+    fn test_boxed_reader_child_multiple_reads() {
+        let data = bytes::Bytes::from(vec![1, 2, 3, 4, 5]);
+        let mut child = BoxedReaderChild::Bytes(data);
+        
+        let mut buf1 = vec![0u8; 2];
+        child.read_exact(&mut buf1).unwrap();
+        assert_eq!(buf1, vec![1, 2]);
+        
+        let mut buf2 = vec![0u8; 3];
+        child.read_exact(&mut buf2).unwrap();
+        assert_eq!(buf2, vec![3, 4, 5]);
+    }
+}

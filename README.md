@@ -45,6 +45,7 @@ pipe = Pipe(
     executor=MultiThreadExecutor(max_workers=8, batch_size=2000),
 )
 
+pipe.start()
 with pipe:
     pipe.wait()
 

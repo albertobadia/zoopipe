@@ -22,7 +22,6 @@ class UserSchema(BaseModel):
 class EnrichmentHook(BaseHook):
     def execute(self, entries, store):
         for entry in entries:
-            # Only enrich if validation was successful
             if entry.get("status").value == "validated":
                 data = entry.get("validated_data")
                 data["is_adult"] = data["age"] >= 18
@@ -56,15 +55,13 @@ def test_full_pipeline_csv(tmp_path):
     assert pipe.report.success_count == 2
     assert pipe.report.error_count == 1
 
-    # Check output
     output_lines = output_file.read_text().strip().split("\n")
-    assert len(output_lines) == 3  # Header + 2 rows
+    assert len(output_lines) == 3
     assert "1,alice,30" in output_lines[1]
     assert "3,charlie,15" in output_lines[2]
 
-    # Check errors
     error_lines = error_file.read_text().strip().split("\n")
-    assert len(error_lines) == 2  # Header + 1 row
+    assert len(error_lines) == 2
     assert "2,bob,invalid" in error_lines[1]
 
 
@@ -89,7 +86,6 @@ def test_full_pipeline_jsonl(tmp_path):
     assert pipe.report.total_processed == 2
     assert pipe.report.success_count == 2
 
-    # Check output
     output_lines = output_file.read_text().strip().split("\n")
     assert len(output_lines) == 2
     data = json.loads(output_lines[0])

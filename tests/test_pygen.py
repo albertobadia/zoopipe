@@ -9,7 +9,6 @@ class UserSchema(BaseModel):
 
 
 def test_pygen_adapters():
-    # Input generator
     def user_gen():
         yield {"user_id": 1, "name": "Alice"}
         yield {"user_id": 2, "name": "Bob"}
@@ -29,7 +28,6 @@ def test_pygen_adapters():
     assert pipe.report.total_processed == 3
     assert pipe.report.success_count == 3
 
-    # Consume results from output generator
     results = list(output_adapter)
     assert len(results) == 3
     assert results[0]["name"] == "Alice"
@@ -40,7 +38,7 @@ def test_pygen_adapters():
 def test_pygen_errors():
     def user_gen():
         yield {"user_id": 1, "name": "Alice"}
-        yield {"user_id": "invalid", "name": "Bob"}  # Should fail validation
+        yield {"user_id": "invalid", "name": "Bob"}
 
     output_adapter = PyGeneratorOutputAdapter()
     error_adapter = PyGeneratorOutputAdapter()

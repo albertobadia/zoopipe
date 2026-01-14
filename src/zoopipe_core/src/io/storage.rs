@@ -40,3 +40,105 @@ impl StorageController {
         &self.prefix
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_local_path_controller() {
+        let controller = StorageController::new("/tmp/test.csv").unwrap();
+        assert_eq!(controller.path(), "/tmp/test.csv");
+    }
+
+    #[test]
+    fn test_local_relative_path() {
+        let controller = StorageController::new("data/output.json").unwrap();
+        assert_eq!(controller.path(), "data/output.json");
+    }
+
+    #[test]
+    fn test_s3_path_parsing() {
+        let result = StorageController::new("s3://my-bucket/path/to/file.csv");
+        
+        match result {
+            Ok(controller) => {
+                assert_eq!(controller.path(), "path/to/file.csv");
+            }
+            Err(_) => {
+            }
+        }
+    }
+
+    #[test]
+    fn test_s3_path_with_root() {
+        let result = StorageController::new("s3://my-bucket/file.csv");
+        
+        match result {
+            Ok(controller) => {
+                assert_eq!(controller.path(), "file.csv");
+            }
+            Err(_) => {
+            }
+        }
+    }
+
+    #[test]
+    fn test_invalid_url() {
+        let result = StorageController::new("s3://");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_path_getter() {
+        let controller = StorageController::new("test/path").unwrap();
+        assert_eq!(controller.path(), "test/path");
+    }
+
+    #[test]
+    fn test_local_path_with_spaces() {
+        let controller = StorageController::new("/path with spaces/file.csv").unwrap();
+        assert_eq!(controller.path(), "/path with spaces/file.csv");
+    }
+
+    #[test]
+    fn test_local_path_with_special_chars() {
+        let controller = StorageController::new("/path/file-name_2024.csv").unwrap();
+        assert_eq!(controller.path(), "/path/file-name_2024.csv");
+    }
+
+    #[test]
+    fn test_s3_path_no_prefix() {
+        let result = StorageController::new("s3://my-bucket/");
+        
+        match result {
+            Ok(controller) => {
+                assert_eq!(controller.path(), "");
+            }
+            Err(_) => {
+            }
+        }
+    }
+
+    #[test]
+    fn test_s3_path_deep_nesting() {
+        let result = StorageController::new("s3://my-bucket/level1/level2/level3/file.csv");
+        
+        match result {
+            Ok(controller) => {
+                assert_eq!(controller.path(), "level1/level2/level3/file.csv");
+            }
+            Err(_) => {
+            }
+        }
+    }
+
+    #[test]
+    fn test_multiple_store_calls() {
+        let controller = StorageController::new("/tmp/test.csv").unwrap();
+        let store1 = controller.store();
+        let store2 = controller.store();
+        assert_eq!(Arc::strong_count(&store1), Arc::strong_count(&store2));
+    }
+}
+

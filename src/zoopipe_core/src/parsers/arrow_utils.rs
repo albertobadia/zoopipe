@@ -76,7 +76,6 @@ pub fn append_val(builder: &mut dyn ArrayBuilder, val: Option<Bound<'_, PyAny>>,
     else if let Some(b) = any.downcast_mut::<Int64Builder>() { b.append_value(v.extract::<i64>()?); }
     else if let Some(b) = any.downcast_mut::<Float64Builder>() { b.append_value(v.extract::<f64>()?); }
     else if let Some(b) = any.downcast_mut::<StringBuilder>() { 
-        // Zero-copy string extraction from Python string
         if let Ok(s) = v.extract::<&str>() {
             b.append_value(s);
         } else {
@@ -101,14 +100,12 @@ pub fn build_record_batch(
 ) -> PyResult<RecordBatch> {
     let num_rows = list.len();
     let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
-    
-    // Optimized pre-extraction
+
     let mut dicts = Vec::with_capacity(num_rows);
     for item in list.iter() {
         dicts.push(item.cast::<PyDict>()?.clone());
     }
 
-    // Pre-create Python strings for keys to avoid re-creating them for every row
     let key_objs: Vec<Bound<'_, PyString>> = schema.fields()
         .iter()
         .map(|f| PyString::new(py, f.name()))

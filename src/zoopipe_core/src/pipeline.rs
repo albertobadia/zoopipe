@@ -285,3 +285,100 @@ fn get_process_ram_rss() -> usize {
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pipe_counters_new() {
+        let counters = PipeCounters::new();
+        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.success_count.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.error_count.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_pipe_counters_increment() {
+        let counters = PipeCounters::new();
+        
+        counters.total_processed.fetch_add(10, Ordering::Relaxed);
+        counters.success_count.fetch_add(8, Ordering::Relaxed);
+        counters.error_count.fetch_add(2, Ordering::Relaxed);
+        
+        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 10);
+        assert_eq!(counters.success_count.load(Ordering::Relaxed), 8);
+        assert_eq!(counters.error_count.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn test_pipe_counters_batches() {
+        let counters = PipeCounters::new();
+        
+        let batch_count = counters.batches_processed.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(batch_count, 0);
+        assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_get_process_ram_rss() {
+        let _ram = get_process_ram_rss();
+    }
+
+    #[test]
+    fn test_pipe_counters_multiple_increments() {
+        let counters = PipeCounters::new();
+        
+        for _ in 0..100 {
+            counters.total_processed.fetch_add(1, Ordering::Relaxed);
+            counters.success_count.fetch_add(1, Ordering::Relaxed);
+        }
+        
+        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 100);
+        assert_eq!(counters.success_count.load(Ordering::Relaxed), 100);
+    }
+
+    #[test]
+    fn test_pipe_counters_mixed_operations() {
+        let counters = PipeCounters::new();
+        
+        counters.total_processed.fetch_add(50, Ordering::Relaxed);
+        counters.success_count.fetch_add(30, Ordering::Relaxed);
+        counters.error_count.fetch_add(20, Ordering::Relaxed);
+        
+        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 50);
+        assert_eq!(counters.success_count.load(Ordering::Relaxed), 30);
+        assert_eq!(counters.error_count.load(Ordering::Relaxed), 20);
+    }
+
+    #[test]
+    fn test_pipe_counters_batch_processing() {
+        let counters = PipeCounters::new();
+        
+        for _ in 0..10 {
+            counters.batches_processed.fetch_add(1, Ordering::Relaxed);
+        }
+        
+        assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 10);
+    }
+
+    #[test]
+    fn test_pipe_counters_zero_operations() {
+        let counters = PipeCounters::new();
+        
+        counters.total_processed.fetch_add(0, Ordering::Relaxed);
+        
+        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_pipe_counters_large_values() {
+        let counters = PipeCounters::new();
+        
+        counters.total_processed.fetch_add(1_000_000, Ordering::Relaxed);
+        
+        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 1_000_000);
+    }
+}
+

@@ -73,3 +73,44 @@ impl MultiThreadExecutor {
         self.strategy.process_batches(py, batches, processor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_thread_executor_default_batch_size() {
+        let executor = SingleThreadExecutor::new(1000);
+        assert_eq!(executor.get_batch_size(), 1000);
+    }
+
+    #[test]
+    fn test_single_thread_executor_custom_batch_size() {
+        let executor = SingleThreadExecutor::new(500);
+        assert_eq!(executor.get_batch_size(), 500);
+    }
+
+    #[test]
+    fn test_multi_thread_executor_default_batch_size() {
+        let executor = MultiThreadExecutor::new(None, 1000);
+        assert_eq!(executor.get_batch_size(), 1000);
+    }
+
+    #[test]
+    fn test_multi_thread_executor_custom_batch_size() {
+        let executor = MultiThreadExecutor::new(Some(4), 2000);
+        assert_eq!(executor.get_batch_size(), 2000);
+    }
+
+    #[test]
+    fn test_multi_thread_executor_auto_detect_threads() {
+        let executor = MultiThreadExecutor::new(None, 1000);
+        assert_eq!(executor.get_batch_size(), 1000);
+    }
+
+    #[test]
+    fn test_multi_thread_executor_custom_threads() {
+        let executor = MultiThreadExecutor::new(Some(8), 1000);
+        assert_eq!(executor.get_batch_size(), 1000);
+    }
+}

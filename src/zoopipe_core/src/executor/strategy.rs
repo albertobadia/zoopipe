@@ -103,3 +103,32 @@ impl ExecutionStrategy for ParallelStrategy {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parallel_strategy_creation() {
+        let strategy = ParallelStrategy::new(4);
+        assert_eq!(strategy.num_threads, 4);
+    }
+
+    #[test]
+    fn test_parallel_strategy_min_threads() {
+        let strategy = ParallelStrategy::new(0);
+        assert_eq!(strategy.num_threads, 1);
+    }
+
+    #[test]
+    fn test_parallel_strategy_custom_threads() {
+        let strategy = ParallelStrategy::new(8);
+        assert_eq!(strategy.num_threads, 8);
+    }
+
+    #[test]
+    fn test_parallel_strategy_large_thread_count() {
+        let strategy = ParallelStrategy::new(128);
+        assert_eq!(strategy.num_threads, 128);
+    }
+}

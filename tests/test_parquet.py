@@ -25,7 +25,6 @@ def test_csv_to_parquet_to_jsonl(tmp_path):
 
     input_csv.write_text("user_id,username,age\n1,alice,30\n2,bob,25")
 
-    # CSV -> Parquet
     pipe1 = Pipe(
         input_adapter=CSVInputAdapter(str(input_csv)),
         output_adapter=ParquetOutputAdapter(str(intermediate_parquet)),
@@ -37,7 +36,6 @@ def test_csv_to_parquet_to_jsonl(tmp_path):
     assert pipe1.report.success_count == 2
     assert intermediate_parquet.exists()
 
-    # Parquet -> JSONL
     pipe2 = Pipe(
         input_adapter=ParquetInputAdapter(str(intermediate_parquet)),
         output_adapter=JSONOutputAdapter(str(output_jsonl), format="jsonl"),

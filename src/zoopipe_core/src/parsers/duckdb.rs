@@ -65,8 +65,6 @@ impl DuckDBReader {
                     Err(_) => return,
                 };
 
-                // Use a separate local connection for metadata if needed, or just get it from the same connection
-                // but in a way that doesn't block. Actually, we can just open metadata first, then data.
                 let meta_query = format!("SELECT * FROM ({}) LIMIT 0", query);
                 let col_count = {
                     let meta_conn = match Connection::open(&db_path) {
@@ -77,7 +75,7 @@ impl DuckDBReader {
                         Ok(s) => s,
                         Err(_) => return,
                     };
-                    let _ = meta_stmt.query([]); // Execute to populate schema
+                    let _ = meta_stmt.query([]);
                     let cols: Vec<String> = meta_stmt.column_names().iter().map(|s| s.to_string()).collect();
                     let count = cols.len();
                     if tx.send(DuckDBData::Metadata(cols)).is_err() {
@@ -96,7 +94,6 @@ impl DuckDBReader {
                     Err(_) => return,
                 };
 
-                // Now we can stream rows without collecting them
                 while let Ok(Some(row)) = rows.next() {
                     let mut record = Vec::with_capacity(col_count);
                     for i in 0..col_count {
@@ -235,7 +232,6 @@ impl DuckDBWriter {
         let py_int = py.get_type::<pyo3::types::PyInt>();
         let py_float = py.get_type::<pyo3::types::PyFloat>();
 
-        // Handle the first entry to ensure table creation
         let first_entry = if let Some(res) = it.next() {
             let entry = res?;
             let record = entry.cast::<PyDict>()?;
