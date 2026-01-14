@@ -56,15 +56,28 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 
 ## 📚 Documentation
 
+### Core Concepts
+
 - [**Executors Guide**](docs/executors.md) - Choose and configure execution strategies
 
-### Adapters
+### Input/Output Adapters
+
+#### File Formats
 
 - [**CSV Adapters**](docs/csv.md) - High-performance CSV reading and writing
 - [**JSON Adapters**](docs/json.md) - JSONL and JSON array format support
+- [**Parquet Adapters**](docs/parquet.md) - Columnar storage for analytics and data lakes
+- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for zero-copy interoperability
+
+#### Databases
+
 - [**SQL Adapters**](docs/sql.md) - Read from and write to SQL databases with batch optimization
 - [**DuckDB Adapters**](docs/duckdb.md) - Analytical database for OLAP workloads
-- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for zero-copy interoperability
+
+#### Advanced
+
+- [**Python Generator Adapters**](docs/pygen.md) - In-memory streaming and testing
+- [**Cloud Storage (S3)**](docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
 
 ---
 

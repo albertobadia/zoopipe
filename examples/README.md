@@ -113,6 +113,45 @@ This example demonstrates:
 - Support for custom queries or table names
 - Streaming large datasets from SQL to JSON
 
+### 10_csv_to_generator.py
+Process CSV data and stream results through a Python generator.
+
+```bash
+uv run python examples/10_csv_to_generator.py
+```
+
+This example demonstrates:
+- Using `PyGeneratorOutputAdapter` for in-memory streaming
+- Consuming pipeline results as a Python iterable
+- Real-time processing without writing to disk
+- Separating valid and error outputs into different generators
+
+### 11_csv_to_parquet.py
+Convert CSV data to Apache Parquet format for efficient storage.
+
+```bash
+uv run python examples/11_csv_to_parquet.py
+```
+
+This example demonstrates:
+- Using `ParquetOutputAdapter` for columnar storage
+- Excellent compression (5-10x smaller than CSV)
+- Optimized for analytical queries and data warehousing
+- Compatible with Pandas, Polars, Spark, and DuckDB
+
+### 12_parquet_to_jsonl.py
+Read Parquet files and export to JSONL format.
+
+```bash
+uv run python examples/12_parquet_to_jsonl.py
+```
+
+This example demonstrates:
+- Using `ParquetInputAdapter` for fast columnar reads
+- Converting Parquet data to JSONL for portability
+- Type preservation from Parquet schema
+- High-performance reading with zero-copy optimizations
+
 ## Sample Data
 
 The `sample_data/` directory contains example CSV and JSONL files for testing.
