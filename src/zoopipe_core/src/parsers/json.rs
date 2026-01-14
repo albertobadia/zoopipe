@@ -21,15 +21,24 @@ pub struct JSONReader {
 impl JSONReader {
     #[new]
     fn new(py: Python<'_>, path: String) -> PyResult<Self> {
-        let file = File::open(path).map_err(wrap_py_err)?;
-        let buf_reader = BoxedReader::File(BufReader::new(file));
+        use crate::io::storage::StorageController;
+        use object_store::path::Path;
+        use crate::io::RemoteReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
         
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(JSONReader {
-            iter: Mutex::new(serde_json::Deserializer::from_reader(buf_reader).into_iter::<Value>()),
+            iter: Mutex::new(serde_json::Deserializer::from_reader(boxed_reader).into_iter::<Value>()),
             array_iter: Mutex::new(None), position: Mutex::new(0),
             status_pending,
         })
@@ -106,7 +115,7 @@ fn wrap_in_envelope<'py>(py: Python<'py>, value: Value, position: usize, status_
 
 #[pyclass]
 pub struct JSONWriter {
-    writer: Mutex<std::io::BufWriter<File>>,
+    writer: Mutex<crate::io::BoxedWriter>,
     is_first_item: Mutex<bool>,
     format: String,
     indent: Option<usize>,
@@ -122,18 +131,27 @@ impl JSONWriter {
         format: String,
         indent: Option<usize>,
     ) -> PyResult<Self> {
-        let file = File::create(path).map_err(wrap_py_err)?;
-        let mut writer = std::io::BufWriter::new(file);
+        use crate::io::storage::StorageController;
+        use object_store::path::Path;
+        use crate::io::{BoxedWriter, RemoteWriter};
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let mut boxed_writer = if path.starts_with("s3://") {
+            BoxedWriter::Remote(RemoteWriter::new(controller.store(), Path::from(controller.path())))
+        } else {
+            let file = File::create(&path).map_err(wrap_py_err)?;
+            BoxedWriter::File(std::io::BufWriter::new(file))
+        };
 
         if format == "array" {
-            writer.write_all(b"[").map_err(wrap_py_err)?;
+            boxed_writer.write_all(b"[").map_err(wrap_py_err)?;
             if indent.is_some() {
-                writer.write_all(b"\n").map_err(wrap_py_err)?;
+                boxed_writer.write_all(b"\n").map_err(wrap_py_err)?;
             }
         }
 
         Ok(JSONWriter {
-            writer: Mutex::new(writer),
+            writer: Mutex::new(boxed_writer),
             is_first_item: Mutex::new(true),
             format,
             indent,
@@ -182,7 +200,7 @@ impl JSONWriter {
         &self,
         _py: Python<'_>,
         data: Bound<'_, PyAny>,
-        writer: &mut std::io::BufWriter<File>,
+        writer: &mut crate::io::BoxedWriter,
         is_first: &mut bool,
     ) -> PyResult<()> {
         let wrapper = PySerializable(data);

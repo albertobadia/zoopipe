@@ -28,8 +28,20 @@ impl ParquetReader {
     #[new]
     #[pyo3(signature = (path, generate_ids=true))]
     fn new(py: Python<'_>, path: String, generate_ids: bool) -> PyResult<Self> {
-        let file = File::open(&path).map_err(wrap_py_err)?;
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(wrap_py_err)?;
+        use crate::io::storage::StorageController;
+        use object_store::path::Path as ObjectPath;
+        use crate::io::{BoxedReader, RemoteReader};
+        use std::io::BufReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), ObjectPath::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+
+        let builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
         let reader = builder.build().map_err(wrap_py_err)?;
         
         let schema = reader.schema();
@@ -118,7 +130,7 @@ impl ParquetReader {
 #[pyclass]
 pub struct ParquetWriter {
     path: String,
-    writer: Mutex<Option<ArrowWriter<File>>>,
+    writer: Mutex<Option<ArrowWriter<crate::io::BoxedWriter>>>,
     schema: Mutex<Option<SchemaRef>>,
 }
 
@@ -141,6 +153,10 @@ impl ParquetWriter {
         let mut schema_guard = self.schema.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         
         if writer_guard.is_none() {
+            use crate::io::storage::StorageController;
+            use object_store::path::Path as ObjectPath;
+            use crate::io::{BoxedWriter, RemoteWriter};
+
             let first = list.get_item(0)?;
             let dict = first.cast::<PyDict>()?;
             let mut fields = Vec::new();
@@ -156,21 +172,26 @@ impl ParquetWriter {
                 }
             }
             let schema = SchemaRef::new(Schema::new(fields));
-            let file = File::create(&self.path).map_err(wrap_py_err)?;
             
-            // Tuned properties to reduce RAM usage (smaller row groups)
+            let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
+            let boxed_writer = if self.path.starts_with("s3://") {
+                BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
+            } else {
+                let file = File::create(&self.path).map_err(wrap_py_err)?;
+                BoxedWriter::File(std::io::BufWriter::new(file))
+            };
+            
             let props = WriterProperties::builder()
-                .set_max_row_group_size(100_000) // Default is 1M
+                .set_max_row_group_size(100_000)
                 .build();
 
-            *writer_guard = Some(ArrowWriter::try_new(file, schema.clone(), Some(props)).map_err(wrap_py_err)?);
+            *writer_guard = Some(ArrowWriter::try_new(boxed_writer, schema.clone(), Some(props)).map_err(wrap_py_err)?);
             *schema_guard = Some(schema);
         }
 
-        let writer = writer_guard.as_mut().unwrap();
-        let schema = schema_guard.as_ref().unwrap();
+        let writer = writer_guard.as_mut().expect("ParquetWriter not initialized");
+        let schema = schema_guard.as_ref().expect("ParquetWriter schema not initialized");
         
-        // Optimized batch building
         let batch = build_record_batch(py, schema, list)?;
         writer.write(&batch).map_err(wrap_py_err)?;
         Ok(())

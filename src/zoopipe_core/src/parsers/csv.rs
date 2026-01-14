@@ -30,11 +30,22 @@ impl CSVReader {
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
     ) -> PyResult<Self> {
-        let file = File::open(path).map_err(wrap_py_err)?;
+        use crate::io::storage::StorageController;
+        use object_store::path::Path;
+        use crate::io::RemoteReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
-            .from_reader(BoxedReader::File(BufReader::new(file)));
+            .from_reader(boxed_reader);
 
         for _ in 0..skip_rows {
             let mut record = csv::StringRecord::new();
@@ -169,7 +180,7 @@ impl CSVReader {
 
 #[pyclass]
 pub struct CSVWriter {
-    writer: Mutex<csv::Writer<std::io::BufWriter<File>>>,
+    writer: Mutex<csv::Writer<crate::io::BoxedWriter>>,
     fieldnames: Mutex<Option<Vec<Py<PyString>>>>,
     header_written: Mutex<bool>,
 }
@@ -185,11 +196,22 @@ impl CSVWriter {
         quote: u8,
         fieldnames: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        let file = File::create(path).map_err(wrap_py_err)?;
+        use crate::io::storage::StorageController;
+        use object_store::path::Path;
+        use crate::io::{BoxedWriter, RemoteWriter};
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_writer = if path.starts_with("s3://") {
+            BoxedWriter::Remote(RemoteWriter::new(controller.store(), Path::from(controller.path())))
+        } else {
+            let file = File::create(&path).map_err(wrap_py_err)?;
+            BoxedWriter::File(std::io::BufWriter::new(file))
+        };
+
         let writer = csv::WriterBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
-            .from_writer(std::io::BufWriter::new(file));
+            .from_writer(boxed_writer);
         
         let py_fieldnames = fieldnames.map(|names| {
             names.into_iter().map(|s| PyString::new(py, &s).unbind()).collect()
@@ -240,7 +262,7 @@ impl CSVWriter {
         &self,
         py: Python<'_>,
         data: Bound<'_, PyAny>,
-        writer: &mut csv::Writer<std::io::BufWriter<File>>,
+        writer: &mut csv::Writer<crate::io::BoxedWriter>,
         header_written: &mut bool,
         fieldnames: &mut Option<Vec<Py<PyString>>>,
     ) -> PyResult<()> {

@@ -27,6 +27,9 @@ pub enum PipeError {
     
     #[error("Mutex lock failed")]
     MutexLock,
+    
+    #[error("Error: {0}")]
+    Other(String),
 }
 
 impl From<PipeError> for PyErr {

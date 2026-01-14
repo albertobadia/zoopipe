@@ -10,10 +10,11 @@ use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyString, PyDict, PyList, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch};
+use crate::io::BoxedReader;
 
 #[pyclass]
 pub struct ArrowReader {
-    reader: Mutex<FileReader<File>>,
+    reader: Mutex<FileReader<BoxedReader>>,
     current_batch: Mutex<Option<(RecordBatch, usize)>>,
     headers: Vec<Py<PyString>>,
     position: Mutex<usize>,
@@ -26,12 +27,24 @@ impl ArrowReader {
     #[new]
     #[pyo3(signature = (path, generate_ids=true))]
     fn new(py: Python<'_>, path: String, generate_ids: bool) -> PyResult<Self> {
-        let file = File::open(&path).map_err(wrap_py_err)?;
-        let reader = FileReader::try_new(file, None).map_err(wrap_py_err)?;
+        use crate::io::storage::StorageController;
+        use object_store::path::Path as ObjectPath;
+        use crate::io::{BoxedReader, RemoteReader};
+        use std::io::BufReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), ObjectPath::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+
+        let reader = FileReader::try_new(boxed_reader, None).map_err(wrap_py_err)?;
         let schema = reader.schema();
         let headers: Vec<Py<PyString>> = schema.fields()
             .iter()
-            .map(|f| PyString::new(py, f.name()).unbind())
+            .map(|f: &FieldRef| PyString::new(py, f.name()).unbind())
             .collect();
 
         let models = py.import("zoopipe.report")?;
@@ -60,7 +73,7 @@ impl ArrowReader {
 
         if current_opt.is_none() {
             if let Some(batch_res) = reader.next() {
-                let batch = batch_res.map_err(wrap_py_err)?;
+                let batch: RecordBatch = batch_res.map_err(wrap_py_err)?;
                 *current_opt = Some((batch, 0));
             } else {
                 return Ok(None);
@@ -114,7 +127,7 @@ impl ArrowReader {
 #[pyclass]
 pub struct ArrowWriter {
     path: String,
-    writer: Mutex<Option<FileWriter<File>>>,
+    writer: Mutex<Option<FileWriter<crate::io::BoxedWriter>>>,
     schema: Mutex<Option<SchemaRef>>,
 }
 
@@ -137,6 +150,10 @@ impl ArrowWriter {
         let mut schema_guard = self.schema.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         
         if writer_guard.is_none() {
+            use crate::io::storage::StorageController;
+            use object_store::path::Path as ObjectPath;
+            use crate::io::{BoxedWriter, RemoteWriter};
+
             let first = list.get_item(0)?;
             let dict = first.cast::<PyDict>()?;
             let mut fields = Vec::new();
@@ -145,7 +162,6 @@ impl ArrowWriter {
             
             for key in &keys {
                 if let Some(val) = dict.get_item(key)? {
-                    // Logic from original arrow.rs
                     let dt = if val.is_instance_of::<pyo3::types::PyBool>() { DataType::Boolean }
                     else if val.is_instance_of::<pyo3::types::PyInt>() { DataType::Int64 }
                     else if val.is_instance_of::<pyo3::types::PyFloat>() { DataType::Float64 }
@@ -156,15 +172,22 @@ impl ArrowWriter {
                 }
             }
             let schema = SchemaRef::new(Schema::new(fields));
-            let file = File::create(&self.path).map_err(wrap_py_err)?;
-            *writer_guard = Some(FileWriter::try_new(file, &schema).map_err(wrap_py_err)?);
+            
+            let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
+            let boxed_writer = if self.path.starts_with("s3://") {
+                BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
+            } else {
+                let file = File::create(&self.path).map_err(wrap_py_err)?;
+                BoxedWriter::File(std::io::BufWriter::new(file))
+            };
+
+            *writer_guard = Some(FileWriter::try_new(boxed_writer, &schema).map_err(wrap_py_err)?);
             *schema_guard = Some(schema);
         }
 
-        let writer = writer_guard.as_mut().unwrap();
-        let schema = schema_guard.as_ref().unwrap();
+        let writer = writer_guard.as_mut().expect("ArrowWriter not initialized");
+        let schema = schema_guard.as_ref().expect("ArrowWriter schema not initialized");
         
-        // Optimized batch building
         let batch = build_record_batch(py, schema, list)?;
         writer.write(&batch).map_err(wrap_py_err)?;
         Ok(())
