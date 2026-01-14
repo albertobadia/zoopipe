@@ -13,21 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        include:
+          - target: x86_64
+            sccache: 'true'
+          - target: aarch64
+            sccache: 'true'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
       - name: Build wheels
-        uses: PyO3/maturin-action@v1.49
+        uses: PyO3/maturin-action@v1.49.4
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
-          sccache: 'true'
-          manylinux: auto
+          sccache: ${{ matrix.sccache }}
+          manylinux: 2_28
+          zig: true
           uv: true
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -48,7 +50,7 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
       - name: Build wheels
-        uses: PyO3/maturin-action@v1.49
+        uses: PyO3/maturin-action@v1.49.4
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
@@ -73,7 +75,7 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
       - name: Build wheels
-        uses: PyO3/maturin-action@v1.49
+        uses: PyO3/maturin-action@v1.49.4
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
@@ -90,7 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build sdist
-        uses: PyO3/maturin-action@v1.49
+        uses: PyO3/maturin-action@v1.49.4
         with:
           command: sdist
           args: --out dist
