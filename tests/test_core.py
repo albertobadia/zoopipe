@@ -207,7 +207,7 @@ def test_pipe_with_error_output(tmp_path):
     error_csv = tmp_path / "errors.csv"
 
     input_csv.write_text(
-        "user_id,username,age\n1,alice,30\n2,bob,invalid\n3,charlie,35"
+        "user_id,username,age\n1,bob,invalid\n2,alice,30\n3,charlie,35"
     )
 
     pipe = Pipe(

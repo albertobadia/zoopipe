@@ -2,7 +2,7 @@ import logging
 import threading
 import typing
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from zoopipe.report import EntryStatus, FlowReport, get_logger
 from zoopipe.zoopipe_rust_core import (
@@ -43,29 +43,37 @@ class Pipe:
         self._thread: threading.Thread | None = None
         self._store: dict[str, typing.Any] = {}
         self._validator = TypeAdapter(self.schema_model) if self.schema_model else None
+        self._batch_validator = (
+            TypeAdapter(list[self.schema_model]) if self.schema_model else None
+        )
+        self._status_validated = EntryStatus.VALIDATED
+        self._status_failed = EntryStatus.FAILED
 
     def _process_batch(self, entries: list[dict]) -> list[dict]:
         for hook in self.pre_validation_hooks:
             entries = hook.execute(entries, self._store)
 
         if self._validator:
-            for entry in entries:
-                try:
-                    processed = self._validator.validate_python(entry["raw_data"])
-                    entry["validated_data"] = (
-                        processed.model_dump()
-                        if hasattr(processed, "model_dump")
-                        else processed
-                    )
-                    entry["status"] = EntryStatus.VALIDATED
-                except Exception as e:
-                    entry["status"] = EntryStatus.FAILED
-                    entry["errors"].append({"msg": str(e), "type": "validation_error"})
+            self._validate_batch(entries)
 
         for hook in self.post_validation_hooks:
             entries = hook.execute(entries, self._store)
 
         return entries
+
+    def _validate_batch(self, entries: list[dict]) -> None:
+        try:
+            raw_data_list = [e["raw_data"] for e in entries]
+            validated_list = self._batch_validator.validate_python(raw_data_list)
+            for entry, processed in zip(entries, validated_list):
+                entry["validated_data"] = processed.model_dump()
+                entry["status"] = self._status_validated
+        except ValidationError as e:
+            for error in e.errors():
+                entry_index = error["loc"][0]
+                entry = entries[entry_index]
+                entry["status"] = self._status_failed
+                entry["errors"].append({"msg": str(error), "type": "validation_error"})
 
     @property
     def report(self) -> FlowReport:

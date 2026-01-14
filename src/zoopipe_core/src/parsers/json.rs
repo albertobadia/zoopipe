@@ -9,11 +9,15 @@ use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
 use crate::error::PipeError;
 use pyo3::types::PyAnyMethods;
 
+struct JSONReaderState {
+    iter: serde_json::StreamDeserializer<'static, serde_json::de::IoRead<BoxedReader>, Value>,
+    array_iter: Option<std::vec::IntoIter<Value>>,
+    position: usize,
+}
+
 #[pyclass]
 pub struct JSONReader {
-    pub(crate) iter: Mutex<serde_json::StreamDeserializer<'static, serde_json::de::IoRead<BoxedReader>, Value>>,
-    pub(crate) array_iter: Mutex<Option<std::vec::IntoIter<Value>>>,
-    pub(crate) position: Mutex<usize>,
+    state: Mutex<JSONReaderState>,
     pub(crate) status_pending: Py<PyAny>,
 }
 
@@ -38,8 +42,11 @@ impl JSONReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(JSONReader {
-            iter: Mutex::new(serde_json::Deserializer::from_reader(boxed_reader).into_iter::<Value>()),
-            array_iter: Mutex::new(None), position: Mutex::new(0),
+            state: Mutex::new(JSONReaderState {
+                iter: serde_json::Deserializer::from_reader(boxed_reader).into_iter::<Value>(),
+                array_iter: None,
+                position: 0,
+            }),
             status_pending,
         })
     }
@@ -53,8 +60,11 @@ impl JSONReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(JSONReader {
-            iter: Mutex::new(serde_json::Deserializer::from_reader(buf_reader).into_iter::<Value>()),
-            array_iter: Mutex::new(None), position: Mutex::new(0),
+            state: Mutex::new(JSONReaderState {
+                iter: serde_json::Deserializer::from_reader(buf_reader).into_iter::<Value>(),
+                array_iter: None,
+                position: 0,
+            }),
             status_pending,
         })
     }
@@ -64,36 +74,34 @@ impl JSONReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut array_iter_lock = slf.array_iter.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut pos_lock = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
         
         let py = slf.py();
-        if let Some(ref mut ai) = *array_iter_lock {
+        if let Some(ref mut ai) = state.array_iter {
             if let Some(val) = ai.next() {
-                let current_pos = *pos_lock;
-                *pos_lock += 1;
+                let current_pos = state.position;
+                state.position += 1;
                 return Ok(Some(wrap_in_envelope(py, val, current_pos, slf.status_pending.bind(py))?));
             } else {
-                *array_iter_lock = None;
+                state.array_iter = None;
             }
         }
 
-        let mut iter = slf.iter.lock().map_err(|_| PipeError::MutexLock)?;
-        match iter.next() {
+        match state.iter.next() {
             Some(Ok(value)) => {
                 if let Value::Array(arr) = value {
                     let mut ai = arr.into_iter();
                     if let Some(val) = ai.next() {
-                        *array_iter_lock = Some(ai);
-                        let current_pos = *pos_lock;
-                        *pos_lock += 1;
+                        let current_pos = state.position;
+                        state.position += 1;
+                        state.array_iter = Some(ai);
                         return Ok(Some(wrap_in_envelope(py, val, current_pos, slf.status_pending.bind(py))?));
                     } else {
                         return Ok(None);
                     }
                 }
-                let current_pos = *pos_lock;
-                *pos_lock += 1;
+                let current_pos = state.position;
+                state.position += 1;
                 Ok(Some(wrap_in_envelope(py, value, current_pos, slf.status_pending.bind(py))?))
             }
             Some(Err(e)) => Err(wrap_py_err(e)),

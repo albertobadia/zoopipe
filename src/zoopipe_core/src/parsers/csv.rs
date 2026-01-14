@@ -8,11 +8,15 @@ use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 
+struct CSVReaderState {
+    reader: csv::Reader<BoxedReader>,
+    position: usize,
+}
+
 #[pyclass]
 pub struct CSVReader {
-    pub(crate) reader: Mutex<csv::Reader<BoxedReader>>,
+    state: Mutex<CSVReaderState>,
     pub(crate) headers: Vec<Py<PyString>>,
-    pub(crate) position: Mutex<usize>,
     pub(crate) status_pending: Py<PyAny>,
     pub(crate) generate_ids: bool,
 }
@@ -75,9 +79,8 @@ impl CSVReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            reader: Mutex::new(reader),
+            state: Mutex::new(CSVReaderState { reader, position: 0 }),
             headers,
-            position: Mutex::new(0),
             status_pending,
             generate_ids,
         })
@@ -127,9 +130,8 @@ impl CSVReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            reader: Mutex::new(reader),
+            state: Mutex::new(CSVReaderState { reader, position: 0 }),
             headers,
-            position: Mutex::new(0),
             status_pending,
             generate_ids,
         })
@@ -140,15 +142,14 @@ impl CSVReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut reader = slf.reader.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
         
         let mut record = StringRecord::new();
-        match reader.read_record(&mut record) {
+        match state.reader.read_record(&mut record) {
             Ok(true) => {
                 let py = slf.py();
-                let current_pos = *pos;
-                *pos += 1;
+                let current_pos = state.position;
+                state.position += 1;
                 
                 let raw_data = PyDict::new(py);
                 for (header_py, value) in slf.headers.iter().zip(record.iter()) {
@@ -158,9 +159,9 @@ impl CSVReader {
                 let envelope = PyDict::new(py);
                 
                 let id = if slf.generate_ids {
-                    uuid::Uuid::new_v4().to_string()
+                    current_pos.into_pyobject(py)?.into_any()
                 } else {
-                    String::new()
+                    py.None().into_bound(py)
                 };
 
                 envelope.set_item(pyo3::intern!(py, "id"), id)?;
@@ -178,11 +179,15 @@ impl CSVReader {
     }
 }
 
+struct CSVWriterState {
+    writer: csv::Writer<crate::io::BoxedWriter>,
+    fieldnames: Option<Vec<Py<PyString>>>,
+    header_written: bool,
+}
+
 #[pyclass]
 pub struct CSVWriter {
-    writer: Mutex<csv::Writer<crate::io::BoxedWriter>>,
-    fieldnames: Mutex<Option<Vec<Py<PyString>>>>,
-    header_written: Mutex<bool>,
+    state: Mutex<CSVWriterState>,
 }
 
 #[pymethods]
@@ -218,35 +223,32 @@ impl CSVWriter {
         });
 
         Ok(CSVWriter {
-            writer: Mutex::new(writer),
-            fieldnames: Mutex::new(py_fieldnames),
-            header_written: Mutex::new(false),
+            state: Mutex::new(CSVWriterState {
+                writer,
+                fieldnames: py_fieldnames,
+                header_written: false,
+            }),
         })
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut header_written = self.header_written.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut fieldnames = self.fieldnames.lock().map_err(|_| PipeError::MutexLock)?;
-
-        self.write_internal(py, data, &mut writer, &mut header_written, &mut fieldnames)
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        write_record_to_csv(py, data, &mut state)
     }
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut header_written = self.header_written.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut fieldnames = self.fieldnames.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         
         let iterator = entries.try_iter()?;
         for entry in iterator {
-            self.write_internal(py, entry?, &mut writer, &mut header_written, &mut fieldnames)?;
+            write_record_to_csv(py, entry?, &mut state)?;
         }
         Ok(())
     }
 
     pub fn flush(&self) -> PyResult<()> {
-        let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
-        writer.flush().map_err(wrap_py_err)?;
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        state.writer.flush().map_err(wrap_py_err)?;
         Ok(())
     }
 
@@ -257,67 +259,62 @@ impl CSVWriter {
 
 use std::borrow::Cow;
 
-impl CSVWriter {
-    fn write_internal(
-        &self,
-        py: Python<'_>,
-        data: Bound<'_, PyAny>,
-        writer: &mut csv::Writer<crate::io::BoxedWriter>,
-        header_written: &mut bool,
-        fieldnames: &mut Option<Vec<Py<PyString>>>,
-    ) -> PyResult<()> {
-        let record = data.cast::<PyDict>()?;
+fn write_record_to_csv(
+    py: Python<'_>,
+    data: Bound<'_, PyAny>,
+    state: &mut CSVWriterState,
+) -> PyResult<()> {
+    let record = data.cast::<PyDict>()?;
 
-        if !*header_written {
-            if fieldnames.is_none() {
-                let keys_list = record.keys();
-                let mut record_keys = Vec::with_capacity(keys_list.len());
-                for k in keys_list.iter() {
-                    record_keys.push(k.cast::<PyString>()?.clone());
-                }
-                
-                record_keys.sort_by(|a, b| {
-                    let s1 = a.to_str().unwrap_or("");
-                    let s2 = b.to_str().unwrap_or("");
-                    s1.cmp(s2)
-                });
-                let interned: Vec<Py<PyString>> = record_keys.into_iter().map(|s| s.unbind()).collect();
-                *fieldnames = Some(interned);
+    if !state.header_written {
+        if state.fieldnames.is_none() {
+            let keys_list = record.keys();
+            let mut record_keys = Vec::with_capacity(keys_list.len());
+            for k in keys_list.iter() {
+                record_keys.push(k.cast::<PyString>()?.clone());
             }
             
-            let names = fieldnames.as_ref()
-                .expect("Fieldnames should be initialized before header write");
-            let bounds: Vec<Bound<'_, PyString>> = names.iter().map(|n| n.bind(py).clone()).collect();
-            let mut name_strs = Vec::with_capacity(names.len());
-            for b in &bounds {
-                name_strs.push(b.to_str().unwrap_or(""));
-            }
-            writer.write_record(&name_strs).map_err(wrap_py_err)?;
-            *header_written = true;
+            record_keys.sort_by(|a, b| {
+                let s1 = a.to_str().unwrap_or("");
+                let s2 = b.to_str().unwrap_or("");
+                s1.cmp(s2)
+            });
+            let interned: Vec<Py<PyString>> = record_keys.into_iter().map(|s| s.unbind()).collect();
+            state.fieldnames = Some(interned);
         }
-
-        if let Some(names) = fieldnames.as_ref() {
-            let mut row_bounds: Vec<Option<Bound<'_, PyAny>>> = Vec::with_capacity(names.len());
-            for name_py in names {
-                row_bounds.push(record.get_item(name_py.bind(py))?);
-            }
-
-            let mut row_out: Vec<Cow<str>> = Vec::with_capacity(names.len());
-            for opt_val in &row_bounds {
-                if let Some(v) = opt_val {
-                    if let Ok(s) = v.cast::<PyString>() {
-                        row_out.push(Cow::Borrowed(s.to_str().unwrap_or("")));
-                    } else {
-                        row_out.push(Cow::Owned(v.to_string()));
-                    }
-                } else {
-                    row_out.push(Cow::Borrowed(""));
-                }
-            }
-            writer.write_record(row_out.iter().map(|c| c.as_bytes())).map_err(wrap_py_err)?;
+        
+        let names = state.fieldnames.as_ref()
+            .expect("Fieldnames should be initialized before header write");
+        let bounds: Vec<Bound<'_, PyString>> = names.iter().map(|n| n.bind(py).clone()).collect();
+        let mut name_strs = Vec::with_capacity(names.len());
+        for b in &bounds {
+            name_strs.push(b.to_str().unwrap_or(""));
         }
-
-        Ok(())
+        state.writer.write_record(&name_strs).map_err(wrap_py_err)?;
+        state.header_written = true;
     }
+
+    if let Some(names) = state.fieldnames.as_ref() {
+        let mut row_bounds: Vec<Option<Bound<'_, PyAny>>> = Vec::with_capacity(names.len());
+        for name_py in names {
+            row_bounds.push(record.get_item(name_py.bind(py))?);
+        }
+
+        let mut row_out: Vec<Cow<str>> = Vec::with_capacity(names.len());
+        for opt_val in &row_bounds {
+            if let Some(v) = opt_val {
+                if let Ok(s) = v.cast::<PyString>() {
+                    row_out.push(Cow::Borrowed(s.to_str().unwrap_or("")));
+                } else {
+                    row_out.push(Cow::Owned(v.to_string()));
+                }
+            } else {
+                row_out.push(Cow::Borrowed(""));
+            }
+        }
+        state.writer.write_record(row_out.iter().map(|c| c.as_bytes())).map_err(wrap_py_err)?;
+    }
+
+    Ok(())
 }
 

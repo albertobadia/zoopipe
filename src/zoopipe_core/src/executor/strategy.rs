@@ -27,14 +27,20 @@ impl ExecutionStrategy for SingleThreadStrategy {
 }
 
 pub struct ParallelStrategy {
-    num_threads: usize,
+    thread_pool: rayon::ThreadPool,
 }
 
 impl ParallelStrategy {
     pub fn new(num_threads: usize) -> Self {
-        Self {
-            num_threads: num_threads.max(1),
-        }
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads.max(1))
+            .build()
+            .expect("Failed to create Rayon thread pool");
+        Self { thread_pool }
+    }
+
+    pub fn num_threads(&self) -> usize {
+        self.thread_pool.current_num_threads()
     }
 }
 
@@ -46,14 +52,7 @@ impl ExecutionStrategy for ParallelStrategy {
         processor: &Bound<'py, PyAny>,
     ) -> PyResult<Vec<Bound<'py, PyAny>>> {
         use rayon::prelude::*;
-        use crossbeam_channel::{bounded};
-
-        let thread_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.num_threads)
-            .build()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
-                format!("Failed to create thread pool: {}", e)
-            ))?;
+        use crossbeam_channel::bounded;
 
         let batch_count = batches.len();
         let (result_tx, result_rx) = bounded(batch_count);
@@ -65,7 +64,7 @@ impl ExecutionStrategy for ParallelStrategy {
             .map(|b| b.unbind())
             .collect();
 
-        thread_pool.scope(|_scope| {
+        self.thread_pool.scope(|_scope| {
             batch_data
                 .into_par_iter()
                 .enumerate()
@@ -111,24 +110,24 @@ mod tests {
     #[test]
     fn test_parallel_strategy_creation() {
         let strategy = ParallelStrategy::new(4);
-        assert_eq!(strategy.num_threads, 4);
+        assert_eq!(strategy.num_threads(), 4);
     }
 
     #[test]
     fn test_parallel_strategy_min_threads() {
         let strategy = ParallelStrategy::new(0);
-        assert_eq!(strategy.num_threads, 1);
+        assert_eq!(strategy.num_threads(), 1);
     }
 
     #[test]
     fn test_parallel_strategy_custom_threads() {
         let strategy = ParallelStrategy::new(8);
-        assert_eq!(strategy.num_threads, 8);
+        assert_eq!(strategy.num_threads(), 8);
     }
 
     #[test]
     fn test_parallel_strategy_large_thread_count() {
         let strategy = ParallelStrategy::new(128);
-        assert_eq!(strategy.num_threads, 128);
+        assert_eq!(strategy.num_threads(), 128);
     }
 }

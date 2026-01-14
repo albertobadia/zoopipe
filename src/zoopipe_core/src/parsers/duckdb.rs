@@ -11,13 +11,17 @@ enum DuckDBData {
     Row(Vec<Value>),
 }
 
+struct DuckDBReaderState {
+    receiver: Option<crossbeam_channel::Receiver<DuckDBData>>,
+    column_names: Option<Vec<Py<PyString>>>,
+    position: usize,
+}
+
 #[pyclass]
 pub struct DuckDBReader {
     db_path: String,
     query: String,
-    receiver: Mutex<Option<crossbeam_channel::Receiver<DuckDBData>>>,
-    column_names: Mutex<Option<Vec<Py<PyString>>>>,
-    position: Mutex<usize>,
+    state: Mutex<DuckDBReaderState>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
 }
@@ -39,9 +43,11 @@ impl DuckDBReader {
         Ok(DuckDBReader {
             db_path,
             query,
-            receiver: Mutex::new(None),
-            column_names: Mutex::new(None),
-            position: Mutex::new(0),
+            state: Mutex::new(DuckDBReaderState {
+                receiver: None,
+                column_names: None,
+                position: 0,
+            }),
             status_pending,
             generate_ids,
         })
@@ -52,9 +58,9 @@ impl DuckDBReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut receiver_opt = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
         
-        if receiver_opt.is_none() {
+        if state.receiver.is_none() {
             let (tx, rx) = crossbeam_channel::bounded(1000);
             let db_path = slf.db_path.clone();
             let query = slf.query.clone();
@@ -105,11 +111,12 @@ impl DuckDBReader {
                 }
             });
 
-            *receiver_opt = Some(rx);
+            state.receiver = Some(rx);
         }
 
-        let rx = receiver_opt.as_ref()
+        let rx = state.receiver.clone()
             .expect("Receiver should be initialized before reading rows");
+        drop(state);
         
         loop {
             match rx.recv() {
@@ -118,17 +125,17 @@ impl DuckDBReader {
                     let py_cols: Vec<Py<PyString>> = cols.into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
-                    *column_names_opt = Some(py_cols);
+                    let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+                    state.column_names = Some(py_cols);
                 }
                 Ok(DuckDBData::Row(row_values)) => {
                     let py = slf.py();
-                    let column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
-                    let cols = column_names_opt.as_ref().expect("Column names should be received before rows");
+                    let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+                    let current_pos = state.position;
+                    state.position += 1;
                     
-                    let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
-                    let current_pos = *pos;
-                    *pos += 1;
+                    let cols = state.column_names.as_ref()
+                        .expect("Column names should be received before rows");
                     
                     let raw_data = PyDict::new(py);
                     for (i, value) in row_values.into_iter().enumerate() {
@@ -157,9 +164,9 @@ impl DuckDBReader {
 
                     let envelope = PyDict::new(py);
                     let id = if slf.generate_ids {
-                        uuid::Uuid::new_v4().to_string()
+                        current_pos.into_pyobject(py)?.into_any()
                     } else {
-                        String::new()
+                        py.None().into_bound(py)
                     };
 
                     envelope.set_item(pyo3::intern!(py, "id"), id)?;
