@@ -113,7 +113,7 @@ impl ParquetReader {
 
             let envelope = PyDict::new(py);
             let id = if slf.generate_ids {
-                current_pos.into_pyobject(py)?.into_any()
+                crate::utils::generate_entry_id(py)?
             } else {
                 py.None().into_bound(py)
             };

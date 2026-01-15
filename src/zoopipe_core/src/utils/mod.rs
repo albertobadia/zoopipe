@@ -8,6 +8,15 @@ pub fn wrap_py_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
 
+pub fn generate_entry_id(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
+    let mut buf = [0u8; 32];
+    uuid::Uuid::new_v4().simple().encode_lower(&mut buf);
+    match std::str::from_utf8(&buf) {
+        Ok(s) => Ok(PyString::new(py, s).into_any()),
+        Err(e) => Err(wrap_py_err(e)),
+    }
+}
+
 pub fn serde_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, PyAny>> {
     match value {
         Value::Null => Ok(py.None().into_bound(py)),

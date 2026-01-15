@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::io::BoxedReader;
 use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
 use crate::error::PipeError;
-use pyo3::types::PyAnyMethods;
+use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 
 struct JSONReaderState {
     iter: serde_json::StreamDeserializer<'static, serde_json::de::IoRead<BoxedReader>, Value>,
@@ -19,6 +19,12 @@ struct JSONReaderState {
 pub struct JSONReader {
     state: Mutex<JSONReaderState>,
     pub(crate) status_pending: Py<PyAny>,
+    id_key: Py<PyString>,
+    status_key: Py<PyString>,
+    raw_data_key: Py<PyString>,
+    metadata_key: Py<PyString>,
+    position_key: Py<PyString>,
+    errors_key: Py<PyString>,
 }
 
 #[pymethods]
@@ -48,6 +54,12 @@ impl JSONReader {
                 position: 0,
             }),
             status_pending,
+            id_key: pyo3::intern!(py, "id").clone().unbind(),
+            status_key: pyo3::intern!(py, "status").clone().unbind(),
+            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
+            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
+            position_key: pyo3::intern!(py, "position").clone().unbind(),
+            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
         })
     }
 
@@ -66,6 +78,12 @@ impl JSONReader {
                 position: 0,
             }),
             status_pending,
+            id_key: pyo3::intern!(py, "id").clone().unbind(),
+            status_key: pyo3::intern!(py, "status").clone().unbind(),
+            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
+            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
+            position_key: pyo3::intern!(py, "position").clone().unbind(),
+            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
         })
     }
 
@@ -81,7 +99,7 @@ impl JSONReader {
             if let Some(val) = ai.next() {
                 let current_pos = state.position;
                 state.position += 1;
-                return Ok(Some(wrap_in_envelope(py, val, current_pos, slf.status_pending.bind(py))?));
+                return Ok(Some(slf.wrap_in_envelope(py, val, current_pos)?));
             } else {
                 state.array_iter = None;
             }
@@ -95,14 +113,14 @@ impl JSONReader {
                         let current_pos = state.position;
                         state.position += 1;
                         state.array_iter = Some(ai);
-                        return Ok(Some(wrap_in_envelope(py, val, current_pos, slf.status_pending.bind(py))?));
+                        return Ok(Some(slf.wrap_in_envelope(py, val, current_pos)?));
                     } else {
                         return Ok(None);
                     }
                 }
                 let current_pos = state.position;
                 state.position += 1;
-                Ok(Some(wrap_in_envelope(py, value, current_pos, slf.status_pending.bind(py))?))
+                Ok(Some(slf.wrap_in_envelope(py, value, current_pos)?))
             }
             Some(Err(e)) => {
                 let pos = state.position + 1;
@@ -113,15 +131,17 @@ impl JSONReader {
     }
 }
 
-fn wrap_in_envelope<'py>(py: Python<'py>, value: Value, position: usize, status_pending: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    let envelope = pyo3::types::PyDict::new(py);
-    envelope.set_item(pyo3::intern!(py, "id"), uuid::Uuid::new_v4().to_string())?;
-    envelope.set_item(pyo3::intern!(py, "status"), status_pending)?;
-    envelope.set_item(pyo3::intern!(py, "raw_data"), serde_to_py(py, value)?)?;
-    envelope.set_item(pyo3::intern!(py, "metadata"), pyo3::types::PyDict::new(py))?;
-    envelope.set_item(pyo3::intern!(py, "position"), position)?;
-    envelope.set_item(pyo3::intern!(py, "errors"), pyo3::types::PyList::empty(py))?;
-    Ok(envelope.into_any())
+impl JSONReader {
+    fn wrap_in_envelope<'py>(&self, py: Python<'py>, value: Value, position: usize) -> PyResult<Bound<'py, PyAny>> {
+        let envelope = PyDict::new(py);
+        envelope.set_item(self.id_key.bind(py), crate::utils::generate_entry_id(py)?)?;
+        envelope.set_item(self.status_key.bind(py), self.status_pending.bind(py))?;
+        envelope.set_item(self.raw_data_key.bind(py), serde_to_py(py, value)?)?;
+        envelope.set_item(self.metadata_key.bind(py), PyDict::new(py))?;
+        envelope.set_item(self.position_key.bind(py), position)?;
+        envelope.set_item(self.errors_key.bind(py), PyList::empty(py))?;
+        Ok(envelope.into_any())
+    }
 }
 
 #[pyclass]
@@ -244,4 +264,3 @@ impl JSONWriter {
         Ok(())
     }
 }
-

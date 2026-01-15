@@ -19,6 +19,12 @@ pub struct CSVReader {
     pub(crate) headers: Vec<Py<PyString>>,
     pub(crate) status_pending: Py<PyAny>,
     pub(crate) generate_ids: bool,
+    id_key: Py<PyString>,
+    status_key: Py<PyString>,
+    raw_data_key: Py<PyString>,
+    metadata_key: Py<PyString>,
+    position_key: Py<PyString>,
+    errors_key: Py<PyString>,
 }
 
 #[pymethods]
@@ -83,6 +89,12 @@ impl CSVReader {
             headers,
             status_pending,
             generate_ids,
+            id_key: pyo3::intern!(py, "id").clone().unbind(),
+            status_key: pyo3::intern!(py, "status").clone().unbind(),
+            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
+            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
+            position_key: pyo3::intern!(py, "position").clone().unbind(),
+            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
         })
     }
 
@@ -134,6 +146,12 @@ impl CSVReader {
             headers,
             status_pending,
             generate_ids,
+            id_key: pyo3::intern!(py, "id").clone().unbind(),
+            status_key: pyo3::intern!(py, "status").clone().unbind(),
+            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
+            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
+            position_key: pyo3::intern!(py, "position").clone().unbind(),
+            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
         })
     }
 
@@ -159,17 +177,17 @@ impl CSVReader {
                 let envelope = PyDict::new(py);
                 
                 let id = if slf.generate_ids {
-                    current_pos.into_pyobject(py)?.into_any()
+                    crate::utils::generate_entry_id(py)?
                 } else {
                     py.None().into_bound(py)
                 };
 
-                envelope.set_item(pyo3::intern!(py, "id"), id)?;
-                envelope.set_item(pyo3::intern!(py, "status"), slf.status_pending.bind(py))?;
-                envelope.set_item(pyo3::intern!(py, "raw_data"), raw_data)?;
-                envelope.set_item(pyo3::intern!(py, "metadata"), PyDict::new(py))?;
-                envelope.set_item(pyo3::intern!(py, "position"), current_pos)?;
-                envelope.set_item(pyo3::intern!(py, "errors"), PyList::empty(py))?;
+                envelope.set_item(slf.id_key.bind(py), id)?;
+                envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
+                envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
+                envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
+                envelope.set_item(slf.position_key.bind(py), current_pos)?;
+                envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
 
                 Ok(Some(envelope.into_any()))
             }
@@ -188,13 +206,6 @@ impl CSVReader {
         let mut count = 0;
         let mut record = StringRecord::new();
 
-        let id_key = pyo3::intern!(py, "id");
-        let status_key = pyo3::intern!(py, "status");
-        let raw_data_key = pyo3::intern!(py, "raw_data");
-        let metadata_key = pyo3::intern!(py, "metadata");
-        let position_key = pyo3::intern!(py, "position");
-        let errors_key = pyo3::intern!(py, "errors");
-
         while count < batch_size {
             match state.reader.read_record(&mut record) {
                 Ok(true) => {
@@ -208,17 +219,17 @@ impl CSVReader {
                     
                     let envelope = PyDict::new(py);
                     let id = if self.generate_ids {
-                        current_pos.into_pyobject(py)?.into_any()
+                        crate::utils::generate_entry_id(py)?
                     } else {
                         py.None().into_bound(py)
                     };
 
-                    envelope.set_item(id_key, id)?;
-                    envelope.set_item(status_key, self.status_pending.bind(py))?;
-                    envelope.set_item(raw_data_key, raw_data)?;
-                    envelope.set_item(metadata_key, PyDict::new(py))?;
-                    envelope.set_item(position_key, current_pos)?;
-                    envelope.set_item(errors_key, PyList::empty(py))?;
+                    envelope.set_item(self.id_key.bind(py), id)?;
+                    envelope.set_item(self.status_key.bind(py), self.status_pending.bind(py))?;
+                    envelope.set_item(self.raw_data_key.bind(py), raw_data)?;
+                    envelope.set_item(self.metadata_key.bind(py), PyDict::new(py))?;
+                    envelope.set_item(self.position_key.bind(py), current_pos)?;
+                    envelope.set_item(self.errors_key.bind(py), PyList::empty(py))?;
 
                     batch.append(envelope)?;
                     count += 1;
@@ -239,15 +250,15 @@ impl CSVReader {
     }
 }
 
+#[pyclass]
+pub struct CSVWriter {
+    state: Mutex<CSVWriterState>,
+}
+
 struct CSVWriterState {
     writer: csv::Writer<crate::io::BoxedWriter>,
     fieldnames: Option<Vec<Py<PyString>>>,
     header_written: bool,
-}
-
-#[pyclass]
-pub struct CSVWriter {
-    state: Mutex<CSVWriterState>,
 }
 
 #[pymethods]
@@ -377,4 +388,3 @@ fn write_record_to_csv(
 
     Ok(())
 }
-
