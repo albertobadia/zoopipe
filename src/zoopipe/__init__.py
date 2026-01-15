@@ -15,6 +15,7 @@ from zoopipe.output_adapter.parquet import ParquetOutputAdapter
 from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
 from zoopipe.output_adapter.sql import SQLOutputAdapter
 from zoopipe.pipe import Pipe, PipeConfig
+from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import (
     EntryStatus,
     EntryTypedDict,
@@ -37,6 +38,8 @@ __all__ = [
     "get_logger",
     "SingleThreadExecutor",
     "MultiThreadExecutor",
+    "InputAdapterProtocol",
+    "OutputAdapterProtocol",
     # Input Adapters
     "ArrowInputAdapter",
     "CSVInputAdapter",

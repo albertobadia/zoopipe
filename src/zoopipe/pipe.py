@@ -5,6 +5,8 @@ from typing import TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
+from zoopipe.hooks.base import BaseHook
+from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import EntryStatus, FlowReport, get_logger
 from zoopipe.types import NAMES_TO_PYTYPE
 from zoopipe.zoopipe_rust_core import (
@@ -36,15 +38,15 @@ def get_kwargs(config: dict[str, dict]) -> dict[str, typing.Any]:
 class Pipe:
     def __init__(
         self,
-        input_adapter: typing.Any | None = None,
-        output_adapter: typing.Any | None = None,
-        error_output_adapter: typing.Any | None = None,
-        schema_model: typing.Any | None = None,
-        pre_validation_hooks: list[typing.Any] | None = None,
-        post_validation_hooks: list[typing.Any] | None = None,
+        input_adapter: InputAdapterProtocol | None = None,
+        output_adapter: OutputAdapterProtocol | None = None,
+        error_output_adapter: OutputAdapterProtocol | None = None,
+        schema_model: type | None = None,
+        pre_validation_hooks: list[BaseHook] | None = None,
+        post_validation_hooks: list[BaseHook] | None = None,
         logger: logging.Logger | None = None,
         report_update_interval: int = 1,
-        executor: typing.Any = None,
+        executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
         config: PipeConfig | None = None,
     ) -> None:
         self.input_adapter = input_adapter
