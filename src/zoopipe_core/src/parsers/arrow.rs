@@ -20,13 +20,10 @@ pub struct ArrowReader {
     position: Mutex<usize>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
-    id_key: Py<PyString>,
-    status_key: Py<PyString>,
-    raw_data_key: Py<PyString>,
-    metadata_key: Py<PyString>,
-    position_key: Py<PyString>,
-    errors_key: Py<PyString>,
+    keys: InternedKeys,
 }
+
+use crate::utils::interning::InternedKeys;
 
 #[pymethods]
 impl ArrowReader {
@@ -64,12 +61,7 @@ impl ArrowReader {
             position: Mutex::new(0),
             status_pending,
             generate_ids,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -78,10 +70,35 @@ impl ArrowReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let py = slf.py();
-        let mut reader = slf.reader.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut current_opt = slf.current_batch.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(slf.py())
+    }
+
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let batch = PyList::empty(py);
+        let mut count = 0;
+        
+        while count < batch_size {
+            if let Some(item) = self.next_internal(py)? {
+                batch.append(item)?;
+                count += 1;
+            } else {
+                break;
+            }
+        }
+
+        if count == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(batch))
+    }
+}
+
+impl ArrowReader {
+    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let mut reader = self.reader.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut current_opt = self.current_batch.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
 
         if current_opt.is_none() {
             if let Some(batch_res) = reader.next() {
@@ -97,7 +114,7 @@ impl ArrowReader {
             *pos += 1;
 
             let raw_data = PyDict::new(py);
-            for (i, header) in slf.headers.iter().enumerate() {
+            for (i, header) in self.headers.iter().enumerate() {
                 let col = batch.column(i);
                 let val = arrow_to_py(py, col, *row_idx)?;
                 raw_data.set_item(header.bind(py), val)?;
@@ -109,77 +126,26 @@ impl ArrowReader {
             }
 
             let envelope = PyDict::new(py);
-            let id = if slf.generate_ids {
-                crate::utils::generate_entry_id(py)?
-            } else {
-                py.None().into_bound(py)
-            };
-
-            envelope.set_item(slf.id_key.bind(py), id)?;
-            envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
-            envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
-            envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
-            envelope.set_item(slf.position_key.bind(py), current_pos)?;
-            envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
-
-            Ok(Some(envelope.into_any()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn read_batch<'py>(&self, py: Python<'py>, _batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
-        let mut reader = self.reader.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut current_opt = self.current_batch.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
-
-        let batch = if let Some((b, idx)) = current_opt.take() {
-            if idx == 0 {
-                b
-            } else {
-                b.slice(idx, b.num_rows() - idx)
-            }
-        } else {
-            match reader.next() {
-                Some(batch_res) => batch_res.map_err(wrap_py_err)?,
-                None => return Ok(None),
-            }
-        };
-
-        let num_rows = batch.num_rows();
-        let py_list = PyList::empty(py);
-
-        for row_idx in 0..num_rows {
-            let current_pos = *pos;
-            *pos += 1;
-
-            let raw_data = PyDict::new(py);
-            for (i, header) in self.headers.iter().enumerate() {
-                let col = batch.column(i);
-                let val = arrow_to_py(py, col, row_idx)?;
-                raw_data.set_item(header.bind(py), val)?;
-            }
-
-            let envelope = PyDict::new(py);
             let id = if self.generate_ids {
                 crate::utils::generate_entry_id(py)?
             } else {
                 py.None().into_bound(py)
             };
 
-            envelope.set_item(self.id_key.bind(py), id)?;
-            envelope.set_item(self.status_key.bind(py), self.status_pending.bind(py))?;
-            envelope.set_item(self.raw_data_key.bind(py), raw_data)?;
-            envelope.set_item(self.metadata_key.bind(py), PyDict::new(py))?;
-            envelope.set_item(self.position_key.bind(py), current_pos)?;
-            envelope.set_item(self.errors_key.bind(py), PyList::empty(py))?;
+            envelope.set_item(self.keys.get_id(py), id)?;
+            envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+            envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
+            envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+            envelope.set_item(self.keys.get_position(py), current_pos)?;
+            envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
 
-            py_list.append(envelope)?;
+            Ok(Some(envelope.into_any()))
+        } else {
+            Ok(None)
         }
-
-        Ok(Some(py_list))
     }
 }
+
 
 #[pyclass]
 pub struct ArrowWriter {

@@ -4,6 +4,8 @@ use pyo3::exceptions::PyRuntimeError;
 use serde_json::Value;
 use serde::ser::{Serialize, Serializer, SerializeSeq, SerializeMap};
 
+pub mod interning;
+
 pub fn wrap_py_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
@@ -74,7 +76,11 @@ impl<'a> Serialize for PySerializable<'a> {
                  serializer.serialize_none()
              }
         } else if let Ok(s) = obj.cast::<PyString>() {
-             serializer.serialize_str(&s.to_string())
+             if let Ok(val) = s.to_str() {
+                 serializer.serialize_str(val)
+             } else {
+                 serializer.serialize_str(&s.to_string())
+             }
         } else if let Ok(l) = obj.cast::<PyList>() {
              let mut seq = serializer.serialize_seq(Some(l.len()))?;
              for item in l.iter() {
@@ -84,9 +90,19 @@ impl<'a> Serialize for PySerializable<'a> {
         } else if let Ok(d) = obj.cast::<PyDict>() {
              let mut map = serializer.serialize_map(Some(d.len()))?;
              for (k, v) in d.iter() {
-                 map.serialize_entry(&k.to_string(), &PySerializable(v))?;
+                 if let Ok(ks) = k.cast::<PyString>() {
+                     if let Ok(ks_val) = ks.to_str() {
+                         map.serialize_entry(ks_val, &PySerializable(v))?;
+                     } else {
+                         map.serialize_entry(&ks.to_string(), &PySerializable(v))?;
+                     }
+                 } else {
+                     map.serialize_entry(&k.to_string(), &PySerializable(v))?;
+                 }
              }
              map.end()
+        } else if let Ok(s) = obj.extract::<&str>() {
+            serializer.serialize_str(s)
         } else {
             let s = obj.to_string();
             serializer.serialize_str(&s)

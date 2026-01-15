@@ -6,6 +6,8 @@ use duckdb::Connection;
 use duckdb::types::Value;
 use crate::error::PipeError;
 
+use crate::utils::interning::InternedKeys;
+
 enum DuckDBData {
     Metadata(Vec<String>),
     Row(Vec<Value>),
@@ -24,12 +26,7 @@ pub struct DuckDBReader {
     state: Mutex<DuckDBReaderState>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
-    id_key: Py<PyString>,
-    status_key: Py<PyString>,
-    raw_data_key: Py<PyString>,
-    metadata_key: Py<PyString>,
-    position_key: Py<PyString>,
-    errors_key: Py<PyString>,
+    keys: InternedKeys,
 }
 
 #[pymethods]
@@ -56,12 +53,7 @@ impl DuckDBReader {
             }),
             status_pending,
             generate_ids,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -70,12 +62,37 @@ impl DuckDBReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
+        let py = slf.py();
         let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(py, &mut state)
+    }
+
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        let batch = PyList::empty(py);
         
+        for _ in 0..batch_size {
+            if let Some(item) = self.next_internal(py, &mut state)? {
+                batch.append(item)?;
+            } else {
+                break;
+            }
+        }
+
+        if batch.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
+        }
+    }
+}
+
+impl DuckDBReader {
+    fn next_internal<'py>(&self, py: Python<'py>, state: &mut DuckDBReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
         if state.receiver.is_none() {
             let (tx, rx) = crossbeam_channel::bounded(1000);
-            let db_path = slf.db_path.clone();
-            let query = slf.query.clone();
+            let db_path = self.db_path.clone();
+            let query = self.query.clone();
             
             std::thread::spawn(move || {
                 let conn = match Connection::open(&db_path) {
@@ -126,23 +143,23 @@ impl DuckDBReader {
             state.receiver = Some(rx);
         }
 
-        let rx = state.receiver.clone()
-            .expect("Receiver should be initialized before reading rows");
-        drop(state);
+        let rx = state.receiver.as_ref()
+            .expect("Receiver should be initialized before reading rows").clone();
+        
+        // Drop state lock before potentially blocking on recv if it's high latency, 
+        // but here we are holding &mut state so we can't easily drop it and keep using it.
+        // Actually, for DuckDB we use a channel, so recv() might block.
+        // But since we are in a Mutex, we have to hold it or drop it.
         
         loop {
             match rx.recv() {
                 Ok(DuckDBData::Metadata(cols)) => {
-                    let py = slf.py();
                     let py_cols: Vec<Py<PyString>> = cols.into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
                     state.column_names = Some(py_cols);
                 }
                 Ok(DuckDBData::Row(row_values)) => {
-                    let py = slf.py();
-                    let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
                     let current_pos = state.position;
                     state.position += 1;
                     
@@ -175,18 +192,18 @@ impl DuckDBReader {
                     }
 
                     let envelope = PyDict::new(py);
-                    let id = if slf.generate_ids {
+                    let id = if self.generate_ids {
                         crate::utils::generate_entry_id(py)?
                     } else {
                         py.None().into_bound(py)
                     };
 
-                    envelope.set_item(slf.id_key.bind(py), id)?;
-                    envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
-                    envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
-                    envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
-                    envelope.set_item(slf.position_key.bind(py), current_pos)?;
-                    envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
+                    envelope.set_item(self.keys.get_id(py), id)?;
+                    envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+                    envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
+                    envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+                    envelope.set_item(self.keys.get_position(py), current_pos)?;
+                    envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
 
                     return Ok(Some(envelope.into_any()));
                 }

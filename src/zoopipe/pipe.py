@@ -1,38 +1,17 @@
 import logging
 import threading
 import typing
-from typing import TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
 from zoopipe.hooks.base import BaseHook
 from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import EntryStatus, FlowReport, get_logger
-from zoopipe.types import NAMES_TO_PYTYPE
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
     SingleThreadExecutor,
 )
-
-
-class PipeConfig(TypedDict):
-    input_adapter: dict[str, dict]
-    output_adapter: dict[str, dict]
-    error_output_adapter: dict[str, dict] | None
-    schema_model: dict[str, dict] | None
-    pre_validation_hooks: list[dict[str, dict]]
-    post_validation_hooks: list[dict[str, dict]]
-    logger: dict[str, dict] | None
-    report_update_interval: int
-    executor: dict[str, dict] | None
-
-
-def get_kwargs(config: dict[str, dict]) -> dict[str, typing.Any]:
-    kwargs = {}
-    for key, value in config.items():
-        kwargs[key] = NAMES_TO_PYTYPE[value["type"]](**value["kwargs"])
-    return kwargs
 
 
 class Pipe:
@@ -47,7 +26,6 @@ class Pipe:
         logger: logging.Logger | None = None,
         report_update_interval: int = 1,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
-        config: PipeConfig | None = None,
     ) -> None:
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
@@ -61,26 +39,6 @@ class Pipe:
 
         self.report_update_interval = report_update_interval
         self.executor = executor or SingleThreadExecutor()
-
-        if config:
-            kwargs = get_kwargs(config)
-            self.input_adapter = kwargs.get("input_adapter") or self.input_adapter
-            self.output_adapter = kwargs.get("output_adapter") or self.output_adapter
-            self.error_output_adapter = (
-                kwargs.get("error_output_adapter") or self.error_output_adapter
-            )
-            self.schema_model = kwargs.get("schema_model") or self.schema_model
-            self.pre_validation_hooks = (
-                kwargs.get("pre_validation_hooks") or self.pre_validation_hooks
-            )
-            self.post_validation_hooks = (
-                kwargs.get("post_validation_hooks") or self.post_validation_hooks
-            )
-            self.logger = kwargs.get("logger") or self.logger
-            self.report_update_interval = (
-                kwargs.get("report_update_interval") or self.report_update_interval
-            )
-            self.executor = kwargs.get("executor") or self.executor
 
         self._report = FlowReport()
         self._thread: threading.Thread | None = None
@@ -199,4 +157,4 @@ class Pipe:
         return f"<Pipe input={self.input_adapter} output={self.output_adapter}>"
 
 
-__all__ = ["Pipe", "SingleThreadExecutor", "MultiThreadExecutor", "PipeConfig"]
+__all__ = ["Pipe", "SingleThreadExecutor", "MultiThreadExecutor"]

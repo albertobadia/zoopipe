@@ -29,9 +29,13 @@ impl PipeReader {
     pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
         match self {
             PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::JSON(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::DuckDB(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Arrow(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::SQL(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::Parquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Excel(r) => r.bind(py).borrow().read_batch(py, batch_size),
-            _ => Ok(None),
+            PipeReader::PyGen(r) => r.bind(py).borrow().read_batch(py, batch_size),
         }
     }
     
@@ -275,30 +279,12 @@ impl NativePipe {
 
         if !success_data.is_empty() {
             let data_list = PyList::new(py, success_data.iter())?;
-            match &self.writer {
-                PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-            }
+            self.writer.write_batch(py, data_list.into_any())?;
         }
 
         if !error_list.is_empty() && let Some(ref ew) = self.error_writer {
             let data_list = PyList::new(py, error_list.iter())?;
-            match ew {
-                PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-                PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
-            }
+            ew.write_batch(py, data_list.into_any())?;
         }
 
         let batch_len = processed_list.len();

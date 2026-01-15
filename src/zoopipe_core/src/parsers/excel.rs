@@ -19,13 +19,10 @@ pub struct ExcelReader {
     headers: Vec<Py<PyString>>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
-    id_key: Py<PyString>,
-    status_key: Py<PyString>,
-    raw_data_key: Py<PyString>,
-    metadata_key: Py<PyString>,
-    position_key: Py<PyString>,
-    errors_key: Py<PyString>,
+    keys: InternedKeys,
 }
+
+use crate::utils::interning::InternedKeys;
 
 #[pymethods]
 impl ExcelReader {
@@ -93,12 +90,7 @@ impl ExcelReader {
             headers,
             status_pending,
             generate_ids,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -107,72 +99,16 @@ impl ExcelReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
-        
-        if let Some(row) = state.rows.next() {
-            let py = slf.py();
-            let current_pos = state.position;
-            state.position += 1;
-            
-            let raw_data = PyDict::new(py);
-            for (header_py, cell) in slf.headers.iter().zip(row.iter()) {
-                let value = data_to_py_value(py, cell)?;
-                raw_data.set_item(header_py.bind(py), value)?;
-            }
-            
-            let envelope = PyDict::new(py);
-            
-            let id = if slf.generate_ids {
-                crate::utils::generate_entry_id(py)?
-            } else {
-                py.None().into_bound(py)
-            };
-
-            envelope.set_item(slf.id_key.bind(py), id)?;
-            envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
-            envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
-            envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
-            envelope.set_item(slf.position_key.bind(py), current_pos)?;
-            envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
-
-            Ok(Some(envelope.into_any()))
-        } else {
-            Ok(None)
-        }
+        slf.next_internal(slf.py())
     }
 
     pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
-        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
-        
         let batch = PyList::empty(py);
         let mut count = 0;
-
+        
         while count < batch_size {
-            if let Some(row) = state.rows.next() {
-                let current_pos = state.position;
-                state.position += 1;
-                
-                let raw_data = PyDict::new(py);
-                for (header_py, cell) in self.headers.iter().zip(row.iter()) {
-                    let value = data_to_py_value(py, cell)?;
-                    raw_data.set_item(header_py.bind(py), value)?;
-                }
-                
-                let envelope = PyDict::new(py);
-                let id = if self.generate_ids {
-                    crate::utils::generate_entry_id(py)?
-                } else {
-                    py.None().into_bound(py)
-                };
-
-                envelope.set_item(self.id_key.bind(py), id)?;
-                envelope.set_item(self.status_key.bind(py), self.status_pending.bind(py))?;
-                envelope.set_item(self.raw_data_key.bind(py), raw_data)?;
-                envelope.set_item(self.metadata_key.bind(py), PyDict::new(py))?;
-                envelope.set_item(self.position_key.bind(py), current_pos)?;
-                envelope.set_item(self.errors_key.bind(py), PyList::empty(py))?;
-
-                batch.append(envelope)?;
+            if let Some(item) = self.next_internal(py)? {
+                batch.append(item)?;
                 count += 1;
             } else {
                 break;
@@ -185,11 +121,38 @@ impl ExcelReader {
 
         Ok(Some(batch))
     }
-
     #[staticmethod]
-    fn list_sheets(path: String) -> PyResult<Vec<String>> {
+    pub fn list_sheets(path: String) -> PyResult<Vec<String>> {
         let workbook: Xlsx<BufReader<File>> = open_workbook(&path).map_err(wrap_py_err)?;
         Ok(workbook.sheet_names().to_vec())
+    }
+
+    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        if let Some(row) = state.rows.next() {
+            let current_pos = state.position;
+            state.position += 1;
+            let raw_data = PyDict::new(py);
+            for (header_py, cell) in self.headers.iter().zip(row.iter()) {
+                let value = data_to_py_value(py, cell)?;
+                raw_data.set_item(header_py.bind(py), value)?;
+            }
+            let envelope = PyDict::new(py);
+            let id = if self.generate_ids {
+                crate::utils::generate_entry_id(py)?
+            } else {
+                py.None().into_bound(py)
+            };
+            envelope.set_item(self.keys.get_id(py), id)?;
+            envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+            envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
+            envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+            envelope.set_item(self.keys.get_position(py), current_pos)?;
+            envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
+            Ok(Some(envelope.into_any()))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -369,8 +332,8 @@ fn write_cell_value(
         return Ok(());
     }
     
-    if let Ok(s) = value.extract::<String>() {
-        worksheet.write_string(row, col, &s).map_err(wrap_py_err)?;
+    if let Ok(s) = value.cast::<PyString>() {
+        worksheet.write_string(row, col, s.to_str()?).map_err(wrap_py_err)?;
     } else if let Ok(i) = value.extract::<i64>() {
         worksheet.write_number(row, col, i as f64).map_err(wrap_py_err)?;
     } else if let Ok(f) = value.extract::<f64>() {
@@ -378,8 +341,7 @@ fn write_cell_value(
     } else if let Ok(b) = value.extract::<bool>() {
         worksheet.write_boolean(row, col, b).map_err(wrap_py_err)?;
     } else {
-        let s = value.str()?.to_str().unwrap_or("").to_string();
-        worksheet.write_string(row, col, &s).map_err(wrap_py_err)?;
+        worksheet.write_string(row, col, value.to_string()).map_err(wrap_py_err)?;
     }
     
     Ok(())

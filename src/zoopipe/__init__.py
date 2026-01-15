@@ -16,7 +16,7 @@ from zoopipe.output_adapter.json import JSONOutputAdapter
 from zoopipe.output_adapter.parquet import ParquetOutputAdapter
 from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
 from zoopipe.output_adapter.sql import SQLOutputAdapter
-from zoopipe.pipe import Pipe, PipeConfig
+from zoopipe.pipe import Pipe
 from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import (
     EntryStatus,
@@ -30,7 +30,6 @@ from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 __all__ = [
     "Pipe",
     "PipeManager",
-    "PipeConfig",
     "FlowReport",
     "FlowStatus",
     "BaseHook",

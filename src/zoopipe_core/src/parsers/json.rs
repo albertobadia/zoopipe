@@ -7,7 +7,9 @@ use serde::Serialize;
 use crate::io::BoxedReader;
 use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
 use crate::error::PipeError;
-use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
+use pyo3::types::{PyAnyMethods, PyDict, PyList};
+
+use crate::utils::interning::InternedKeys;
 
 struct JSONReaderState {
     iter: serde_json::StreamDeserializer<'static, serde_json::de::IoRead<BoxedReader>, Value>,
@@ -19,12 +21,7 @@ struct JSONReaderState {
 pub struct JSONReader {
     state: Mutex<JSONReaderState>,
     pub(crate) status_pending: Py<PyAny>,
-    id_key: Py<PyString>,
-    status_key: Py<PyString>,
-    raw_data_key: Py<PyString>,
-    metadata_key: Py<PyString>,
-    position_key: Py<PyString>,
-    errors_key: Py<PyString>,
+    keys: InternedKeys,
 }
 
 #[pymethods]
@@ -54,12 +51,7 @@ impl JSONReader {
                 position: 0,
             }),
             status_pending,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -78,12 +70,7 @@ impl JSONReader {
                 position: 0,
             }),
             status_pending,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -93,13 +80,36 @@ impl JSONReader {
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(slf.py(), &mut state)
+    }
+
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        let batch = PyList::empty(py);
         
-        let py = slf.py();
+        for _ in 0..batch_size {
+            if let Some(item) = self.next_internal(py, &mut state)? {
+                batch.append(item)?;
+            } else {
+                break;
+            }
+        }
+
+        if batch.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
+        }
+    }
+}
+
+impl JSONReader {
+    fn next_internal<'py>(&self, py: Python<'py>, state: &mut JSONReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
         if let Some(ref mut ai) = state.array_iter {
             if let Some(val) = ai.next() {
                 let current_pos = state.position;
                 state.position += 1;
-                return Ok(Some(slf.wrap_in_envelope(py, val, current_pos)?));
+                return Ok(Some(self.wrap_in_envelope(py, val, current_pos)?));
             } else {
                 state.array_iter = None;
             }
@@ -113,14 +123,14 @@ impl JSONReader {
                         let current_pos = state.position;
                         state.position += 1;
                         state.array_iter = Some(ai);
-                        return Ok(Some(slf.wrap_in_envelope(py, val, current_pos)?));
+                        return Ok(Some(self.wrap_in_envelope(py, val, current_pos)?));
                     } else {
                         return Ok(None);
                     }
                 }
                 let current_pos = state.position;
                 state.position += 1;
-                Ok(Some(slf.wrap_in_envelope(py, value, current_pos)?))
+                Ok(Some(self.wrap_in_envelope(py, value, current_pos)?))
             }
             Some(Err(e)) => {
                 let pos = state.position + 1;
@@ -129,17 +139,14 @@ impl JSONReader {
             None => Ok(None),
         }
     }
-}
-
-impl JSONReader {
     fn wrap_in_envelope<'py>(&self, py: Python<'py>, value: Value, position: usize) -> PyResult<Bound<'py, PyAny>> {
         let envelope = PyDict::new(py);
-        envelope.set_item(self.id_key.bind(py), crate::utils::generate_entry_id(py)?)?;
-        envelope.set_item(self.status_key.bind(py), self.status_pending.bind(py))?;
-        envelope.set_item(self.raw_data_key.bind(py), serde_to_py(py, value)?)?;
-        envelope.set_item(self.metadata_key.bind(py), PyDict::new(py))?;
-        envelope.set_item(self.position_key.bind(py), position)?;
-        envelope.set_item(self.errors_key.bind(py), PyList::empty(py))?;
+        envelope.set_item(self.keys.get_id(py), crate::utils::generate_entry_id(py)?)?;
+        envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+        envelope.set_item(self.keys.get_raw_data(py), serde_to_py(py, value)?)?;
+        envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+        envelope.set_item(self.keys.get_position(py), position)?;
+        envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
         Ok(envelope.into_any())
     }
 }
@@ -234,33 +241,29 @@ impl JSONWriter {
         writer: &mut crate::io::BoxedWriter,
         is_first: &mut bool,
     ) -> PyResult<()> {
-        let wrapper = PySerializable(data);
-
-        let json_str = if let Some(indent_size) = self.indent {
-            let mut buf = Vec::new();
-            let indent_bytes = b" ".repeat(indent_size);
-            let formatter = serde_json::ser::PrettyFormatter::with_indent(&indent_bytes);
-            let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-            wrapper.serialize(&mut ser).map_err(wrap_py_err)?;
-            String::from_utf8(buf).map_err(wrap_py_err)?
-        } else {
-            serde_json::to_string(&wrapper).map_err(wrap_py_err)?
-        };
-
-        if self.format == "jsonl" {
-            writer.write_all(json_str.as_bytes()).map_err(wrap_py_err)?;
-            writer.write_all(b"\n").map_err(wrap_py_err)?;
-        } else {
-            if !*is_first {
-                writer.write_all(b",").map_err(wrap_py_err)?;
-                if self.indent.is_some() {
-                    writer.write_all(b"\n").map_err(wrap_py_err)?;
-                }
+        if !*is_first && self.format != "jsonl" {
+            writer.write_all(b",").map_err(wrap_py_err)?;
+            if self.indent.is_some() {
+                writer.write_all(b"\n").map_err(wrap_py_err)?;
             }
-            writer.write_all(json_str.as_bytes()).map_err(wrap_py_err)?;
-            *is_first = false;
         }
 
+        let wrapper = PySerializable(data);
+
+        if let Some(indent_size) = self.indent {
+            let indent_bytes = b" ".repeat(indent_size);
+            let formatter = serde_json::ser::PrettyFormatter::with_indent(&indent_bytes);
+            let mut ser = serde_json::Serializer::with_formatter(&mut *writer, formatter);
+            wrapper.serialize(&mut ser).map_err(wrap_py_err)?;
+        } else {
+            serde_json::to_writer(&mut *writer, &wrapper).map_err(wrap_py_err)?;
+        }
+
+        if self.format == "jsonl" {
+            writer.write_all(b"\n").map_err(wrap_py_err)?;
+        }
+        
+        *is_first = false;
         Ok(())
     }
 }

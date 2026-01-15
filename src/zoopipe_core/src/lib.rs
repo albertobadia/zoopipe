@@ -20,7 +20,7 @@ use crate::executor::{SingleThreadExecutor, MultiThreadExecutor};
 
 #[pyfunction]
 fn get_version() -> PyResult<String> {
-    Ok("2026.1.12".to_string())
+    Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
 #[pymodule]

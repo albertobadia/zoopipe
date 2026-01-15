@@ -4,8 +4,10 @@ use std::sync::{Mutex, OnceLock};
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use tokio::runtime::Runtime;
 use futures_util::StreamExt;
-use sqlx::{Row, Column, ValueRef, AnyPool, query, any::AnyPoolOptions, QueryBuilder, Any};
+use sqlx::{Row, Column, AnyPool, query, any::AnyPoolOptions, QueryBuilder, Any};
 use crate::error::PipeError;
+use crate::utils::interning::InternedKeys;
+
 
 fn init_drivers() {
     static INIT: OnceLock<()> = OnceLock::new();
@@ -40,9 +42,18 @@ fn ensure_parent_dir(uri: &str) {
         }
 }
 
+#[derive(Clone, Debug)]
+pub enum SQLValue {
+    String(String),
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Null,
+}
+
 enum SQLData {
     Metadata(Vec<String>),
-    Row(Vec<Option<String>>),
+    Row(Vec<SQLValue>),
     Error(String),
 }
 
@@ -55,12 +66,7 @@ pub struct SQLReader {
     position: Mutex<usize>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
-    id_key: Py<PyString>,
-    status_key: Py<PyString>,
-    raw_data_key: Py<PyString>,
-    metadata_key: Py<PyString>,
-    position_key: Py<PyString>,
-    errors_key: Py<PyString>,
+    keys: InternedKeys,
 }
 
 #[pymethods]
@@ -86,12 +92,7 @@ impl SQLReader {
             position: Mutex::new(0),
             status_pending,
             generate_ids,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -100,12 +101,36 @@ impl SQLReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        let mut receiver_opt = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(slf.py())
+    }
+
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let batch = PyList::empty(py);
+        
+        for _ in 0..batch_size {
+            if let Some(item) = self.next_internal(py)? {
+                batch.append(item)?;
+            } else {
+                break;
+            }
+        }
+
+        if batch.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
+        }
+    }
+}
+
+impl SQLReader {
+    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let mut receiver_opt = self.receiver.lock().map_err(|_| PipeError::MutexLock)?;
         
         if receiver_opt.is_none() {
             let (tx, rx) = crossbeam_channel::bounded(1000);
-            let uri = slf.uri.clone();
-            let query_str = slf.query.clone();
+            let uri = self.uri.clone();
+            let query_str = self.query.clone();
             
             std::thread::spawn(move || {
                 let rt = get_runtime();
@@ -143,35 +168,20 @@ impl SQLReader {
 
                         let mut record = Vec::with_capacity(row.columns().len());
                         for i in 0..row.columns().len() {
-                            let val_ref = match row.try_get_raw(i) {
-                                Ok(v) => v,
-                                Err(_) => {
-                                    record.push(None);
-                                    continue;
-                                }
+                            let val = match row.try_get::<String, usize>(i) {
+                                Ok(s) => SQLValue::String(s),
+                                Err(_) => match row.try_get::<i64, usize>(i) {
+                                    Ok(v) => SQLValue::Int(v),
+                                    Err(_) => match row.try_get::<f64, usize>(i) {
+                                        Ok(v) => SQLValue::Float(v),
+                                        Err(_) => match row.try_get::<bool, usize>(i) {
+                                            Ok(v) => SQLValue::Bool(v),
+                                            Err(_) => SQLValue::Null,
+                                        },
+                                    },
+                                },
                             };
-                            
-                            if val_ref.is_null() {
-                                record.push(None);
-                                continue;
-                            }
-
-                            let val: String = match row.try_get::<String, usize>(i) {
-                                Ok(s) => s,
-                                Err(_) => {
-                                    match row.try_get::<i64, usize>(i) {
-                                        Ok(v) => v.to_string(),
-                                        Err(_) => match row.try_get::<f64, usize>(i) {
-                                            Ok(v) => v.to_string(),
-                                            Err(_) => match row.try_get::<bool, usize>(i) {
-                                                Ok(v) => v.to_string(),
-                                                Err(_) => String::from(""),
-                                            }
-                                        }
-                                    }
-                                }
-                            };
-                            record.push(Some(val));
+                            record.push(val);
                         }
 
                         if tx.send(SQLData::Row(record)).is_err() {
@@ -185,24 +195,24 @@ impl SQLReader {
         }
 
         let rx = receiver_opt.as_ref()
-            .expect("Receiver should be initialized before reading rows");
+            .expect("Receiver should be initialized before reading rows").clone();
+        
+        drop(receiver_opt); // Explicitly drop it to avoid lock holding
         
         loop {
             match rx.recv() {
                 Ok(SQLData::Metadata(cols)) => {
-                    let py = slf.py();
                     let py_cols: Vec<Py<PyString>> = cols.into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    let mut column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
+                    let mut column_names_opt = self.column_names.lock().map_err(|_| PipeError::MutexLock)?;
                     *column_names_opt = Some(py_cols);
                 }
                 Ok(SQLData::Row(row_values)) => {
-                    let py = slf.py();
-                    let column_names_opt = slf.column_names.lock().map_err(|_| PipeError::MutexLock)?;
+                    let column_names_opt = self.column_names.lock().map_err(|_| PipeError::MutexLock)?;
                     let cols = column_names_opt.as_ref().expect("Column names should be received before rows");
                     
-                    let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
+                    let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
                     let current_pos = *pos;
                     *pos += 1;
                     
@@ -210,24 +220,27 @@ impl SQLReader {
                     for (i, value) in row_values.into_iter().enumerate() {
                         let col_name = cols[i].bind(py);
                         match value {
-                            Some(s) => raw_data.set_item(col_name, s)?,
-                            None => raw_data.set_item(col_name, py.None())?,
+                            SQLValue::String(s) => raw_data.set_item(col_name, s)?,
+                            SQLValue::Int(v) => raw_data.set_item(col_name, v)?,
+                            SQLValue::Float(v) => raw_data.set_item(col_name, v)?,
+                            SQLValue::Bool(v) => raw_data.set_item(col_name, v)?,
+                            SQLValue::Null => raw_data.set_item(col_name, py.None())?,
                         };
                     }
 
                     let envelope = PyDict::new(py);
-                    let id = if slf.generate_ids {
+                    let id = if self.generate_ids {
                         crate::utils::generate_entry_id(py)?
                     } else {
                         py.None().into_bound(py)
                     };
 
-                    envelope.set_item(slf.id_key.bind(py), id)?;
-                    envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
-                    envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
-                    envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
-                    envelope.set_item(slf.position_key.bind(py), current_pos)?;
-                    envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
+                    envelope.set_item(self.keys.get_id(py), id)?;
+                    envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+                    envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
+                    envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+                    envelope.set_item(self.keys.get_position(py), current_pos)?;
+                    envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
 
                     return Ok(Some(envelope.into_any()));
                 }
@@ -331,6 +344,14 @@ impl SQLWriter {
                         if let Some(val) = val_opt {
                             if val.is_none() {
                                 b.push_bind(None::<String>);
+                            } else if let Ok(s) = val.extract::<String>() {
+                                b.push_bind(s);
+                            } else if let Ok(i) = val.extract::<i64>() {
+                                b.push_bind(i);
+                            } else if let Ok(f) = val.extract::<f64>() {
+                                b.push_bind(f);
+                            } else if let Ok(bool_val) = val.extract::<bool>() {
+                                b.push_bind(bool_val);
                             } else {
                                 b.push_bind(val.to_string());
                             }

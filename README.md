@@ -66,6 +66,7 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 
 - [**CSV Adapters**](docs/csv.md) - High-performance CSV reading and writing
 - [**JSON Adapters**](docs/json.md) - JSONL and JSON array format support
+- [**Excel Adapters**](docs/excel.md) - Read and write Excel (.xlsx) files
 - [**Parquet Adapters**](docs/parquet.md) - Columnar storage for analytics and data lakes
 - [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for zero-copy interoperability
 

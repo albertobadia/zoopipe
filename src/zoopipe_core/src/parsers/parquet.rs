@@ -13,21 +13,22 @@ use crate::error::PipeError;
 use pyo3::types::{PyDict, PyList, PyString, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch, infer_type};
 
+struct ParquetReaderState {
+    reader: Box<dyn Iterator<Item = Result<RecordBatch, arrow::error::ArrowError>> + Send>,
+    current_batch: Option<(RecordBatch, usize)>,
+    position: usize,
+}
+
 #[pyclass]
 pub struct ParquetReader {
-    reader: Mutex<Box<dyn Iterator<Item = Result<RecordBatch, arrow::error::ArrowError>> + Send>>,
-    current_batch: Mutex<Option<(RecordBatch, usize)>>,
+    state: Mutex<ParquetReaderState>,
     headers: Vec<Py<PyString>>,
-    position: Mutex<usize>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
-    id_key: Py<PyString>,
-    status_key: Py<PyString>,
-    raw_data_key: Py<PyString>,
-    metadata_key: Py<PyString>,
-    position_key: Py<PyString>,
-    errors_key: Py<PyString>,
+    keys: InternedKeys,
 }
+
+use crate::utils::interning::InternedKeys;
 
 #[pymethods]
 impl ParquetReader {
@@ -61,18 +62,15 @@ impl ParquetReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(ParquetReader {
-            reader: Mutex::new(Box::new(reader)),
-            current_batch: Mutex::new(None),
+            state: Mutex::new(ParquetReaderState {
+                reader: Box::new(reader),
+                current_batch: None,
+                position: 0,
+            }),
             headers,
-            position: Mutex::new(0),
             status_pending,
             generate_ids,
-            id_key: pyo3::intern!(py, "id").clone().unbind(),
-            status_key: pyo3::intern!(py, "status").clone().unbind(),
-            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
-            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
-            position_key: pyo3::intern!(py, "position").clone().unbind(),
-            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
+            keys: InternedKeys::new(py),
         })
     }
 
@@ -82,25 +80,47 @@ impl ParquetReader {
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
-        let mut reader = slf.reader.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut current_opt = slf.current_batch.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut pos = slf.position.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(py, &mut state)
+    }
 
-        if current_opt.is_none() {
-            if let Some(batch_res) = reader.next() {
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        let batch = PyList::empty(py);
+        
+        for _ in 0..batch_size {
+            if let Some(item) = self.next_internal(py, &mut state)? {
+                batch.append(item)?;
+            } else {
+                break;
+            }
+        }
+
+        if batch.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
+        }
+    }
+}
+
+impl ParquetReader {
+    fn next_internal<'py>(&self, py: Python<'py>, state: &mut ParquetReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
+        if state.current_batch.is_none() {
+            if let Some(batch_res) = state.reader.next() {
                 let batch = batch_res.map_err(wrap_py_err)?;
-                *current_opt = Some((batch, 0));
+                state.current_batch = Some((batch, 0));
             } else {
                 return Ok(None);
             }
         }
 
-        if let Some((batch, row_idx)) = current_opt.as_mut() {
-            let current_pos = *pos;
-            *pos += 1;
+        if let Some((batch, row_idx)) = state.current_batch.as_mut() {
+            let current_pos = state.position;
+            state.position += 1;
 
             let raw_data = PyDict::new(py);
-            for (i, header) in slf.headers.iter().enumerate() {
+            for (i, header) in self.headers.iter().enumerate() {
                 let col = batch.column(i);
                 let val = arrow_to_py(py, col, *row_idx)?;
                 raw_data.set_item(header.bind(py), val)?;
@@ -108,22 +128,22 @@ impl ParquetReader {
 
             *row_idx += 1;
             if *row_idx >= batch.num_rows() {
-                *current_opt = None;
+                state.current_batch = None;
             }
 
             let envelope = PyDict::new(py);
-            let id = if slf.generate_ids {
+            let id = if self.generate_ids {
                 crate::utils::generate_entry_id(py)?
             } else {
                 py.None().into_bound(py)
             };
 
-            envelope.set_item(slf.id_key.bind(py), id)?;
-            envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
-            envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
-            envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
-            envelope.set_item(slf.position_key.bind(py), current_pos)?;
-            envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
+            envelope.set_item(self.keys.get_id(py), id)?;
+            envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+            envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
+            envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+            envelope.set_item(self.keys.get_position(py), current_pos)?;
+            envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
 
             Ok(Some(envelope.into_any()))
         } else {

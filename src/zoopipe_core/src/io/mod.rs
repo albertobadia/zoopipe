@@ -15,21 +15,27 @@ pub enum BoxedReader {
     Remote(RemoteReader),
 }
 
+use std::sync::OnceLock;
+
+pub fn get_runtime() -> &'static Runtime {
+    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        Runtime::new().expect("Failed to create Tokio runtime")
+    })
+}
+
 pub struct RemoteReader {
     store: Arc<dyn ObjectStore>,
     path: Path,
-    runtime: Arc<Runtime>,
     buffer: Vec<u8>,
     pos: u64,
 }
 
 impl RemoteReader {
     pub fn new(store: Arc<dyn ObjectStore>, path: Path) -> Self {
-        let runtime = Arc::new(Runtime::new().expect("Failed to create tokio runtime"));
         Self {
             store,
             path,
-            runtime,
             buffer: Vec::new(),
             pos: 0,
         }
@@ -39,7 +45,7 @@ impl RemoteReader {
         if self.buffer.is_empty() {
             let path = self.path.clone();
             let store = self.store.clone();
-            let bytes = self.runtime.block_on(async move {
+            let bytes = get_runtime().block_on(async move {
                 let res = store.get(&path).await.map_err(std::io::Error::other)?;
                 res.bytes().await.map_err(std::io::Error::other)
             })?;
@@ -133,7 +139,7 @@ impl Length for BoxedReader {
             BoxedReader::File(f) => f.get_ref().metadata().map(|m| m.len()).unwrap_or(0),
             BoxedReader::Cursor(c) => c.get_ref().len() as u64,
             BoxedReader::Remote(r) => {
-                let mut tmp = r.runtime.block_on(async {
+                let mut tmp = get_runtime().block_on(async {
                     r.store.head(&r.path).await.map(|m| m.size as u64).unwrap_or(0)
                 });
                 if tmp == 0 && !r.buffer.is_empty() {
@@ -162,7 +168,7 @@ impl ChunkReader for BoxedReader {
             BoxedReader::Remote(r) => {
                 let path = r.path.clone();
                 let store = r.store.clone();
-                let bytes = r.runtime.block_on(async move {
+                let bytes = get_runtime().block_on(async move {
                     store.get(&path).await.map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?
                         .bytes().await.map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))
                 })?;
@@ -188,7 +194,7 @@ impl ChunkReader for BoxedReader {
             BoxedReader::Remote(r) => {
                 let path = r.path.clone();
                 let store = r.store.clone();
-                let bytes = r.runtime.block_on(async move {
+                let bytes = get_runtime().block_on(async move {
                     let range = start as usize..(start as usize + length);
                     store.get_range(&path, range).await.map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))
                 })?;
@@ -225,17 +231,14 @@ pub enum BoxedWriter {
 pub struct RemoteWriter {
     store: Arc<dyn ObjectStore>,
     path: Path,
-    runtime: Arc<Runtime>,
     buffer: Vec<u8>,
 }
 
 impl RemoteWriter {
     pub fn new(store: Arc<dyn ObjectStore>, path: Path) -> Self {
-        let runtime = Arc::new(Runtime::new().expect("Failed to create tokio runtime"));
         Self {
             store,
             path,
-            runtime,
             buffer: Vec::new(),
         }
     }
@@ -251,7 +254,7 @@ impl Write for RemoteWriter {
         let path = self.path.clone();
         let store = self.store.clone();
         let buffer = std::mem::take(&mut self.buffer);
-        self.runtime.block_on(async move {
+        get_runtime().block_on(async move {
             store.put(&path, buffer.into()).await
                 .map_err(std::io::Error::other)
         })?;
