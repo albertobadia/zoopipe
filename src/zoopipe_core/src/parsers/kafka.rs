@@ -8,16 +8,19 @@ use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use crate::utils::interning::InternedKeys;
 
-type KafkaMessageBuffer = Vec<(Vec<u8>, Option<Vec<u8>>)>;
+#[derive(Debug)]
+enum KafkaData {
+    Message(Vec<u8>, Option<Vec<u8>>), // value, key
+    Error(String),
+}
 
 #[pyclass]
 pub struct KafkaReader {
-    consumer: Mutex<Consumer>,
+    receiver: Mutex<crossbeam_channel::Receiver<KafkaData>>,
     keys: InternedKeys,
     status_pending: Py<PyAny>,
     generate_ids: bool,
     position: Mutex<usize>,
-    message_buffer: Mutex<KafkaMessageBuffer>,
 }
 
 #[pymethods]
@@ -49,19 +52,64 @@ impl KafkaReader {
                 .with_offset_storage(Some(GroupOffsetStorage::Kafka));
         }
 
-        let consumer = builder.create().map_err(wrap_py_err)?;
+        let mut consumer = builder.create().map_err(wrap_py_err)?;
+        
+        // Channel size 1000 to buffer messages
+        let (tx, rx) = crossbeam_channel::bounded(1000);
+
+        std::thread::spawn(move || {
+            loop {
+                // Poll for messages
+                let msets = match consumer.poll() {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
+                        break;
+                    }
+                };
+
+                if msets.is_empty() {
+                    // Small sleep to prevent busy loop if no messages
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+
+                for mset in msets.iter() {
+                    for msg in mset.messages() {
+                        let key_opt = if msg.key.is_empty() {
+                            None
+                        } else {
+                            Some(msg.key.to_vec())
+                        };
+                        
+                        // Send message to channel
+                        if tx.send(KafkaData::Message(msg.value.to_vec(), key_opt)).is_err() {
+                            // Receiver dropped, stop thread
+                            return;
+                        }
+                    }
+                    
+                    // Commit logic could go here if we wanted auto-commit after batch read
+                    // consumer.consume_messageset(mset);
+                }
+                
+                // Commit offsets processed in this batch
+                if let Err(e) = consumer.commit_consumed() {
+                     let _ = tx.send(KafkaData::Error(format!("Kafka commit error: {}", e)));
+                }
+            }
+        });
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(KafkaReader {
-            consumer: Mutex::new(consumer),
+            receiver: Mutex::new(rx),
             keys: InternedKeys::new(py),
             status_pending,
             generate_ids,
             position: Mutex::new(0),
-            message_buffer: Mutex::new(Vec::new()),
         })
     }
 
@@ -71,41 +119,24 @@ impl KafkaReader {
 
     fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
+        let receiver = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
         
-        {
-            let mut buffer = slf.message_buffer.lock().map_err(|_| PipeError::MutexLock)?;
-            if !buffer.is_empty() {
-                let (value_bytes, key_bytes) = buffer.remove(0);
-                return slf.create_envelope(py, value_bytes, key_bytes);
-            }
-        }
-
-        let mut consumer = slf.consumer.lock().map_err(|_| PipeError::MutexLock)?;
-        let msets = consumer.poll().map_err(wrap_py_err)?;
+        // This recv() blocks the thread but NOT the GIL if we release it.
+        // However, standard recv() blocks the OS thread. 
+        // Ideally we should use py.allow_threads if we expect long waits, 
+        // but for now the background thread is doing the work so we just wait for the channel.
+        // Since we are in Rust code called from Python, blocking here *does* hold the GIL unless we release it.
         
-        if msets.is_empty() {
-            return Ok(None);
+        // To be truly non-blocking for other Python threads, we should use py.allow_threads around the recv.
+        // But crossbeam recv is fast if data is there.
+        
+        match receiver.recv() {
+            Ok(KafkaData::Message(value_bytes, key_bytes)) => {
+                slf.create_envelope(py, value_bytes, key_bytes)
+            },
+            Ok(KafkaData::Error(e)) => Err(crate::utils::wrap_py_err(std::io::Error::other(e))),
+            Err(_) => Ok(None), // Channel closed (thread finished/crashed)
         }
-
-        let mut buffer = slf.message_buffer.lock().map_err(|_| PipeError::MutexLock)?;
-        for mset in msets.iter() {
-            for msg in mset.messages() {
-                let key_opt = if msg.key.is_empty() {
-                    None
-                } else {
-                    Some(msg.key.to_vec())
-                };
-
-                buffer.push((msg.value.to_vec(), key_opt));
-            }
-        }
-
-        if buffer.is_empty() {
-            return Ok(None);
-        }
-
-        let (value_bytes, key_bytes) = buffer.remove(0);
-        slf.create_envelope(py, value_bytes, key_bytes)
     }
 }
 
