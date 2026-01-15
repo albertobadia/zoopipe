@@ -7,6 +7,7 @@ pub mod pygen;
 pub mod parquet;
 pub mod arrow_utils;
 pub mod excel;
+pub mod kafka;
 
 
 pub use csv::{CSVReader, CSVWriter};
@@ -16,5 +17,6 @@ pub use arrow::{ArrowReader, ArrowWriter};
 pub use parquet::{ParquetReader, ParquetWriter};
 pub use pygen::{PyGeneratorReader, PyGeneratorWriter};
 pub use excel::{ExcelReader, ExcelWriter};
+pub use kafka::{KafkaReader, KafkaWriter};
 
 

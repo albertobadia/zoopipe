@@ -197,7 +197,7 @@ impl SQLReader {
         let rx = receiver_opt.as_ref()
             .expect("Receiver should be initialized before reading rows").clone();
         
-        drop(receiver_opt); // Explicitly drop it to avoid lock holding
+        drop(receiver_opt);
         
         loop {
             match rx.recv() {

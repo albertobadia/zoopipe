@@ -75,6 +75,10 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 - [**SQL Adapters**](docs/sql.md) - Read from and write to SQL databases with batch optimization
 - [**DuckDB Adapters**](docs/duckdb.md) - Analytical database for OLAP workloads
 
+#### Messaging Systems
+
+- [**Kafka Adapters**](docs/kafka.md) - High-throughput messaging with zero-copy
+
 #### Advanced
 
 - [**Python Generator Adapters**](docs/pygen.md) - In-memory streaming and testing

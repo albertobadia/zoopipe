@@ -15,6 +15,7 @@ use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::parquet::{ParquetReader, ParquetWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
+use crate::parsers::kafka::{KafkaReader, KafkaWriter};
 use crate::pipeline::NativePipe;
 use crate::executor::{SingleThreadExecutor, MultiThreadExecutor};
 
@@ -41,6 +42,8 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ParquetWriter>()?;
     m.add_class::<PyGeneratorReader>()?;
     m.add_class::<PyGeneratorWriter>()?;
+    m.add_class::<KafkaReader>()?;
+    m.add_class::<KafkaWriter>()?;
 
 
     m.add_class::<NativePipe>()?;

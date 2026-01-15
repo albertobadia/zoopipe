@@ -145,12 +145,7 @@ impl DuckDBReader {
 
         let rx = state.receiver.as_ref()
             .expect("Receiver should be initialized before reading rows").clone();
-        
-        // Drop state lock before potentially blocking on recv if it's high latency, 
-        // but here we are holding &mut state so we can't easily drop it and keep using it.
-        // Actually, for DuckDB we use a channel, so recv() might block.
-        // But since we are in a Mutex, we have to hold it or drop it.
-        
+
         loop {
             match rx.recv() {
                 Ok(DuckDBData::Metadata(cols)) => {

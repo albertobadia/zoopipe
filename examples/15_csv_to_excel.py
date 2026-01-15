@@ -17,7 +17,6 @@ class UserSchema(BaseModel):
 
 
 def main():
-    # Create a small sample CSV for the example
     input_csv = "examples/sample_data/demo_users.csv"
     with open(input_csv, "w") as f:
         f.write("user_id,username,email\n")
