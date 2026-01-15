@@ -1,15 +1,7 @@
 import time
 
-from pydantic import BaseModel, ConfigDict
-
+from examples.schemas import UserSchema
 from zoopipe import CSVInputAdapter, ParquetOutputAdapter, Pipe
-
-
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    user_id: str
-    username: str
-    email: str
 
 
 def main():

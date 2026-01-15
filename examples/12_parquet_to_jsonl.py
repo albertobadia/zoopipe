@@ -1,23 +1,13 @@
 import time
 
-from pydantic import BaseModel, ConfigDict
-
-from zoopipe import JSONOutputAdapter, ParquetInputAdapter, Pipe
-
-
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    user_id: str
-    username: str
-    email: str
+from examples.schemas import UserSchema
+from zoopipe import CSVOutputAdapter, ParquetInputAdapter, Pipe
 
 
 def main():
     pipe = Pipe(
         input_adapter=ParquetInputAdapter("examples/output_data/users_data.parquet"),
-        output_adapter=JSONOutputAdapter(
-            "examples/output_data/users_data.jsonl", format="jsonl"
-        ),
+        output_adapter=CSVOutputAdapter("examples/output_data/users_data.csv"),
         schema_model=UserSchema,
     )
 

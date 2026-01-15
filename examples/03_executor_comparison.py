@@ -1,8 +1,6 @@
 import time
-import uuid
 
-from pydantic import BaseModel, ConfigDict
-
+from examples.schemas import UserSchema
 from zoopipe import (
     CSVInputAdapter,
     CSVOutputAdapter,
@@ -11,13 +9,6 @@ from zoopipe import (
     Pipe,
     SingleThreadExecutor,
 )
-
-
-class UserSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    user_id: uuid.UUID
-    username: str
-    email: str
 
 
 def run_with_executor(executor):
