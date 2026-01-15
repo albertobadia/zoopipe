@@ -21,13 +21,19 @@ pub struct ParquetReader {
     position: Mutex<usize>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
+    id_key: Py<PyString>,
+    status_key: Py<PyString>,
+    raw_data_key: Py<PyString>,
+    metadata_key: Py<PyString>,
+    position_key: Py<PyString>,
+    errors_key: Py<PyString>,
 }
 
 #[pymethods]
 impl ParquetReader {
     #[new]
-    #[pyo3(signature = (path, generate_ids=true))]
-    fn new(py: Python<'_>, path: String, generate_ids: bool) -> PyResult<Self> {
+    #[pyo3(signature = (path, generate_ids=true, batch_size=1024))]
+    fn new(py: Python<'_>, path: String, generate_ids: bool, batch_size: usize) -> PyResult<Self> {
         use crate::io::storage::StorageController;
         use object_store::path::Path as ObjectPath;
         use crate::io::{BoxedReader, RemoteReader};
@@ -42,7 +48,7 @@ impl ParquetReader {
         };
 
         let builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
-        let reader = builder.build().map_err(wrap_py_err)?;
+        let reader = builder.with_batch_size(batch_size).build().map_err(wrap_py_err)?;
         
         let schema = reader.schema();
         let headers: Vec<Py<PyString>> = schema.fields()
@@ -61,6 +67,12 @@ impl ParquetReader {
             position: Mutex::new(0),
             status_pending,
             generate_ids,
+            id_key: pyo3::intern!(py, "id").clone().unbind(),
+            status_key: pyo3::intern!(py, "status").clone().unbind(),
+            raw_data_key: pyo3::intern!(py, "raw_data").clone().unbind(),
+            metadata_key: pyo3::intern!(py, "metadata").clone().unbind(),
+            position_key: pyo3::intern!(py, "position").clone().unbind(),
+            errors_key: pyo3::intern!(py, "errors").clone().unbind(),
         })
     }
 
@@ -101,24 +113,17 @@ impl ParquetReader {
 
             let envelope = PyDict::new(py);
             let id = if slf.generate_ids {
-                uuid::Uuid::new_v4().to_string()
+                current_pos.into_pyobject(py)?.into_any()
             } else {
-                String::new()
+                py.None().into_bound(py)
             };
 
-            let id_key = pyo3::intern!(py, "id");
-            let status_key = pyo3::intern!(py, "status");
-            let raw_data_key = pyo3::intern!(py, "raw_data");
-            let metadata_key = pyo3::intern!(py, "metadata");
-            let position_key = pyo3::intern!(py, "position");
-            let errors_key = pyo3::intern!(py, "errors");
-
-            envelope.set_item(id_key, id)?;
-            envelope.set_item(status_key, slf.status_pending.bind(py))?;
-            envelope.set_item(raw_data_key, raw_data)?;
-            envelope.set_item(metadata_key, PyDict::new(py))?;
-            envelope.set_item(position_key, current_pos)?;
-            envelope.set_item(errors_key, PyList::empty(py))?;
+            envelope.set_item(slf.id_key.bind(py), id)?;
+            envelope.set_item(slf.status_key.bind(py), slf.status_pending.bind(py))?;
+            envelope.set_item(slf.raw_data_key.bind(py), raw_data)?;
+            envelope.set_item(slf.metadata_key.bind(py), PyDict::new(py))?;
+            envelope.set_item(slf.position_key.bind(py), current_pos)?;
+            envelope.set_item(slf.errors_key.bind(py), PyList::empty(py))?;
 
             Ok(Some(envelope.into_any()))
         } else {
@@ -182,7 +187,7 @@ impl ParquetWriter {
             };
             
             let props = WriterProperties::builder()
-                .set_max_row_group_size(100_000)
+                .set_max_row_group_size(8_192)
                 .build();
 
             *writer_guard = Some(ArrowWriter::try_new(boxed_writer, schema.clone(), Some(props)).map_err(wrap_py_err)?);

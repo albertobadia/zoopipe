@@ -23,6 +23,28 @@ pub enum PipeReader {
     PyGen(Py<PyGeneratorReader>),
 }
 
+impl PipeReader {
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        match self {
+            PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::Arrow(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            _ => Ok(None),
+        }
+    }
+    
+    pub fn next<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        match self {
+            PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
+            PipeReader::JSON(r) => JSONReader::__next__(r.bind(py).borrow()),
+            PipeReader::DuckDB(r) => DuckDBReader::__next__(r.bind(py).borrow()),
+            PipeReader::Arrow(r) => ArrowReader::__next__(r.bind(py).borrow()),
+            PipeReader::SQL(r) => SQLReader::__next__(r.bind(py).borrow()),
+            PipeReader::Parquet(r) => ParquetReader::__next__(r.bind(py).borrow()),
+            PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
+        }
+    }
+}
+
 #[derive(FromPyObject)]
 pub enum PipeWriter {
     CSV(Py<CSVWriter>),
@@ -32,6 +54,32 @@ pub enum PipeWriter {
     SQL(Py<SQLWriter>),
     Parquet(Py<ParquetWriter>),
     PyGen(Py<PyGeneratorWriter>),
+}
+
+impl PipeWriter {
+    pub fn write_batch(&self, py: Python, entries: Bound<PyAny>) -> PyResult<()> {
+        match self {
+            PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, entries),
+        }
+    }
+    
+    pub fn close(&self, py: Python) -> PyResult<()> {
+        match self {
+            PipeWriter::CSV(w) => w.bind(py).borrow().close(),
+            PipeWriter::JSON(w) => w.bind(py).borrow().close(),
+            PipeWriter::DuckDB(w) => w.bind(py).borrow().close(),
+            PipeWriter::Arrow(w) => w.bind(py).borrow().close(),
+            PipeWriter::SQL(w) => w.bind(py).borrow().close(),
+            PipeWriter::Parquet(w) => w.bind(py).borrow().close(),
+            PipeWriter::PyGen(w) => w.bind(py).borrow().close(),
+        }
+    }
 }
 
 #[derive(FromPyObject)]
@@ -140,17 +188,14 @@ impl NativePipe {
         let mut batch_entries = Vec::with_capacity(batch_size);
         
         loop {
-            let next_item = match &self.reader {
-                PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
-                PipeReader::JSON(r) => JSONReader::__next__(r.bind(py).borrow()),
-                PipeReader::DuckDB(r) => DuckDBReader::__next__(r.bind(py).borrow()),
-                PipeReader::Arrow(r) => ArrowReader::__next__(r.bind(py).borrow()),
-                PipeReader::SQL(r) => SQLReader::__next__(r.bind(py).borrow()),
-                PipeReader::Parquet(r) => ParquetReader::__next__(r.bind(py).borrow()),
-                PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
-            }?;
+            if let Some(batch) = self.reader.read_batch(py, batch_size)? {
+                let processed_entries = self.batch_processor.bind(py).call1((batch,))?;
+                let processed_list = processed_entries.cast::<PyList>()?;
+                self.handle_processed_entries(py, processed_list, report)?;
+                continue;
+            }
 
-            match next_item {
+            match self.reader.next(py)? {
                 Some(entry) => {
                     batch_entries.push(entry);
                     if batch_entries.len() >= batch_size {
@@ -169,26 +214,9 @@ impl NativePipe {
         self.sync_report(py, report)?;
         report.call_method0("_mark_completed")?;
 
-        match &self.writer {
-            PipeWriter::CSV(w) => w.bind(py).borrow().close()?,
-            PipeWriter::JSON(w) => w.bind(py).borrow().close()?,
-            PipeWriter::DuckDB(w) => w.bind(py).borrow().close()?,
-            PipeWriter::Arrow(w) => w.bind(py).borrow().close()?,
-            PipeWriter::SQL(w) => w.bind(py).borrow().close()?,
-            PipeWriter::Parquet(w) => w.bind(py).borrow().close()?,
-            PipeWriter::PyGen(w) => w.bind(py).borrow().close()?,
-        }
-
+        self.writer.close(py)?;
         if let Some(ref ew) = self.error_writer {
-            match ew {
-                PipeWriter::CSV(w) => w.bind(py).borrow().close()?,
-                PipeWriter::JSON(w) => w.bind(py).borrow().close()?,
-                PipeWriter::DuckDB(w) => w.bind(py).borrow().close()?,
-                PipeWriter::Arrow(w) => w.bind(py).borrow().close()?,
-                PipeWriter::SQL(w) => w.bind(py).borrow().close()?,
-                PipeWriter::Parquet(w) => w.bind(py).borrow().close()?,
-                PipeWriter::PyGen(w) => w.bind(py).borrow().close()?,
-            }
+            ew.close(py)?;
         }
 
         Ok(())
@@ -203,10 +231,18 @@ impl NativePipe {
         report: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let py_list = PyList::new(py, batch.iter())?;
-        
         let processed_entries = self.batch_processor.bind(py).call1((py_list,))?;
         let processed_list = processed_entries.cast::<PyList>()?;
+        self.handle_processed_entries(py, processed_list, report)?;
+        Ok(())
+    }
 
+    fn handle_processed_entries(
+        &self,
+        py: Python<'_>,
+        processed_list: &Bound<'_, PyList>,
+        report: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
         let mut success_data = Vec::with_capacity(processed_list.len());
         let mut error_list = Vec::new();
 

@@ -152,6 +152,19 @@ This example demonstrates:
 - Type preservation from Parquet schema
 - High-performance reading with zero-copy optimizations
 
+### 13_pipemanager.py
+Run multiple pipes in parallel using PipeManager.
+
+```bash
+uv run python examples/13_pipemanager.py
+```
+
+This example demonstrates:
+- Using `PipeManager` to orchestrate multiple pipes concurrently
+- Running multiple pipes in separate processes for true parallelism
+- Aggregated reporting across all pipes
+- Efficient resource utilization for batch processing workflows
+
 ## Sample Data
 
 The `sample_data/` directory contains example CSV and JSONL files for testing.
@@ -160,4 +173,4 @@ The `output_data/` directory will contain the processed results.
 ## Directory Structure
 - `sample_data/`: Contains input files for the examples.
 - `output_data/`: Where processed results are saved.
-- `models.py`: Shared Pydantic models.
+- `schemas.py`: Shared Pydantic models.

@@ -98,9 +98,9 @@ impl ArrowReader {
 
             let envelope = PyDict::new(py);
             let id = if slf.generate_ids {
-                uuid::Uuid::new_v4().to_string()
+                current_pos.into_pyobject(py)?.into_any()
             } else {
-                String::new()
+                py.None().into_bound(py)
             };
 
             let id_key = pyo3::intern!(py, "id");
@@ -108,19 +108,77 @@ impl ArrowReader {
             let raw_data_key = pyo3::intern!(py, "raw_data");
             let metadata_key = pyo3::intern!(py, "metadata");
             let position_key = pyo3::intern!(py, "position");
-            let errors_key = pyo3::intern!(py, "errors");
 
             envelope.set_item(id_key, id)?;
             envelope.set_item(status_key, slf.status_pending.bind(py))?;
             envelope.set_item(raw_data_key, raw_data)?;
             envelope.set_item(metadata_key, PyDict::new(py))?;
             envelope.set_item(position_key, current_pos)?;
-            envelope.set_item(errors_key, PyList::empty(py))?;
+            envelope.set_item(pyo3::intern!(py, "errors"), PyList::empty(py))?;
 
             Ok(Some(envelope.into_any()))
         } else {
             Ok(None)
         }
+    }
+
+    pub fn read_batch<'py>(&self, py: Python<'py>, _batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut reader = self.reader.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut current_opt = self.current_batch.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
+
+        let batch = if let Some((b, idx)) = current_opt.take() {
+            if idx == 0 {
+                b
+            } else {
+                b.slice(idx, b.num_rows() - idx)
+            }
+        } else {
+            match reader.next() {
+                Some(batch_res) => batch_res.map_err(wrap_py_err)?,
+                None => return Ok(None),
+            }
+        };
+
+        let num_rows = batch.num_rows();
+        let py_list = PyList::empty(py);
+
+        let id_key = pyo3::intern!(py, "id");
+        let status_key = pyo3::intern!(py, "status");
+        let raw_data_key = pyo3::intern!(py, "raw_data");
+        let metadata_key = pyo3::intern!(py, "metadata");
+        let position_key = pyo3::intern!(py, "position");
+        let errors_key = pyo3::intern!(py, "errors");
+
+        for row_idx in 0..num_rows {
+            let current_pos = *pos;
+            *pos += 1;
+
+            let raw_data = PyDict::new(py);
+            for (i, header) in self.headers.iter().enumerate() {
+                let col = batch.column(i);
+                let val = arrow_to_py(py, col, row_idx)?;
+                raw_data.set_item(header.bind(py), val)?;
+            }
+
+            let envelope = PyDict::new(py);
+            let id = if self.generate_ids {
+                current_pos.into_pyobject(py)?.into_any()
+            } else {
+                py.None().into_bound(py)
+            };
+
+            envelope.set_item(id_key, id)?;
+            envelope.set_item(status_key, self.status_pending.bind(py))?;
+            envelope.set_item(raw_data_key, raw_data)?;
+            envelope.set_item(metadata_key, PyDict::new(py))?;
+            envelope.set_item(position_key, current_pos)?;
+            envelope.set_item(errors_key, PyList::empty(py))?;
+
+            py_list.append(envelope)?;
+        }
+
+        Ok(Some(py_list))
     }
 }
 

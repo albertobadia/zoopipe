@@ -14,8 +14,6 @@ from zoopipe.output_adapter.json import JSONOutputAdapter
 from zoopipe.output_adapter.parquet import ParquetOutputAdapter
 from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
 from zoopipe.output_adapter.sql import SQLOutputAdapter
-from zoopipe.pipe import Pipe, PipeConfig
-from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import (
     EntryStatus,
     EntryTypedDict,
@@ -25,35 +23,32 @@ from zoopipe.report import (
 )
 from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 
-__all__ = [
-    "Pipe",
-    "PipeManager",
-    "PipeConfig",
-    "FlowReport",
-    "FlowStatus",
-    "BaseHook",
-    "HookStore",
-    "EntryStatus",
-    "EntryTypedDict",
-    "get_logger",
-    "SingleThreadExecutor",
-    "MultiThreadExecutor",
-    "InputAdapterProtocol",
-    "OutputAdapterProtocol",
-    # Input Adapters
-    "ArrowInputAdapter",
-    "CSVInputAdapter",
-    "DuckDBInputAdapter",
-    "JSONInputAdapter",
-    "PyGeneratorInputAdapter",
-    "SQLInputAdapter",
-    "ParquetInputAdapter",
-    # Output Adapters
-    "ArrowOutputAdapter",
-    "CSVOutputAdapter",
-    "DuckDBOutputAdapter",
-    "JSONOutputAdapter",
-    "PyGeneratorOutputAdapter",
-    "SQLOutputAdapter",
-    "ParquetOutputAdapter",
-]
+NAMES_TO_PYTYPE = {
+    "ArrowInputAdapter": ArrowInputAdapter,
+    "CSVInputAdapter": CSVInputAdapter,
+    "DuckDBInputAdapter": DuckDBInputAdapter,
+    "JSONInputAdapter": JSONInputAdapter,
+    "PyGeneratorInputAdapter": PyGeneratorInputAdapter,
+    "SQLInputAdapter": SQLInputAdapter,
+    "ParquetInputAdapter": ParquetInputAdapter,
+    "ArrowOutputAdapter": ArrowOutputAdapter,
+    "CSVOutputAdapter": CSVOutputAdapter,
+    "DuckDBOutputAdapter": DuckDBOutputAdapter,
+    "JSONOutputAdapter": JSONOutputAdapter,
+    "PyGeneratorOutputAdapter": PyGeneratorOutputAdapter,
+    "SQLOutputAdapter": SQLOutputAdapter,
+    "ParquetOutputAdapter": ParquetOutputAdapter,
+    "PipeManager": PipeManager,
+    "FlowReport": FlowReport,
+    "FlowStatus": FlowStatus,
+    "BaseHook": BaseHook,
+    "HookStore": HookStore,
+    "EntryStatus": EntryStatus,
+    "EntryTypedDict": EntryTypedDict,
+    "get_logger": get_logger,
+    "SingleThreadExecutor": SingleThreadExecutor,
+    "MultiThreadExecutor": MultiThreadExecutor,
+}
+
+
+__all__ = [NAMES_TO_PYTYPE]

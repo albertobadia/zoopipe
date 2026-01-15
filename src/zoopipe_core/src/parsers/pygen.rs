@@ -60,9 +60,9 @@ impl PyGeneratorReader {
                 let envelope = PyDict::new(py);
                 
                 let id = if slf.generate_ids {
-                    uuid::Uuid::new_v4().to_string()
+                    current_pos.into_pyobject(py)?.into_any()
                 } else {
-                    String::new()
+                    py.None().into_bound(py)
                 };
 
                 envelope.set_item(pyo3::intern!(py, "id"), id)?;

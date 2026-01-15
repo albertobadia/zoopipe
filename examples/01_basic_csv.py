@@ -1,6 +1,5 @@
 import datetime
 import time
-import uuid
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,7 +15,7 @@ class TimeStampHook(BaseHook):
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    user_id: uuid.UUID
+    user_id: str
     username: str
     email: str
 
