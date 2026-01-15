@@ -177,6 +177,60 @@ impl CSVReader {
             Err(e) => Err(wrap_py_err(e)),
         }
     }
+
+    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        
+        let batch = PyList::empty(py);
+        let mut count = 0;
+        let mut record = StringRecord::new();
+
+        let id_key = pyo3::intern!(py, "id");
+        let status_key = pyo3::intern!(py, "status");
+        let raw_data_key = pyo3::intern!(py, "raw_data");
+        let metadata_key = pyo3::intern!(py, "metadata");
+        let position_key = pyo3::intern!(py, "position");
+        let errors_key = pyo3::intern!(py, "errors");
+
+        while count < batch_size {
+            match state.reader.read_record(&mut record) {
+                Ok(true) => {
+                    let current_pos = state.position;
+                    state.position += 1;
+                    
+                    let raw_data = PyDict::new(py);
+                    for (header_py, value) in self.headers.iter().zip(record.iter()) {
+                        raw_data.set_item(header_py.bind(py), value)?;
+                    }
+                    
+                    let envelope = PyDict::new(py);
+                    let id = if self.generate_ids {
+                        current_pos.into_pyobject(py)?.into_any()
+                    } else {
+                        py.None().into_bound(py)
+                    };
+
+                    envelope.set_item(id_key, id)?;
+                    envelope.set_item(status_key, self.status_pending.bind(py))?;
+                    envelope.set_item(raw_data_key, raw_data)?;
+                    envelope.set_item(metadata_key, PyDict::new(py))?;
+                    envelope.set_item(position_key, current_pos)?;
+                    envelope.set_item(errors_key, PyList::empty(py))?;
+
+                    batch.append(envelope)?;
+                    count += 1;
+                }
+                Ok(false) => break,
+                Err(e) => return Err(wrap_py_err(e)),
+            }
+        }
+
+        if count == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(batch))
+    }
 }
 
 struct CSVWriterState {

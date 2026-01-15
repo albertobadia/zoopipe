@@ -140,6 +140,19 @@ impl NativePipe {
         let mut batch_entries = Vec::with_capacity(batch_size);
         
         loop {
+            let batch_opt = match &self.reader {
+                PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size)?,
+                PipeReader::Arrow(r) => r.bind(py).borrow().read_batch(py, batch_size)?,
+                _ => None,
+            };
+
+            if let Some(batch) = batch_opt {
+                let processed_entries = self.batch_processor.bind(py).call1((batch,))?;
+                let processed_list = processed_entries.cast::<PyList>()?;
+                self.handle_processed_entries(py, processed_list, report)?;
+                continue;
+            }
+
             let next_item = match &self.reader {
                 PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
                 PipeReader::JSON(r) => JSONReader::__next__(r.bind(py).borrow()),
@@ -203,10 +216,18 @@ impl NativePipe {
         report: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let py_list = PyList::new(py, batch.iter())?;
-        
         let processed_entries = self.batch_processor.bind(py).call1((py_list,))?;
         let processed_list = processed_entries.cast::<PyList>()?;
+        self.handle_processed_entries(py, processed_list, report)?;
+        Ok(())
+    }
 
+    fn handle_processed_entries(
+        &self,
+        py: Python<'_>,
+        processed_list: &Bound<'_, PyList>,
+        report: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
         let mut success_data = Vec::with_capacity(processed_list.len());
         let mut error_list = Vec::new();
 
