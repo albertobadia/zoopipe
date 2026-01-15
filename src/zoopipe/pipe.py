@@ -143,7 +143,7 @@ class Pipe:
         self._thread = threading.Thread(
             target=self._run_native,
             args=(native_pipe,),
-            daemon=True,
+            daemon=False,
         )
         self._thread.start()
 
@@ -168,8 +168,14 @@ class Pipe:
             for hook in self.post_validation_hooks:
                 hook.teardown(self._store)
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout: float = 5.0) -> None:
         self._report.abort()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=timeout)
+            if self._thread.is_alive():
+                self.logger.warning(
+                    "Pipeline thread did not finish cleanly within timeout"
+                )
 
     def wait(self, timeout: float | None = None) -> bool:
         return self._report.wait(timeout)
@@ -181,6 +187,13 @@ class Pipe:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if not self._report.is_finished:
             self.shutdown()
+        
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=10.0)
+            if self._thread.is_alive():
+                self.logger.warning(
+                    "Pipeline thread still running after context exit"
+                )
 
     def __repr__(self) -> str:
         return f"<Pipe input={self.input_adapter} output={self.output_adapter}>"
