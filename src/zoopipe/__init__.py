@@ -2,6 +2,7 @@ from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.input_adapter.arrow import ArrowInputAdapter
 from zoopipe.input_adapter.csv import CSVInputAdapter
 from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
+from zoopipe.input_adapter.excel import ExcelInputAdapter
 from zoopipe.input_adapter.json import JSONInputAdapter
 from zoopipe.input_adapter.parquet import ParquetInputAdapter
 from zoopipe.input_adapter.pygen import PyGeneratorInputAdapter
@@ -10,6 +11,7 @@ from zoopipe.manager import PipeManager
 from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 from zoopipe.output_adapter.csv import CSVOutputAdapter
 from zoopipe.output_adapter.duckdb import DuckDBOutputAdapter
+from zoopipe.output_adapter.excel import ExcelOutputAdapter
 from zoopipe.output_adapter.json import JSONOutputAdapter
 from zoopipe.output_adapter.parquet import ParquetOutputAdapter
 from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
@@ -44,6 +46,7 @@ __all__ = [
     "ArrowInputAdapter",
     "CSVInputAdapter",
     "DuckDBInputAdapter",
+    "ExcelInputAdapter",
     "JSONInputAdapter",
     "PyGeneratorInputAdapter",
     "SQLInputAdapter",
@@ -52,6 +55,7 @@ __all__ = [
     "ArrowOutputAdapter",
     "CSVOutputAdapter",
     "DuckDBOutputAdapter",
+    "ExcelOutputAdapter",
     "JSONOutputAdapter",
     "PyGeneratorOutputAdapter",
     "SQLOutputAdapter",

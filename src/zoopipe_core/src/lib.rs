@@ -14,6 +14,7 @@ use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::parquet::{ParquetReader, ParquetWriter};
+use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use crate::pipeline::NativePipe;
 use crate::executor::{SingleThreadExecutor, MultiThreadExecutor};
 
@@ -29,11 +30,13 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DuckDBReader>()?;
     m.add_class::<ArrowReader>()?;
     m.add_class::<SQLReader>()?;
+    m.add_class::<ExcelReader>()?;
     m.add_class::<CSVWriter>()?;
     m.add_class::<JSONWriter>()?;
     m.add_class::<DuckDBWriter>()?;
     m.add_class::<ArrowWriter>()?;
     m.add_class::<SQLWriter>()?;
+    m.add_class::<ExcelWriter>()?;
     m.add_class::<ParquetReader>()?;
     m.add_class::<ParquetWriter>()?;
     m.add_class::<PyGeneratorReader>()?;

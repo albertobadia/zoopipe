@@ -9,6 +9,7 @@ use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::parquet::{ParquetReader, ParquetWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
+use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
@@ -21,6 +22,7 @@ pub enum PipeReader {
     SQL(Py<SQLReader>),
     Parquet(Py<ParquetReader>),
     PyGen(Py<PyGeneratorReader>),
+    Excel(Py<ExcelReader>),
 }
 
 impl PipeReader {
@@ -28,6 +30,7 @@ impl PipeReader {
         match self {
             PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Arrow(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::Excel(r) => r.bind(py).borrow().read_batch(py, batch_size),
             _ => Ok(None),
         }
     }
@@ -41,6 +44,7 @@ impl PipeReader {
             PipeReader::SQL(r) => SQLReader::__next__(r.bind(py).borrow()),
             PipeReader::Parquet(r) => ParquetReader::__next__(r.bind(py).borrow()),
             PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
+            PipeReader::Excel(r) => ExcelReader::__next__(r.bind(py).borrow()),
         }
     }
 }
@@ -54,6 +58,7 @@ pub enum PipeWriter {
     SQL(Py<SQLWriter>),
     Parquet(Py<ParquetWriter>),
     PyGen(Py<PyGeneratorWriter>),
+    Excel(Py<ExcelWriter>),
 }
 
 impl PipeWriter {
@@ -66,6 +71,7 @@ impl PipeWriter {
             PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, entries),
         }
     }
     
@@ -78,6 +84,7 @@ impl PipeWriter {
             PipeWriter::SQL(w) => w.bind(py).borrow().close(),
             PipeWriter::Parquet(w) => w.bind(py).borrow().close(),
             PipeWriter::PyGen(w) => w.bind(py).borrow().close(),
+            PipeWriter::Excel(w) => w.bind(py).borrow().close(),
         }
     }
 }
@@ -276,6 +283,7 @@ impl NativePipe {
                 PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 
@@ -289,6 +297,7 @@ impl NativePipe {
                 PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
                 PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
+                PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, data_list.into_any())?,
             }
         }
 

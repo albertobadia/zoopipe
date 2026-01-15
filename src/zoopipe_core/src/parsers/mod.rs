@@ -6,6 +6,7 @@ pub mod arrow;
 pub mod pygen;
 pub mod parquet;
 pub mod arrow_utils;
+pub mod excel;
 
 
 pub use csv::{CSVReader, CSVWriter};
@@ -14,5 +15,6 @@ pub use duckdb::{DuckDBReader, DuckDBWriter};
 pub use arrow::{ArrowReader, ArrowWriter};
 pub use parquet::{ParquetReader, ParquetWriter};
 pub use pygen::{PyGeneratorReader, PyGeneratorWriter};
+pub use excel::{ExcelReader, ExcelWriter};
 
 
