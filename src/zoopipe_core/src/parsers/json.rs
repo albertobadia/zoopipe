@@ -104,7 +104,10 @@ impl JSONReader {
                 state.position += 1;
                 Ok(Some(wrap_in_envelope(py, value, current_pos, slf.status_pending.bind(py))?))
             }
-            Some(Err(e)) => Err(wrap_py_err(e)),
+            Some(Err(e)) => {
+                let pos = state.position + 1;
+                Err(PipeError::Other(format!("JSON parse error at position {}: {}", pos, e)).into())
+            }
             None => Ok(None),
         }
     }

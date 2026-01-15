@@ -189,13 +189,11 @@ class Pipe:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if not self._report.is_finished:
             self.shutdown()
-        
+
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=10.0)
             if self._thread.is_alive():
-                self.logger.warning(
-                    "Pipeline thread still running after context exit"
-                )
+                self.logger.warning("Pipeline thread still running after context exit")
 
     def __repr__(self) -> str:
         return f"<Pipe input={self.input_adapter} output={self.output_adapter}>"

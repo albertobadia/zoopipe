@@ -174,7 +174,10 @@ impl CSVReader {
                 Ok(Some(envelope.into_any()))
             }
             Ok(false) => Ok(None),
-            Err(e) => Err(wrap_py_err(e)),
+            Err(e) => {
+                let line = state.position + 1;
+                Err(PipeError::Other(format!("CSV parse error at line {}: {}", line, e)).into())
+            }
         }
     }
 
@@ -221,7 +224,10 @@ impl CSVReader {
                     count += 1;
                 }
                 Ok(false) => break,
-                Err(e) => return Err(wrap_py_err(e)),
+                Err(e) => {
+                    let line = state.position + 1;
+                    return Err(PipeError::Other(format!("CSV parse error at line {}: {}", line, e)).into());
+                }
             }
         }
 
