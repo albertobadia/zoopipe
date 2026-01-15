@@ -10,14 +10,17 @@ class ParquetInputAdapter(BaseInputAdapter):
         self,
         source: typing.Union[str, pathlib.Path],
         generate_ids: bool = True,
+        batch_size: int = 1024,
     ):
         self.source_path = str(source)
         self.generate_ids = generate_ids
+        self.batch_size = batch_size
 
     def get_native_reader(self) -> ParquetReader:
         return ParquetReader(
             self.source_path,
             generate_ids=self.generate_ids,
+            batch_size=self.batch_size,
         )
 
 

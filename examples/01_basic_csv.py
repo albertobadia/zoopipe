@@ -1,7 +1,8 @@
 import datetime
 import time
 
-from examples.schemas import UserSchema
+from pydantic import BaseModel, ConfigDict
+
 from zoopipe import BaseHook, CSVInputAdapter, JSONOutputAdapter, Pipe
 
 
@@ -10,6 +11,13 @@ class TimeStampHook(BaseHook):
         for entry in entries:
             entry["validated_data"]["processed_at"] = datetime.datetime.now()
         return entries
+
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: str
+    username: str
+    email: str
 
 
 def main():

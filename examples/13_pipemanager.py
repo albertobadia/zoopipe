@@ -1,7 +1,21 @@
 import time
 
-from examples.schemas import UserSchema
-from zoopipe import CSVInputAdapter, JSONOutputAdapter, Pipe, PipeManager
+from pydantic import BaseModel, ConfigDict
+
+from zoopipe import (
+    CSVInputAdapter,
+    JSONOutputAdapter,
+    ParquetOutputAdapter,
+    Pipe,
+    PipeManager,
+)
+
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: str
+    username: str
+    email: str
 
 
 def main():
@@ -23,15 +37,15 @@ def main():
             ),
             Pipe(
                 input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
-                output_adapter=JSONOutputAdapter(
-                    "examples/output_data/users_data_3.jsonl"
+                output_adapter=ParquetOutputAdapter(
+                    "examples/output_data/users_data_3.parquet"
                 ),
                 schema_model=UserSchema,
             ),
             Pipe(
                 input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
-                output_adapter=JSONOutputAdapter(
-                    "examples/output_data/users_data_4.jsonl"
+                output_adapter=ParquetOutputAdapter(
+                    "examples/output_data/users_data_4.parquet"
                 ),
                 schema_model=UserSchema,
             ),

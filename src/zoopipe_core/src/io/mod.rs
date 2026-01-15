@@ -153,9 +153,7 @@ impl ChunkReader for BoxedReader {
             BoxedReader::File(f) => {
                 let mut file = f.get_ref().try_clone().map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?;
                 file.seek(SeekFrom::Start(start)).map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?;
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?;
-                Ok(BoxedReaderChild::Bytes(Bytes::from(buffer)))
+                Ok(BoxedReaderChild::File(file))
             }
             BoxedReader::Cursor(c) => {
                 let bytes = c.get_ref();
@@ -202,6 +200,7 @@ impl ChunkReader for BoxedReader {
 
 pub enum BoxedReaderChild {
     Bytes(Bytes),
+    File(File),
 }
 
 impl Read for BoxedReaderChild {
@@ -213,6 +212,7 @@ impl Read for BoxedReaderChild {
                 *b = b.slice(to_copy..);
                 Ok(to_copy)
             }
+            BoxedReaderChild::File(f) => f.read(buf),
         }
     }
 }

@@ -1,8 +1,16 @@
 import os
 import time
 
-from examples.schemas import UserSchema
+from pydantic import BaseModel, ConfigDict
+
 from zoopipe import JSONOutputAdapter, MultiThreadExecutor, Pipe, SQLInputAdapter
+
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: str
+    username: str
+    email: str
 
 
 def main():

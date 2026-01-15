@@ -1,6 +1,7 @@
 import time
 
-from examples.schemas import UserSchema
+from pydantic import BaseModel, ConfigDict
+
 from zoopipe import (
     CSVInputAdapter,
     CSVOutputAdapter,
@@ -9,6 +10,13 @@ from zoopipe import (
     Pipe,
     SingleThreadExecutor,
 )
+
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: str
+    username: str
+    email: str
 
 
 def run_with_executor(executor):
