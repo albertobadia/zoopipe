@@ -3,7 +3,7 @@ use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
 use std::sync::Mutex;
 use arrow::record_batch::RecordBatch;
-use arrow::array::RecordBatchReader;
+
 use arrow::datatypes::*;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
@@ -12,9 +12,10 @@ use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyDict, PyList, PyString, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch, infer_type};
+use crate::io::SmartReader;
 
 struct ParquetReaderState {
-    reader: Box<dyn Iterator<Item = Result<RecordBatch, arrow::error::ArrowError>> + Send>,
+    reader: SmartReader<RecordBatch>,
     current_batch: Option<(RecordBatch, usize)>,
     position: usize,
 }
@@ -49,13 +50,21 @@ impl ParquetReader {
         };
 
         let builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
-        let reader = builder.with_batch_size(batch_size).build().map_err(wrap_py_err)?;
+        let schema = builder.schema().clone();
         
-        let schema = reader.schema();
         let headers: Vec<Py<PyString>> = schema.fields()
             .iter()
             .map(|f: &FieldRef| PyString::new(py, f.name()).unbind())
             .collect();
+            
+        let reader = SmartReader::new(
+            &path,
+            builder,
+            move |b| {
+                let reader = b.with_batch_size(batch_size).build().expect("Failed to build parquet reader");
+                reader.map(|res| res.map_err(|e| format!("{}", e)))
+            }
+        );
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
@@ -63,7 +72,7 @@ impl ParquetReader {
 
         Ok(ParquetReader {
             state: Mutex::new(ParquetReaderState {
-                reader: Box::new(reader),
+                reader,
                 current_batch: None,
                 position: 0,
             }),
@@ -95,6 +104,7 @@ impl ParquetReader {
                 break;
             }
         }
+
 
         if batch.is_empty() {
             Ok(None)

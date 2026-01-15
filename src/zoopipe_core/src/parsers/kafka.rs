@@ -10,7 +10,7 @@ use crate::utils::interning::InternedKeys;
 
 #[derive(Debug)]
 enum KafkaData {
-    Message(Vec<u8>, Option<Vec<u8>>), // value, key
+    Message(Vec<u8>, Option<Vec<u8>>),
     Error(String),
 }
 
@@ -54,12 +54,10 @@ impl KafkaReader {
 
         let mut consumer = builder.create().map_err(wrap_py_err)?;
         
-        // Channel size 1000 to buffer messages
         let (tx, rx) = crossbeam_channel::bounded(1000);
 
         std::thread::spawn(move || {
             loop {
-                // Poll for messages
                 let msets = match consumer.poll() {
                     Ok(m) => m,
                     Err(e) => {
@@ -69,7 +67,6 @@ impl KafkaReader {
                 };
 
                 if msets.is_empty() {
-                    // Small sleep to prevent busy loop if no messages
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     continue;
                 }
@@ -82,18 +79,12 @@ impl KafkaReader {
                             Some(msg.key.to_vec())
                         };
                         
-                        // Send message to channel
                         if tx.send(KafkaData::Message(msg.value.to_vec(), key_opt)).is_err() {
-                            // Receiver dropped, stop thread
                             return;
                         }
                     }
-                    
-                    // Commit logic could go here if we wanted auto-commit after batch read
-                    // consumer.consume_messageset(mset);
                 }
                 
-                // Commit offsets processed in this batch
                 if let Err(e) = consumer.commit_consumed() {
                      let _ = tx.send(KafkaData::Error(format!("Kafka commit error: {}", e)));
                 }
@@ -121,21 +112,12 @@ impl KafkaReader {
         let py = slf.py();
         let receiver = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
         
-        // This recv() blocks the thread but NOT the GIL if we release it.
-        // However, standard recv() blocks the OS thread. 
-        // Ideally we should use py.allow_threads if we expect long waits, 
-        // but for now the background thread is doing the work so we just wait for the channel.
-        // Since we are in Rust code called from Python, blocking here *does* hold the GIL unless we release it.
-        
-        // To be truly non-blocking for other Python threads, we should use py.allow_threads around the recv.
-        // But crossbeam recv is fast if data is there.
-        
         match receiver.recv() {
             Ok(KafkaData::Message(value_bytes, key_bytes)) => {
                 slf.create_envelope(py, value_bytes, key_bytes)
             },
             Ok(KafkaData::Error(e)) => Err(crate::utils::wrap_py_err(std::io::Error::other(e))),
-            Err(_) => Ok(None), // Channel closed (thread finished/crashed)
+            Err(_) => Ok(None),
         }
     }
 }

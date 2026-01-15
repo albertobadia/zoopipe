@@ -4,7 +4,7 @@ use std::io::{BufReader, Write};
 use std::sync::Mutex;
 use serde_json::Value;
 use serde::Serialize;
-use crate::io::BoxedReader;
+use crate::io::{BoxedReader, SmartReader};
 use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyDict, PyList};
@@ -12,7 +12,7 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList};
 use crate::utils::interning::InternedKeys;
 
 struct JSONReaderState {
-    iter: serde_json::StreamDeserializer<'static, serde_json::de::IoRead<BoxedReader>, Value>,
+    reader: SmartReader<Value>,
     array_iter: Option<std::vec::IntoIter<Value>>,
     position: usize,
 }
@@ -40,13 +40,21 @@ impl JSONReader {
             BoxedReader::File(BufReader::new(file))
         };
         
+        let reader = SmartReader::new(
+            &path,
+            boxed_reader,
+            |r| serde_json::Deserializer::from_reader(r)
+                .into_iter::<Value>()
+                .map(|res| res.map_err(|e| format!("{}", e)))
+        );
+        
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(JSONReader {
             state: Mutex::new(JSONReaderState {
-                iter: serde_json::Deserializer::from_reader(boxed_reader).into_iter::<Value>(),
+                reader,
                 array_iter: None,
                 position: 0,
             }),
@@ -57,7 +65,15 @@ impl JSONReader {
 
     #[staticmethod]
     fn from_bytes(py: Python<'_>, data: Vec<u8>) -> PyResult<Self> {
-        let buf_reader = BoxedReader::Cursor(std::io::Cursor::new(data));
+        let boxed_reader = BoxedReader::Cursor(std::io::Cursor::new(data));
+        
+        let reader = SmartReader::new(
+            "",
+            boxed_reader,
+            |r| serde_json::Deserializer::from_reader(r)
+                .into_iter::<Value>()
+                .map(|res| res.map_err(|e| format!("{}", e)))
+        );
         
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
@@ -65,7 +81,7 @@ impl JSONReader {
 
         Ok(JSONReader {
             state: Mutex::new(JSONReaderState {
-                iter: serde_json::Deserializer::from_reader(buf_reader).into_iter::<Value>(),
+                reader,
                 array_iter: None,
                 position: 0,
             }),
@@ -115,7 +131,7 @@ impl JSONReader {
             }
         }
 
-        match state.iter.next() {
+        match state.reader.next() {
             Some(Ok(value)) => {
                 if let Value::Array(arr) = value {
                     let mut ai = arr.into_iter();

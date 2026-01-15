@@ -21,10 +21,11 @@ def kafka_producer_flow():
     )
 
     pipe = Pipe(input_adapter, output_adapter)
-    report = pipe.execute()
+    pipe.start()
+    pipe.wait()
 
-    print(f"Producer finished: {report.processed} messages sent.")
-    print(report)
+    print(f"Producer finished: {pipe.report.processed} messages sent.")
+    print(pipe.report)
 
 
 def kafka_consumer_flow():
@@ -42,10 +43,11 @@ def kafka_consumer_flow():
     output_adapter = CSVOutputAdapter("kafka_output.csv")
 
     pipe = Pipe(input_adapter, output_adapter)
+    pipe.start()
+    pipe.wait()
 
-    report = pipe.execute()
-    print(f"Consumer finished: {report.processed} messages received.")
-    print(report)
+    print(f"Consumer finished: {pipe.report.processed} messages received.")
+    print(pipe.report)
 
 
 if __name__ == "__main__":
@@ -54,7 +56,7 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1 and sys.argv[1] == "consumer":
         kafka_consumer_flow()
     else:
-        print("Usage: python examples/15_kafka_adapter.py [producer|consumer]")
+        print("Usage: python examples/16_kafka_adapter.py [producer|consumer]")
         print("Running producer then consumer...")
         try:
             kafka_producer_flow()

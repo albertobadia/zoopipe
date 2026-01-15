@@ -1,4 +1,5 @@
 pub mod storage;
+pub mod smart_reader;
 
 use std::fs::File;
 use std::io::{BufReader, Read, BufRead, Write, Seek, SeekFrom};
@@ -8,6 +9,8 @@ use object_store::ObjectStore;
 use tokio::runtime::Runtime;
 use parquet::file::reader::{ChunkReader, Length};
 use bytes::Bytes;
+
+pub use smart_reader::SmartReader;
 
 pub enum BoxedReader {
     File(BufReader<File>),

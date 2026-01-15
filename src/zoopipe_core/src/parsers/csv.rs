@@ -3,20 +3,17 @@ use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Mutex;
 use csv::StringRecord;
-use crate::io::BoxedReader;
+use crate::io::{BoxedReader, SmartReader};
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 
 use crate::utils::interning::InternedKeys;
 
-enum CSVData {
-    Record(StringRecord),
-    Error(String),
-}
+
 
 struct CSVReaderState {
-    receiver: crossbeam_channel::Receiver<CSVData>,
+    reader: SmartReader<StringRecord>,
     position: usize,
 }
 
@@ -82,33 +79,20 @@ impl CSVReader {
             .map(|s| PyString::new(py, &s).unbind())
             .collect();
 
-        // Spawn background thread
-        let (tx, rx) = crossbeam_channel::bounded(1000); // Buffer 1000 rows
-        
-        std::thread::spawn(move || {
-            let mut record = csv::StringRecord::new();
-            loop {
-                match reader.read_record(&mut record) {
-                    Ok(true) => {
-                         if tx.send(CSVData::Record(record.clone())).is_err() {
-                             return; // Receiver dropped, stop
-                         }
-                    }
-                    Ok(false) => break, // EOF
-                    Err(e) => {
-                        let _ = tx.send(CSVData::Error(format!("{}", e)));
-                        break;
-                    }
-                }
+        let reader = SmartReader::new(
+            &path,
+            reader,
+            move |r| {
+                r.into_records().map(|res| res.map_err(|e| format!("{}", e)))
             }
-        });
+        );
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            state: Mutex::new(CSVReaderState { receiver: rx, position: 0 }),
+            state: Mutex::new(CSVReaderState { reader, position: 0 }),
             headers,
             status_pending,
             generate_ids,
@@ -155,33 +139,20 @@ impl CSVReader {
             .map(|s| PyString::new(py, &s).unbind())
             .collect();
 
-        // Spawn background thread (even for bytes, to keep uniform interface)
-        let (tx, rx) = crossbeam_channel::bounded(1000);
-        
-        std::thread::spawn(move || {
-            let mut record = csv::StringRecord::new();
-            loop {
-                match reader.read_record(&mut record) {
-                    Ok(true) => {
-                         if tx.send(CSVData::Record(record.clone())).is_err() {
-                             return;
-                         }
-                    }
-                    Ok(false) => break,
-                    Err(e) => {
-                        let _ = tx.send(CSVData::Error(format!("{}", e)));
-                        break;
-                    }
-                }
+        let reader_impl = SmartReader::new(
+            "", // Empty path forces Sync
+            reader,
+            move |r| {
+                r.into_records().map(|res| res.map_err(|e| format!("{}", e)))
             }
-        });
+        );
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            state: Mutex::new(CSVReaderState { receiver: rx, position: 0 }),
+            state: Mutex::new(CSVReaderState { reader: reader_impl, position: 0 }),
             headers,
             status_pending,
             generate_ids,
@@ -222,8 +193,8 @@ impl CSVReader {
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         
-        match state.receiver.recv() {
-            Ok(CSVData::Record(record)) => {
+        match state.reader.next() {
+            Some(Ok(record)) => {
                 let current_pos = state.position;
                 state.position += 1;
                 
@@ -249,11 +220,11 @@ impl CSVReader {
 
                 Ok(Some(envelope.into_any()))
             }
-            Ok(CSVData::Error(e)) => {
+            Some(Err(e)) => {
                 let line = state.position + 1;
                 Err(PipeError::Other(format!("CSV parse error at line {}: {}", line, e)).into())
             },
-            Err(_) => Ok(None), // Channel closed
+            None => Ok(None),
         }
     }
 }
