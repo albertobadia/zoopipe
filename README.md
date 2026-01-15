@@ -36,7 +36,7 @@ class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
     user_id: str
     username: str
-    age: int
+    email: str
 
 
 pipe = Pipe(
@@ -78,6 +78,7 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 
 - [**Python Generator Adapters**](docs/pygen.md) - In-memory streaming and testing
 - [**Cloud Storage (S3)**](docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
+- [**PipeManager**](docs/pipemanager.md) - Run multiple pipes in parallel for distributed processing
 
 ---
 
