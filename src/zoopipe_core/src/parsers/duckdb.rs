@@ -90,7 +90,7 @@ impl DuckDBReader {
 impl DuckDBReader {
     fn next_internal<'py>(&self, py: Python<'py>, state: &mut DuckDBReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
         if state.receiver.is_none() {
-            let (tx, rx) = crossbeam_channel::bounded(1000);
+            let (tx, rx) = crossbeam_channel::bounded(50);
             let db_path = self.db_path.clone();
             let query = self.query.clone();
             
@@ -306,14 +306,23 @@ impl DuckDBWriter {
             Ok(())
         }
 
-        if let Some(record) = first_entry {
-            append_dict(&record, fields, &mut appender, &py_bool, &py_int, &py_float, py)?;
+        if let Some(record) = first_entry.as_ref() {
+            append_dict(record, fields, &mut appender, &py_bool, &py_int, &py_float, py)?;
         }
+
+        let mut row_count = if first_entry.is_some() { 1 } else { 0 };
+        const FLUSH_INTERVAL: usize = 5000;
 
         for entry_res in it {
             let entry = entry_res?;
             let record = entry.cast::<PyDict>()?;
             append_dict(record, fields, &mut appender, &py_bool, &py_int, &py_float, py)?;
+            
+            row_count += 1;
+            if row_count % FLUSH_INTERVAL == 0 {
+                appender.flush()
+                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to flush appender: {}", e)))?;
+            }
         }
 
         appender.flush()

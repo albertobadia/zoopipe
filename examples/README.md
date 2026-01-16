@@ -74,7 +74,7 @@ uv run python examples/06_csv_to_arrow.py
 
 This example demonstrates:
 - Using `ArrowOutputAdapter` for high-performance columnar storage
-- Zero-copy interoperability with Pandas, Polars, R, etc.
+- High-throughput interoperability with Pandas, Polars, R, etc.
 - Efficient compression and fast writes
 
 ### 07_arrow_to_jsonl.py
@@ -86,7 +86,7 @@ uv run python examples/07_arrow_to_jsonl.py
 
 This example demonstrates:
 - Using `ArrowInputAdapter` for ultra-fast reads
-- Zero-copy memory access
+- Efficient memory access
 - Converting columnar data to row-based JSONL
 
 ### 08_csv_to_sql.py
@@ -150,7 +150,7 @@ This example demonstrates:
 - Using `ParquetInputAdapter` for fast columnar reads
 - Converting Parquet data to JSONL for portability
 - Type preservation from Parquet schema
-- High-performance reading with zero-copy optimizations
+- High-performance reading with heavy optimizations
 
 ### 13_pipemanager.py
 Run multiple pipes in parallel using PipeManager.

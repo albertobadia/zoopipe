@@ -6,7 +6,7 @@ ZooPipe provides Apache Arrow adapters for working with high-performance columna
 
 Apache Arrow is a cross-language development platform for in-memory columnar data. It provides:
 
-- **Zero-Copy Reads**: Direct memory access without serialization
+- **Fast Reads**: Optimized memory access
 - **Columnar Format**: Optimized for analytical operations
 - **Interoperability**: Share data between Python, Rust, R, Java, etc. without copying
 - **Efficient Compression**: Built-in compression algorithms
@@ -60,11 +60,11 @@ with pipe:
 
 ### Performance Characteristics
 
-- **Zero-Copy**: Direct memory mapping when possible
+- **Memory Efficient**: Using memory mapping when possible
 - **Columnar Reading**: Efficient batch processing
 - **Compression**: Automatic decompression (LZ4, ZSTD)
 - **Type Preservation**: Rich type system conversion to Python
-- **Throughput**: Very high (~1M+ rows/s) due to zero-copy design
+- **Throughput**: Very high (~1M+ rows/s) due to optimized design
 
 ## ArrowOutputAdapter
 
@@ -181,7 +181,7 @@ with stage2:
 ### When to Use Arrow
 
 1. **Interoperability**: Share data between Python, Rust, R, etc.
-2. **Performance**: Zero-copy reads for analytical workloads
+2. **Performance**: Fast reads for analytical workloads
 3. **Type Safety**: Rich type system preserves schema
 4. **Compression**: Efficient storage with built-in compression
 5. **Analytics**: Optimized for columnar operations
@@ -195,7 +195,7 @@ with stage2:
 | **Compression** | ✅ Good | ✅✅ Best | ❌ No | ❌ No |
 | **Schema** | ✅ Rich | ✅ Rich | ❌ No | ⚠️ Inferred |
 | **Streaming** | ✅ Yes | ⚠️ Limited | ✅ Yes | ✅ Yes |
-| **Zero-Copy** | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| **Low Overhead** | ✅ Yes | ❌ No | ❌ No | ❌ No |
 | **Type Safety** | ✅✅ Full | ✅✅ Full | ❌ No | ⚠️ Basic |
 
 **Use Arrow when:**
@@ -293,7 +293,7 @@ print(result)
 ## Best Practices
 
 ### For Reading
-1. **Leverage Zero-Copy**: Arrow reading is extremely fast due to memory mapping
+1. **Leverage Memory Mapping**: Arrow reading is extremely fast due to memory mapping
 2. **Type Awareness**: Arrow preserves complex types (lists, structs, dates)
 3. **Batch Processing**: Use with `MultiThreadExecutor` for parallel processing
 4. **Memory Efficient**: Streaming reads keep memory usage constant
@@ -412,7 +412,7 @@ Common errors:
 
 ## Performance Tips
 
-1. **Zero-Copy Advantage**: Arrow is the fastest format for read operations
+1. **Format Advantage**: Arrow is the fastest format for read operations
 2. **Batch Size**: Larger batches (5000-10000) work well with Arrow
 3. **Multi-Threading**: Always use `MultiThreadExecutor` for large Arrow files
 4. **Compression**: Arrow automatically uses LZ4 compression for optimal balance

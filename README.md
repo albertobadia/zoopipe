@@ -9,7 +9,6 @@
 - 🚀 **100% Native Rust Engine**: The core execution loop, including CSV and JSON parsing/writing, is implemented in Rust for maximum throughput.
 - 🔍 **Declarative Validation**: Use [Pydantic](https://docs.pydantic.dev/) models to define and validate your data structures naturally.
 - 🪝 **Python Hooks**: Transform and enrich data at any stage using standard Python functions or classes.
-- ⚡ **Zero-Copy Intent**: Minimal overhead between the Rust processing engine and Python validation/hooks.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
 - 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases (via SQLx with batch inserts).
 - 🔧 **Pluggable Executors**: Choose between single-threaded or multi-threaded execution strategies.
@@ -68,7 +67,7 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 - [**JSON Adapters**](docs/json.md) - JSONL and JSON array format support
 - [**Excel Adapters**](docs/excel.md) - Read and write Excel (.xlsx) files
 - [**Parquet Adapters**](docs/parquet.md) - Columnar storage for analytics and data lakes
-- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for zero-copy interoperability
+- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for high-throughput interoperability
 
 #### Databases
 
@@ -77,7 +76,7 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 
 #### Messaging Systems
 
-- [**Kafka Adapters**](docs/kafka.md) - High-throughput messaging with zero-copy
+- [**Kafka Adapters**](docs/kafka.md) - High-throughput messaging
 
 #### Advanced
 

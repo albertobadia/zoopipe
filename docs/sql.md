@@ -108,7 +108,7 @@ The SQLWriter implements high-performance batch inserts:
 - **Batch Size**: 500 rows per INSERT statement
 - **Transaction**: All batches are wrapped in a single transaction
 - **Automatic Chunking**: Large datasets are automatically split into optimal chunks
-- **Zero-Copy Design**: Minimizes data copying between Python and Rust
+- **Optimized Design**: Minimizes data copying overhead between Python and Rust
 
 ### Performance Example
 

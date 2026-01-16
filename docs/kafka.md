@@ -1,6 +1,6 @@
 # Kafka Adapters
 
-ZooPipe includes high-performance Kafka input and output adapters backed by a customized Rust implementation using the `kafka` crate. These adapters are designed for efficiency, leveraging zero-copy message handling where possible.
+ZooPipe includes high-performance Kafka input and output adapters backed by a customized Rust implementation using the `kafka` crate. These adapters are designed for efficiency, leveraging memory-efficient message handling where possible.
 
 ## KafkaInputAdapter
 
@@ -74,7 +74,7 @@ The adapter expects data to be serialization-ready. If your pipeline passes dict
 
 ## Performance Characteristics
 
-- **Zero-Copy**: The Rust implementation avoids unnecessary memory copies when passing message payloads from the network buffer to Python, using buffer protocol where applicable.
+- **Efficiency**: The Rust implementation avoids unnecessary memory overhead when passing message payloads from the network buffer to Python.
 - **Batching**: Write operations support batching for higher throughput.
 
 ## Error Handling
