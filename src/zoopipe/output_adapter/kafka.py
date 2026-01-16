@@ -3,6 +3,13 @@ from zoopipe.zoopipe_rust_core import KafkaWriter
 
 
 class KafkaOutputAdapter(BaseOutputAdapter):
+    """
+    Produces messages to an Apache Kafka topic.
+
+    Streams pipeline results into Kafka topics, with configurable
+    acknowledgment settings ensuring reliable message delivery.
+    """
+
     def __init__(
         self,
         uri: str,

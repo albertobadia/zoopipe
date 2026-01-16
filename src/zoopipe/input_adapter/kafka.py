@@ -3,6 +3,13 @@ from zoopipe.zoopipe_rust_core import KafkaReader
 
 
 class KafkaInputAdapter(BaseInputAdapter):
+    """
+    Consumes messages from Apache Kafka topics.
+
+    Acts as a Kafka consumer, streaming messages into the pipeline with
+    support for consumer groups and offset management.
+    """
+
     def __init__(
         self,
         uri: str,

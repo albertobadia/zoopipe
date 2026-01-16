@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
+/// Trait defining the interface for different batch execution strategies.
 pub trait ExecutionStrategy: Send + Sync {
     fn process_batches<'py>(
         &self,
@@ -10,6 +11,7 @@ pub trait ExecutionStrategy: Send + Sync {
     ) -> PyResult<Vec<Bound<'py, PyAny>>>;
 }
 
+/// Strategy that executes batches one-by-one on the main thread.
 pub struct SingleThreadStrategy;
 
 impl ExecutionStrategy for SingleThreadStrategy {
@@ -26,6 +28,10 @@ impl ExecutionStrategy for SingleThreadStrategy {
     }
 }
 
+/// Strategy that utilizes a Rayon thread pool for concurrent batch processing.
+/// 
+/// It coordinates parallel execution while safely managing GIL acquisition 
+/// for each worker thread during call-backs to Python.
 pub struct ParallelStrategy {
     thread_pool: rayon::ThreadPool,
 }

@@ -17,6 +17,10 @@ struct JSONReaderState {
     position: usize,
 }
 
+/// Fast JSON reader that handles both single objects and arrays of objects.
+/// 
+/// It streams data efficiently using a background thread and supports
+/// complex nested structures by bridging Serde with PyO3.
 #[pyclass]
 pub struct JSONReader {
     state: Mutex<JSONReaderState>,
@@ -167,6 +171,10 @@ impl JSONReader {
     }
 }
 
+/// flexible JSON writer that supports standard arrays and JSONLines output.
+/// 
+/// It provides high-performance serialization of Python objects directly 
+/// into JSON format, with support for pretty-printing and chunked I/O.
 #[pyclass]
 pub struct JSONWriter {
     writer: Mutex<crate::io::BoxedWriter>,

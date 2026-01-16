@@ -17,6 +17,10 @@ struct CSVReaderState {
     position: usize,
 }
 
+/// High-performance CSV reader implemented in Rust.
+/// 
+/// It supports streaming from local files, S3, or raw bytes. It uses 
+/// a threaded architecture to avoid GIL contention during I/O.
 #[pyclass]
 pub struct CSVReader {
     state: Mutex<CSVReaderState>,
@@ -229,6 +233,10 @@ impl CSVReader {
     }
 }
 
+/// Optimized CSV writer for high-volume data egress.
+/// 
+/// Automatically handles header generation and supports both local 
+/// files and S3 destinations.
 #[pyclass]
 pub struct CSVWriter {
     state: Mutex<CSVWriterState>,

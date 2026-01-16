@@ -7,6 +7,12 @@ from datetime import datetime
 
 
 def get_logger(name: str = "zoopipe") -> logging.Logger:
+    """
+    Get a configured logger for zoopipe.
+
+    Args:
+        name: Name of the logger to retrieve.
+    """
     logger = logging.getLogger(name)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
@@ -19,12 +25,27 @@ def get_logger(name: str = "zoopipe") -> logging.Logger:
 
 
 class EntryStatus(enum.Enum):
+    """
+    Status of an individual data entry in the pipeline lifecycle.
+
+    - PENDING: Initial state after ingestion.
+    - VALIDATED: Successfully passed schema validation.
+    - FAILED: Encountered validation errors or processing issues.
+    """
+
     PENDING = "pending"
     VALIDATED = "validated"
     FAILED = "failed"
 
 
 class EntryTypedDict(typing.TypedDict):
+    """
+    Structure of the record envelope as it flows through the pipeline.
+
+    The envelope contains not only the actual business data but also
+    operational metadata, unique identification, and error tracking.
+    """
+
     id: typing.Any
     position: int | None
     status: EntryStatus
@@ -35,6 +56,16 @@ class EntryTypedDict(typing.TypedDict):
 
 
 class FlowStatus(enum.Enum):
+    """
+    Lifecycle status of a Pipe or PipeManager execution.
+
+    - PENDING: Execution hasn't started yet.
+    - RUNNING: Actively processing batches.
+    - COMPLETED: Finished successfully (all source data consumed).
+    - FAILED: Partially finished due to an unhandled exception.
+    - ABORTED: Stopped manually by the user.
+    """
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -43,7 +74,16 @@ class FlowStatus(enum.Enum):
 
 
 class FlowReport:
+    """
+    Live progress tracker and final summary for a pipeline execution.
+
+    FlowReport provides real-time access to processing metrics,
+    memory usage, and execution status. It is automatically updated
+    by the Rust core during execution.
+    """
+
     def __init__(self) -> None:
+        """Initialize an empty FlowReport."""
         self.status = FlowStatus.PENDING
         self.total_processed = 0
         self.success_count = 0
@@ -56,6 +96,7 @@ class FlowReport:
 
     @property
     def duration(self) -> float:
+        """Total execution time in seconds."""
         start = self.start_time
         if not start:
             return 0.0
@@ -64,6 +105,7 @@ class FlowReport:
 
     @property
     def items_per_second(self) -> float:
+        """Processing speed (items per second)."""
         duration = self.duration
         if duration == 0:
             return 0.0
@@ -71,9 +113,18 @@ class FlowReport:
 
     @property
     def is_finished(self) -> bool:
+        """Check if the pipeline has finished."""
         return self._finished_event.is_set()
 
     def wait(self, timeout: float | None = None) -> bool:
+        """
+        Wait for the pipeline to finish.
+
+        Args:
+            timeout: Optional timeout in seconds.
+        Returns:
+            True if the pipeline finished, False if it timed out.
+        """
         return self._finished_event.wait(timeout)
 
     def _mark_running(self) -> None:
@@ -86,6 +137,7 @@ class FlowReport:
         self._finished_event.set()
 
     def abort(self) -> None:
+        """Abort the pipeline execution."""
         self.status = FlowStatus.ABORTED
         self.end_time = datetime.now()
         self._finished_event.set()

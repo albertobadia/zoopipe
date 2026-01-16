@@ -6,12 +6,27 @@ from zoopipe.zoopipe_rust_core import DuckDBWriter
 
 
 class DuckDBOutputAdapter(BaseOutputAdapter):
+    """
+    Persists data into DuckDB database files.
+
+    Supports replacing or appending to existing tables, leveraging DuckDB's
+    transactional integrity and high-speed storage.
+    """
+
     def __init__(
         self,
         output: typing.Union[str, pathlib.Path],
         table_name: str,
         mode: str = "replace",
     ):
+        """
+        Initialize the DuckDBOutputAdapter.
+
+        Args:
+            output: Path to the DuckDB database file.
+            table_name: Name of the table to write to.
+            mode: Write mode ('replace', 'append', or 'fail').
+        """
         self.output_path = str(output)
         self.table_name = table_name
         self.mode = mode

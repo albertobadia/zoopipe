@@ -3,6 +3,10 @@ use object_store::{ObjectStore, local::LocalFileSystem, aws::AmazonS3Builder};
 use url::Url;
 use crate::error::PipeError;
 
+/// Orchestrates access to different storage backends (Local vs S3).
+/// 
+/// It parses URI schemes and initializes the appropriate object-store 
+/// implementation to provide uniform data access.
 pub struct StorageController {
     inner: Arc<dyn ObjectStore>,
     prefix: String,

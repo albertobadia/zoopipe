@@ -12,6 +12,10 @@ use bytes::Bytes;
 
 pub use smart_reader::SmartReader;
 
+/// Unified reader that abstracts over local files, in-memory cursors, and remote storage.
+/// 
+/// It implements standard I/O traits and provides transparent access to 
+/// different backends, enabling the parsers to work with any source.
 pub enum BoxedReader {
     File(BufReader<File>),
     Cursor(std::io::Cursor<Vec<u8>>),
@@ -226,6 +230,10 @@ impl Read for BoxedReaderChild {
     }
 }
 
+/// Unified writer that abstracts over local files and remote storage.
+/// 
+/// Provides a consistent interface for persistent storage, allowing 
+/// the pipeline to save results across different environments.
 pub enum BoxedWriter {
     File(std::io::BufWriter<File>),
     Remote(RemoteWriter),

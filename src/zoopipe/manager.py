@@ -15,6 +15,13 @@ if TYPE_CHECKING:
 
 @dataclass
 class PipeProcess:
+    """
+    Internal handle for a Pipe running in an isolated worker process.
+
+    It stores the Process object and shared memory references used to
+    aggregate real-time metrics back to the main process.
+    """
+
     process: multiprocessing.Process
     total_processed: Synchronized[c_longlong]
     success_count: Synchronized[c_longlong]
@@ -27,6 +34,13 @@ class PipeProcess:
 
 @dataclass
 class PipeReport:
+    """
+    Snapshot of the current status of a single managed pipe.
+
+    This is a static copy of the metrics at a specific point in time,
+    useful for UI updates or reporting.
+    """
+
     pipe_index: int
     total_processed: int = 0
     success_count: int = 0
@@ -67,7 +81,20 @@ def _run_pipe(
 
 
 class PipeManager:
+    """
+    Manages multiple Pipes running in parallel processes.
+
+    PipeManager allows scaling pipeline execution by distributing work across
+    multiple processes, providing an aggregated report of overall progress.
+    """
+
     def __init__(self, pipes: list["Pipe"]):
+        """
+        Initialize PipeManager with a list of Pipe instances.
+
+        Args:
+            pipes: List of Pipe objects to manage.
+        """
         self._pipes = pipes
         self._pipe_processes: list[PipeProcess] = []
         self._start_time: datetime | None = None
@@ -75,19 +102,25 @@ class PipeManager:
 
     @property
     def pipes(self) -> list["Pipe"]:
+        """Get the list of pipes being managed."""
         return self._pipes
 
     @property
     def is_running(self) -> bool:
+        """Check if any pipe process is currently running."""
         return bool(self._pipe_processes) and any(
             pp.process.is_alive() for pp in self._pipe_processes
         )
 
     @property
     def pipe_count(self) -> int:
+        """Get the number of pipes being managed."""
         return len(self._pipes)
 
     def start(self) -> None:
+        """
+        Start all managed pipes in separate processes.
+        """
         if self.is_running:
             raise RuntimeError("PipeManager is already running")
 
@@ -139,11 +172,25 @@ class PipeManager:
             )
 
     def wait(self, timeout: float | None = None) -> bool:
+        """
+        Wait for all processes to finish.
+
+        Args:
+            timeout: Optional maximum time to wait for each process.
+        Returns:
+            True if all processes finished.
+        """
         for pp in self._pipe_processes:
             pp.process.join(timeout=timeout)
         return all(not pp.process.is_alive() for pp in self._pipe_processes)
 
     def shutdown(self, timeout: float = 5.0) -> None:
+        """
+        Forcibly stop all running processes.
+
+        Args:
+            timeout: Maximum time to wait for termination before killing processes.
+        """
         for pp in self._pipe_processes:
             if pp.process.is_alive():
                 pp.process.terminate()
@@ -154,6 +201,12 @@ class PipeManager:
         self._pipe_processes.clear()
 
     def get_pipe_report(self, index: int) -> PipeReport:
+        """
+        Get the current report for a specific pipe.
+
+        Args:
+            index: The index of the pipe in the original list.
+        """
         if not self._pipe_processes:
             raise RuntimeError("PipeManager has not been started")
         if index < 0 or index >= len(self._pipe_processes):
@@ -174,10 +227,12 @@ class PipeManager:
 
     @property
     def pipe_reports(self) -> list[PipeReport]:
+        """Get reports for all managed pipes."""
         return [self.get_pipe_report(i) for i in range(len(self._pipe_processes))]
 
     @property
     def report(self) -> FlowReport:
+        """Get an aggregated report of all running pipes."""
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
 

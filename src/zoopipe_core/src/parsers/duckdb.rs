@@ -19,6 +19,10 @@ struct DuckDBReaderState {
     position: usize,
 }
 
+/// Native DuckDB reader that executes queries and streams results.
+/// 
+/// It utilizes a background thread to process the result set, allowing 
+/// for efficient data movement from DuckDB into the Python pipeline.
 #[pyclass]
 pub struct DuckDBReader {
     db_path: String,
@@ -208,6 +212,10 @@ impl DuckDBReader {
     }
 }
 
+/// Fast DuckDB writer that persists data into database files.
+/// 
+/// Uses DuckDB's native appender API for maximum insertion speed and 
+/// supports automatic schema inference from the first processed batch.
 #[pyclass]
 pub struct DuckDBWriter {
     connection: Mutex<Connection>,

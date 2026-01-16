@@ -144,6 +144,11 @@ impl PipeCounters {
     }
 }
 
+/// Internal Rust implementation of the data pipeline.
+/// 
+/// NativePipe handles the heavy lifting of reading from sources, coordinating
+/// batch processing (which calls back into Python), and writing to destinations.
+/// It is designed for high performance and minimal GIL interaction during I/O.
 #[pyclass]
 pub struct NativePipe {
     reader: PipeReader,
@@ -191,6 +196,7 @@ impl NativePipe {
         })
     }
 
+    /// Executes the pipeline until the source is exhausted or an error occurs.
     fn run(&self, py: Python<'_>) -> PyResult<()> {
         let report = self.report.bind(py);
         report.call_method0("_mark_running")?;

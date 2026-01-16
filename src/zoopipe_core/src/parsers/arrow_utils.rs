@@ -5,6 +5,10 @@ use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
 use crate::utils::wrap_py_err;
 
+/// Helper to convert a single value from an Arrow array to a Python object.
+/// 
+/// Handles various data types by downcasting the generic Array trait 
+/// to specific implementations and bridging them to PyO3.
 pub fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<PyAny>> {
     if array.is_null(row) {
         return Ok(py.None());
@@ -44,6 +48,7 @@ pub fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py
     }
 }
 
+/// Infers the Arrow DataType from a Python object.
 pub fn infer_type(val: &Bound<'_, PyAny>) -> DataType {
     if val.is_instance_of::<pyo3::types::PyBool>() { DataType::Boolean }
     else if val.is_instance_of::<pyo3::types::PyInt>() { DataType::Int64 }
@@ -93,6 +98,10 @@ fn append_null(builder: &mut dyn ArrayBuilder) {
     else if let Some(b) = any.downcast_mut::<StringBuilder>() { b.append_null(); }
 }
 
+/// Efficiently builds an Arrow RecordBatch from a list of Python dictionaries.
+/// 
+/// It utilizes pre-allocated builders and batch processing to minimize 
+/// overhead when converting large datasets from Python to Arrow.
 pub fn build_record_batch(
     py: Python<'_>,
     schema: &SchemaRef,

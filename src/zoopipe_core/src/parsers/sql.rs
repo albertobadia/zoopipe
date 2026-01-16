@@ -57,6 +57,10 @@ enum SQLData {
     Error(String),
 }
 
+/// Native SQL reader that streams database records into the pipeline.
+/// 
+/// It utilizes a background thread to fetch rows asynchronously, ensuring 
+/// that the main pipeline loop stays focused on processing.
 #[pyclass]
 pub struct SQLReader {
     uri: String,
@@ -251,6 +255,10 @@ impl SQLReader {
     }
 }
 
+/// Fast SQL writer that performs bulk insertions into database tables.
+/// 
+/// It manages connection pools and transactions automatically, supporting 
+/// efficient batch writes to any SQLAlchemy-compatible database.
 #[pyclass]
 pub struct SQLWriter {
     uri: String,

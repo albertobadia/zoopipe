@@ -5,6 +5,14 @@ from zoopipe.zoopipe_rust_core import SQLReader
 
 
 class SQLInputAdapter(BaseInputAdapter):
+    """
+    Streams records from SQL databases using standard queries.
+
+    Supports any database compatible with SQLAlchemy URIs. It executes a
+    provided query or fetches a whole table using a native Rust executor
+    for optimal performance.
+    """
+
     def __init__(
         self,
         uri: str,
@@ -12,6 +20,15 @@ class SQLInputAdapter(BaseInputAdapter):
         table_name: str | None = None,
         generate_ids: bool = True,
     ):
+        """
+        Initialize the SQLInputAdapter.
+
+        Args:
+            uri: Database URI (e.g., 'sqlite:///data.db').
+            query: SQL query to execute.
+            table_name: Or name of the table to read (equiv to SELECT * FROM table).
+            generate_ids: Whether to generate unique IDs for each record.
+        """
         self.uri = uri
         self.generate_ids = generate_ids
 
@@ -35,6 +52,13 @@ class SQLInputAdapter(BaseInputAdapter):
 
 
 class SQLPaginationInputAdapter(SQLInputAdapter):
+    """
+    Input adapter for SQL databases using anchor-based pagination.
+
+    This adapter generates ID ranges (anchors) and utilizes SQLExpansionHook
+    to fetch full records in chunks, which is more efficient for very large tables.
+    """
+
     def __init__(
         self,
         uri: str,
@@ -43,6 +67,17 @@ class SQLPaginationInputAdapter(SQLInputAdapter):
         chunk_size: int,
         connection_factory: typing.Callable[[], typing.Any],
     ):
+        """
+        Initialize the SQLPaginationInputAdapter.
+
+        Args:
+            uri: Database URI.
+            table_name: Name of the table to read.
+            id_column: Primary key or indexed column used for pagination.
+            chunk_size: Number of records to fetch per chunk.
+            connection_factory: Callable that returns a database connection
+                for the hook.
+        """
         self.table_name = table_name
         self.id_column = id_column
         self.chunk_size = chunk_size

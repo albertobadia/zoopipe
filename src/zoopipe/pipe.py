@@ -15,6 +15,14 @@ from zoopipe.zoopipe_rust_core import (
 
 
 class Pipe:
+    """
+    The main execution unit for data processing pipelines.
+
+    A Pipe connects an input adapter to one or more output adapters,
+    handles validation via Pydantic models, and executes pre- and post-validation hooks.
+    It runs asynchronously in a separate thread.
+    """
+
     def __init__(
         self,
         input_adapter: InputAdapterProtocol | None = None,
@@ -27,6 +35,21 @@ class Pipe:
         report_update_interval: int = 1,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
     ) -> None:
+        """
+        Initialize a new Pipe.
+
+        Args:
+            input_adapter: Source of data.
+            output_adapter: Destination for successfully validated data.
+            error_output_adapter: Optional destination for data that failed validation.
+            schema_model: Optional Pydantic model class for validation.
+            pre_validation_hooks: Hooks to run before validation.
+            post_validation_hooks: Hooks to run after validation.
+            logger: Optional custom logger.
+            report_update_interval: How often (in batches) to update the
+                progress report.
+            executor: Strategy for batch processing (SingleThread or MultiThread).
+        """
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
         self.error_output_adapter = error_output_adapter
@@ -90,9 +113,16 @@ class Pipe:
 
     @property
     def report(self) -> FlowReport:
+        """Get the current progress report of the pipeline."""
         return self._report
 
     def start(self, wait: bool = False) -> None:
+        """
+        Start the pipeline execution in a separate thread.
+
+        Args:
+            wait: If True, blocks until the pipeline finishes.
+        """
         if self._thread and self._thread.is_alive():
             raise RuntimeError("Pipe is already running")
 
@@ -141,6 +171,12 @@ class Pipe:
                 hook.teardown(self._store)
 
     def shutdown(self, timeout: float = 5.0) -> None:
+        """
+        Request the pipeline to stop and wait for it to finish.
+
+        Args:
+            timeout: Maximum time to wait for the thread to join.
+        """
         self._report.abort()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=timeout)
@@ -150,6 +186,14 @@ class Pipe:
                 )
 
     def wait(self, timeout: float | None = None) -> bool:
+        """
+        Wait for the pipeline to finish.
+
+        Args:
+            timeout: Optional timeout in seconds.
+        Returns:
+            True if the pipeline finished, False if it timed out.
+        """
         return self._report.wait(timeout)
 
     def __enter__(self) -> "Pipe":

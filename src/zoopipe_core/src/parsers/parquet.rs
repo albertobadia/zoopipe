@@ -20,6 +20,10 @@ struct ParquetReaderState {
     position: usize,
 }
 
+/// Fast Parquet reader that leverages the Arrow ecosystem for columnar I/O.
+/// 
+/// It supports streaming from both local paths and S3, performing 
+/// efficient batch reads using native Rust kernels.
 #[pyclass]
 pub struct ParquetReader {
     state: Mutex<ParquetReaderState>,
@@ -162,6 +166,10 @@ impl ParquetReader {
     }
 }
 
+/// optimized Parquet writer for columnar data persistence.
+/// 
+/// It automatically infers the Arrow schema from processed batches and 
+/// uses efficient compression and row-grouping strategies in Rust.
 #[pyclass]
 pub struct ParquetWriter {
     path: String,

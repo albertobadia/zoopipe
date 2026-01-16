@@ -8,9 +8,24 @@ if typing.TYPE_CHECKING:
 
 
 class SQLExpansionHook(BaseHook):
+    """
+    Expands anchor records (e.g., ID ranges) into full records by querying a SQL table.
+
+    This hook is designed to work with chunked data ingestion. It takes minimal
+    identifying information (anchors) and performs a bulk fetch from the database
+    to retrieve the complete rows.
+    """
+
     def __init__(
         self, connection_factory: typing.Callable[[], typing.Any], table_name: str
     ):
+        """
+        Initialize the SQLExpansionHook.
+
+        Args:
+            connection_factory: Callable that returns a database connection.
+            table_name: Name of the SQL table to fetch data from.
+        """
         super().__init__()
         self.connection_factory = connection_factory
         self.table_name = table_name

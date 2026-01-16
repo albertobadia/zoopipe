@@ -13,6 +13,10 @@ struct ExcelReaderState {
     position: usize,
 }
 
+/// Fast Excel reader that parses .xlsx and other formats using Calamine.
+/// 
+/// It efficiently processes large workbooks and supports sheet selection 
+/// by name or index, providing a smooth bridge to the pipeline.
 #[pyclass]
 pub struct ExcelReader {
     state: Mutex<ExcelReaderState>,
@@ -199,6 +203,10 @@ struct ExcelWriterState {
     path: String,
 }
 
+/// optimized Excel writer for creating standard .xlsx workbooks.
+/// 
+/// It provides a clean API for producing formatted Excel files with 
+/// automatic header generation and custom worksheet names.
 #[pyclass]
 pub struct ExcelWriter {
     state: Mutex<ExcelWriterState>,

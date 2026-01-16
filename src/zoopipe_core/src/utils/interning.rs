@@ -1,6 +1,10 @@
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
+/// Caches frequently used Python strings as interned objects.
+/// 
+/// This significantly improves performance by avoiding repeated string 
+/// allocation and lookup when creating record envelopes in the Rust core.
 pub struct InternedKeys {
     pub id: Py<PyString>,
     pub status: Py<PyString>,

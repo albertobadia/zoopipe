@@ -6,6 +6,11 @@ pub enum SmartReaderIter<T> {
     Threaded(Receiver<Result<T, String>>),
 }
 
+/// A hybrid I/O reader that optimizes for both local and remote sources.
+/// 
+/// SmartReader restores performance for local files by using synchronous I/O 
+/// (avoiding thread overhead) while utilizing background threads for S3 sources 
+/// to prevent blocking the Python GIL during long-latency network requests.
 pub struct SmartReader<T> {
     iter: SmartReaderIter<T>,
 }

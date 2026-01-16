@@ -4,6 +4,21 @@ import pathlib
 def get_file_chunk_entrypoints(
     path: pathlib.Path, chunk_bytes: int, separator: bytes = b"\n"
 ) -> list[int]:
+    """
+    Finds byte offsets in a file that correspond to the start of a line.
+
+    This utility is used to partition large files into chunks that can be
+    processed in parallel, ensuring that each chunk starts at a valid
+    record boundary.
+
+    Args:
+        path: Path to the file.
+        chunk_bytes: Approximate size of each chunk in bytes.
+        separator: Record separator (defaults to newline).
+
+    Returns:
+        A list of byte offsets for each chunk starting point.
+    """
     file_bytes = path.stat().st_size
     current_byte = 0
     entrypoints = []

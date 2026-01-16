@@ -12,6 +12,10 @@ use pyo3::types::{PyString, PyDict, PyList, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch};
 use crate::io::BoxedReader;
 
+/// Fast Arrow IPC (Feather) reader for ultra-efficient data loading.
+/// 
+/// It leverages zero-copy principles where possible to stream records directly 
+/// from the Arrow IPC format into the pipeline.
 #[pyclass]
 pub struct ArrowReader {
     reader: Mutex<FileReader<BoxedReader>>,
@@ -147,6 +151,10 @@ impl ArrowReader {
 }
 
 
+/// Optimized Arrow IPC writer for high-performance data serialization.
+/// 
+/// It provides the fastest egress path by writing data in the native 
+/// Arrow format, which matches the internal pipeline representation.
 #[pyclass]
 pub struct ArrowWriter {
     path: String,

@@ -7,7 +7,7 @@ from zoopipe.input_adapter.json import JSONInputAdapter
 from zoopipe.input_adapter.kafka import KafkaInputAdapter
 from zoopipe.input_adapter.parquet import ParquetInputAdapter
 from zoopipe.input_adapter.pygen import PyGeneratorInputAdapter
-from zoopipe.input_adapter.sql import SQLInputAdapter
+from zoopipe.input_adapter.sql import SQLInputAdapter, SQLPaginationInputAdapter
 
 __all__ = [
     "BaseInputAdapter",
@@ -17,6 +17,7 @@ __all__ = [
     "ArrowInputAdapter",
     "ExcelInputAdapter",
     "SQLInputAdapter",
+    "SQLPaginationInputAdapter",
     "ParquetInputAdapter",
     "PyGeneratorInputAdapter",
     "KafkaInputAdapter",

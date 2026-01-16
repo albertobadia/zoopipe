@@ -14,6 +14,10 @@ enum KafkaData {
     Error(String),
 }
 
+/// Fast Kafka consumer that streams messages from a topic.
+/// 
+/// It runs in a background thread to stay connected to the cluster and 
+/// pull messages as they arrive, providing them to the pipeline in batches.
 #[pyclass]
 pub struct KafkaReader {
     receiver: Mutex<crossbeam_channel::Receiver<KafkaData>>,
@@ -154,6 +158,10 @@ impl KafkaReader {
     }
 }
 
+/// Optimized Kafka producer for high-throughput message publishing.
+/// 
+/// Supports both single and batch sends with configurable acknowledgment 
+/// strategies and timeouts for reliable data egress.
 #[pyclass]
 pub struct KafkaWriter {
     producer: Mutex<Producer>,

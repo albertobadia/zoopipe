@@ -5,6 +5,10 @@ use std::sync::Mutex;
 use crossbeam_channel::{bounded, Sender, Receiver};
 use crate::error::PipeError;
 
+/// Adapter that allows any Python iterable to be used as a source.
+/// 
+/// It bridges Python's iteration protocol with Rust's pipeline logic, 
+/// automatically handling envelope creation and metadata tracking.
 #[pyclass]
 pub struct PyGeneratorReader {
     iterable: Py<PyAny>,
@@ -106,6 +110,10 @@ impl PyGeneratorReader {
     }
 }
 
+/// flexible output adapter that acts as a synchronized bridge back to Python.
+/// 
+/// It utilizes a bounded channel to allow the pipeline to push processed 
+/// results into a Python-accessible iterator, enabling custom post-processing.
 #[pyclass]
 pub struct PyGeneratorWriter {
     sender: Mutex<Option<Sender<Py<PyAny>>>>,
