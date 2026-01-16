@@ -64,26 +64,18 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 
 Hooks are Python classes that allow you to intercept, transform, and enrich data at different stages of the pipeline.
 
-**Hook Lifecycle:**
-- `setup(store)`: Called once at the beginning of the pipeline. Use it to initialize connections or resources.
-- `execute(entries, store)`: Called for each batch of data. Receives a list of `EntryTypedDict` and returns a modified list.
-- `teardown(store)`: Called once at the end of the pipeline. Use it to clean up resources.
+**[📘 Read the full Hooks Guide](docs/hooks.md)** to learn about lifecycle methods (`setup`, `execute`, `teardown`), state management, and advanced patterns like cursor pagination.
 
-**Usage:**
+### Quick Example
+
 ```python
-from zoopipe.hooks.base import BaseHook
+from zoopipe import BaseHook
 
 class MyHook(BaseHook):
     def execute(self, entries, store):
         for entry in entries:
-            entry["raw_data"]["source"] = "zoopipe"
+            entry["raw_data"]["checked"] = True
         return entries
-
-pipe = Pipe(
-    ...,
-    pre_validation_hooks=[MyHook()],
-    post_validation_hooks=[]
-)
 ```
 
 > [!IMPORTANT]
@@ -104,6 +96,7 @@ pipe = Pipe(
 #### Databases
 
 - [**SQL Adapters**](docs/sql.md) - Read from and write to SQL databases with batch optimization
+- [**SQL Pagination**](docs/sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
 - [**DuckDB Adapters**](docs/duckdb.md) - Analytical database for OLAP workloads
 
 #### Messaging Systems

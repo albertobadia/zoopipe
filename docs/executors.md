@@ -47,15 +47,20 @@ Use when:
 - Data processing is I/O-bound
 - Processing simple transformations
 - Debugging or development
-- Order preservation is critical
+- Order preservation is naturally maintained (single stream)
+
+> [!NOTE]
+> Even with `SingleThreadExecutor`, ZooPipe utilizes background threads for S3 sources via its **Hybrid I/O Strategy** to prevent GIL blocking during network I/O, while keeping the processing logic on the main thread.
 
 ### MultiThreadExecutor
 
 Use when:
-- Validation/transformation is CPU-intensive
-- Large datasets with complex Pydantic models
-- Multiple independent transformations
-- Maximum throughput is needed
+- Validation/transformation is CPU-intensive (e.g., complex Pydantic models)
+- Maximum throughput is needed across multiple CPU cores
+- Order of records in the output is not a critical requirement
+
+> [!IMPORTANT]
+> The `MultiThreadExecutor` processes batches in parallel. While throughput is significantly higher, the order of records in the destination may differ from the source.
 
 ## Performance Tuning
 

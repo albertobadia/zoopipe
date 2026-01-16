@@ -11,6 +11,7 @@ ZooPipe integrates with cloud storage via the [object_store](https://docs.rs/obj
 - **Automatic Handling**: No code changes needed beyond URI format
 - **Compatible Services**: Works with AWS S3, MinIO, Wasabi, and other S3-compatible services
 - **Format Support**: Available for CSV, JSON, Arrow, and Parquet adapters
+- **Hybrid I/O Strategy**: ZooPipe automatically uses persistent background threads for S3 streams to prevent network latency from blocking the Python GIL, ensuring high throughput even in cloud environments.
 
 ## Supported Adapters
 

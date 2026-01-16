@@ -70,6 +70,45 @@ uri = "sqlite:///path/to/db.db?mode=rwc"
 - Single database connection per reader
 - Type conversion from SQL to Python types (String, Int, Float, Bool)
 - NULL values are properly handled and mapped to Python `None`
+- Support for **SQL Pagination** via specialized adapter.
+
+## SQLPaginationInputAdapter
+
+The `SQLPaginationInputAdapter` is a specialized adapter designed for high-performance, memory-efficient data ingestion from large SQL tables using cursor-style pagination.
+
+### How it Works
+
+Unlike standard SQL readers that fetch all rows in a single stream, the pagination adapter:
+1.  **Chunks Data**: Iterates through the table in configurable chunk sizes using a primary key or indexed column (e.g., `id`).
+2.  **Anchor-Based Fetching**: For each chunk, it first fetches the "anchors" (the IDs) and then uses an `SQLExpansionHook` to retrieve the full record data.
+3.  **Resilient Execution**: Smaller batches reduce the risk of long-running transaction timeouts and allow for better progress tracking.
+
+### Basic Usage
+
+```python
+from zoopipe import Pipe, SQLPaginationInputAdapter, JSONOutputAdapter
+
+pipe = Pipe(
+    input_adapter=SQLPaginationInputAdapter(
+        table_name="large_events",
+        id_column="event_id",
+        chunk_size=10000,
+        connection_factory=lambda: my_db_connection()
+    ),
+    output_adapter=JSONOutputAdapter("events.jsonl")
+)
+```
+
+### Parameters
+
+- **table_name** (`str`): Name of the table to process.
+- **id_column** (`str`): The primary key or indexed column to use for pagination.
+- **chunk_size** (`int`): Number of records to process per iteration.
+- **connection_factory** (`Callable`): A function that returns a new database connection for the expansion hook.
+
+### SQLExpansionHook
+
+This hook is automatically integrated by the `SQLPaginationInputAdapter`. It receives the batch of IDs and executes an optimized `SELECT * FROM table WHERE id IN (...)` query to hydrate the records before they reach your validation schema or next processing stage.
 
 ## SQLOutputAdapter
 

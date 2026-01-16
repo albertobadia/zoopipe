@@ -81,6 +81,8 @@ with pipe:
 - **Type Preservation**: Rich type system conversion to Python
 - **Column Pruning**: Only reads columns that exist in your schema
 - **Throughput**: Very high (~500k-1M+ rows/s) due to columnar format
+- **Arrow Optimization**: Uses Apache Arrow for zero-copy data loading when possible.
+- **Hybrid I/O Strategy**: Restores high throughput for local files via synchronous access and optimizes remote S3 reads with background threads.
 
 ## ParquetOutputAdapter
 

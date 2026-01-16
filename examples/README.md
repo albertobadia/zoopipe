@@ -165,6 +165,19 @@ This example demonstrates:
 - Aggregated reporting across all pipes
 - Efficient resource utilization for batch processing workflows
 
+### 17_cursor_pagination.py
+Efficiently query large SQL tables using anchor-based pagination.
+
+```bash
+uv run python examples/17_cursor_pagination.py
+```
+
+This example demonstrates:
+- Using `SQLPaginationInputAdapter` for processing massive tables
+- Anchor-based fetching to minimize memory usage
+- automatic hydration via `SQLExpansionHook`
+- Configuring chunk sizes for optimal throughput
+
 ## Sample Data
 
 The `sample_data/` directory contains example CSV and JSONL files for testing.

@@ -3,11 +3,11 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import BaseHook, CSVInputAdapter, JSONOutputAdapter, Pipe
+from zoopipe import BaseHook, CSVInputAdapter, HookStore, JSONOutputAdapter, Pipe
 
 
 class TimeStampHook(BaseHook):
-    def execute(self, entries: list[dict], store: dict) -> list[dict]:
+    def execute(self, entries: list[dict], store: HookStore) -> list[dict]:
         for entry in entries:
             entry["validated_data"]["processed_at"] = datetime.datetime.now()
         return entries

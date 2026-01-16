@@ -413,5 +413,21 @@ D EXPORT DATABASE 'backup_dir';
 2. **Leverage Columnar Storage**: Efficient compression and fast scans
 3. **Query Parquet Directly**: Avoid intermediate conversions
 4. **Batch Size**: Default 2000 rows optimal for most use cases
-5. **Multi-Threading**: Use `MultiThreadExecutor` for large datasets
-6. **Memory Usage**: DuckDB caches aggressively; ensure sufficient RAM for large databases
+6. **Multi-Threading**: Use `MultiThreadExecutor` for large datasets
+7. **Resource Management**: Configure `memory_limit` and `threads` in the adapter to control DuckDB's internal resource usage, especially in memory-constrained environments.
+
+## Resource Configuration
+
+Both `DuckDBInputAdapter` and `DuckDBOutputAdapter` allow you to configure DuckDB's internal resource limits:
+
+```python
+adapter = DuckDBInputAdapter(
+    source="data.duckdb",
+    table_name="users",
+    memory_limit="512MB",  # Limit RAM usage
+    threads=4              # Number of threads for DuckDB internals
+)
+```
+
+- **memory_limit**: Maximum RAM DuckDB can use (e.g., "512MB", "1GB").
+- **threads**: Maximum number of threads DuckDB will use for its own internal operations (distinct from ZooPipe's executor threads).

@@ -168,6 +168,7 @@ with pipe:
 - **Streaming**: Constant memory usage regardless of file size
 - **Type Handling**: All fields are read as strings (type conversion handled by Pydantic)
 - **Quote Handling**: Proper RFC 4180 CSV escaping and unescaping
+- **Hybrid I/O Strategy**: Uses synchronous read for local files to restore high performance, and background thread streaming for remote S3 files to prevent GIL blocking.
 
 ### Writing
 - **Batch Operations**: Efficient buffered writes

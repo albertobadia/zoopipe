@@ -41,6 +41,7 @@ Each line is parsed independently, enabling streaming of arbitrarily large files
 - **Line-by-line Parsing**: Each JSON object is parsed independently
 - **Error Handling**: Invalid JSON lines trigger clear error messages
 - **Throughput**: Similar to CSV (~200k+ rows/s)
+- **Hybrid I/O Strategy**: Restores performance for local files by using synchronous reads and background threads for S3 streams.
 
 ## JSONOutputAdapter
 

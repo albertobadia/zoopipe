@@ -3,11 +3,11 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import BaseHook, ExcelInputAdapter, ExcelOutputAdapter, Pipe
+from zoopipe import BaseHook, ExcelInputAdapter, ExcelOutputAdapter, HookStore, Pipe
 
 
 class TimeStampHook(BaseHook):
-    def execute(self, entries: list[dict], store: dict) -> list[dict]:
+    def execute(self, entries: list[dict], store: HookStore) -> list[dict]:
         for entry in entries:
             entry["validated_data"]["processed_at"] = datetime.datetime.now()
         return entries

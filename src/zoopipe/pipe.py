@@ -1,10 +1,9 @@
 import logging
 import threading
-import typing
 
 from pydantic import TypeAdapter, ValidationError
 
-from zoopipe.hooks.base import BaseHook
+from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import EntryStatus, FlowReport, get_logger
 from zoopipe.zoopipe_rust_core import (
@@ -77,7 +76,7 @@ class Pipe:
 
         self._report = FlowReport()
         self._thread: threading.Thread | None = None
-        self._store: dict[str, typing.Any] = {}
+        self._store: HookStore = {}
         self._validator = TypeAdapter(self.schema_model) if self.schema_model else None
         self._batch_validator = (
             TypeAdapter(list[self.schema_model]) if self.schema_model else None
@@ -86,14 +85,16 @@ class Pipe:
         self._status_failed = EntryStatus.FAILED
 
     def _process_batch(self, entries: list[dict]) -> list[dict]:
+        local_store: HookStore = {}
+
         for hook in self.pre_validation_hooks:
-            entries = hook.execute(entries, self._store)
+            entries = hook.execute(entries, local_store)
 
         if self._validator:
             self._validate_batch(entries)
 
         for hook in self.post_validation_hooks:
-            entries = hook.execute(entries, self._store)
+            entries = hook.execute(entries, local_store)
 
         return entries
 

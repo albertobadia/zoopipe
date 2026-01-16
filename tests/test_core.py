@@ -284,31 +284,46 @@ def test_pipe_repr(tmp_path):
     assert "CSVOutputAdapter" in repr_str
 
 
-def test_pipe_multiple_hooks(tmp_path):
-    class Hook1(BaseHook):
+def test_pipe_hooks_share_store_intra_batch(tmp_path):
+    class ProducerHook(BaseHook):
         def execute(self, entries, store):
-            store["hook1_called"] = True
+            # Write to the local store
+            store["chain_token"] = "valid_token"
             return entries
 
-    class Hook2(BaseHook):
+    class ConsumerHook(BaseHook):
         def execute(self, entries, store):
-            store["hook2_called"] = True
+            # Read from the local store (populated by ProducerHook)
+            token = store.get("chain_token")
+            for entry in entries:
+                if token == "valid_token":
+                    entry["raw_data"]["hook_chain_success"] = True
             return entries
+
+    class TestSchema(BaseModel):
+        model_config = ConfigDict(extra="allow")
+        user_id: str
+        username: str
+        age: int
 
     input_csv = tmp_path / "input.csv"
-    output_csv = tmp_path / "output.csv"
+    output_jsonl = tmp_path / "output.jsonl"
 
     input_csv.write_text("user_id,username,age\n1,alice,30")
 
     pipe = Pipe(
         input_adapter=CSVInputAdapter(str(input_csv)),
-        output_adapter=CSVOutputAdapter(str(output_csv)),
-        schema_model=UserSchema,
-        pre_validation_hooks=[Hook1(), Hook2()],
+        output_adapter=JSONOutputAdapter(str(output_jsonl), format="jsonl"),
+        schema_model=TestSchema,
+        pre_validation_hooks=[ProducerHook(), ConsumerHook()],
     )
 
     pipe.start()
     pipe.wait()
 
-    assert pipe._store.get("hook1_called") is True
-    assert pipe._store.get("hook2_called") is True
+    import json
+
+    with open(output_jsonl, "r") as f:
+        data = json.loads(f.readline())
+        # If the consumer saw the token from the producer, this will be True
+        assert data.get("hook_chain_success") is True

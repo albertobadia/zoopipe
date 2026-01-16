@@ -32,60 +32,63 @@ class SQLExpansionHook(BaseHook):
         self.logger = get_logger()
 
     def setup(self, store: HookStore) -> None:
-        store["db_conn"] = self.connection_factory()
+        pass
 
     def execute(
         self, entries: list["EntryTypedDict"], store: HookStore
     ) -> list["EntryTypedDict"]:
         expanded = []
-        cursor = store["db_conn"].cursor()
+        conn = self.connection_factory()
 
-        self.logger.debug(
-            f"SQLExpansionHook: Expanding batch of {len(entries)} anchor(s)"
-        )
-
-        for anchor in entries:
-            raw = anchor["raw_data"]
-            min_id = raw.get("min_id")
-            max_id = raw.get("max_id")
-
-            if min_id is None or max_id is None:
-                continue
-
-            cursor.execute(
-                f"SELECT * FROM {self.table_name} WHERE id BETWEEN ? AND ?",
-                (min_id, max_id),
+        try:
+            cursor = conn.cursor()
+            self.logger.debug(
+                f"SQLExpansionHook: Expanding batch of {len(entries)} anchor(s)"
             )
 
-            columns = (
-                [column[0] for column in cursor.description]
-                if cursor.description
-                else []
-            )
+            for anchor in entries:
+                raw = anchor["raw_data"]
+                min_id = raw.get("min_id")
+                max_id = raw.get("max_id")
 
-            rows = cursor.fetchall()
+                if min_id is None or max_id is None:
+                    continue
 
-            for row in rows:
-                if columns:
-                    data = dict(zip(columns, row))
-                else:
-                    data = dict(row)
-
-                expanded.append(
-                    {
-                        "id": None,
-                        "position": None,
-                        "status": EntryStatus.PENDING,
-                        "raw_data": data,
-                        "validated_data": None,
-                        "metadata": anchor["metadata"],
-                        "errors": [],
-                    }
+                cursor.execute(
+                    f"SELECT * FROM {self.table_name} WHERE id BETWEEN ? AND ?",
+                    (min_id, max_id),
                 )
 
-        cursor.close()
+                columns = (
+                    [column[0] for column in cursor.description]
+                    if cursor.description
+                    else []
+                )
+
+                rows = cursor.fetchall()
+
+                for row in rows:
+                    if columns:
+                        data = dict(zip(columns, row))
+                    else:
+                        data = dict(row)
+
+                    expanded.append(
+                        {
+                            "id": None,
+                            "position": None,
+                            "status": EntryStatus.PENDING,
+                            "raw_data": data,
+                            "validated_data": None,
+                            "metadata": anchor["metadata"],
+                            "errors": [],
+                        }
+                    )
+            cursor.close()
+        finally:
+            conn.close()
+
         return expanded
 
     def teardown(self, store: HookStore) -> None:
-        if "db_conn" in store:
-            store["db_conn"].close()
+        pass
