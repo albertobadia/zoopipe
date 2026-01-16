@@ -32,8 +32,20 @@ class Pipe:
         self.error_output_adapter = error_output_adapter
         self.schema_model = schema_model
 
-        self.pre_validation_hooks = pre_validation_hooks or []
-        self.post_validation_hooks = post_validation_hooks or []
+        bundled_pre_hooks = []
+        if self.input_adapter and hasattr(self.input_adapter, "get_hooks"):
+            bundled_pre_hooks.extend(self.input_adapter.get_hooks())
+
+        bundled_post_hooks = []
+        if self.output_adapter and hasattr(self.output_adapter, "get_hooks"):
+            bundled_post_hooks.extend(self.output_adapter.get_hooks())
+        if self.error_output_adapter and hasattr(
+            self.error_output_adapter, "get_hooks"
+        ):
+            bundled_post_hooks.extend(self.error_output_adapter.get_hooks())
+
+        self.pre_validation_hooks = bundled_pre_hooks + (pre_validation_hooks or [])
+        self.post_validation_hooks = bundled_post_hooks + (post_validation_hooks or [])
 
         self.logger = logger or get_logger()
 

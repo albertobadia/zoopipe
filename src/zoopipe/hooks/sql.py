@@ -1,0 +1,76 @@
+import typing
+
+from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.report import EntryStatus, get_logger
+
+if typing.TYPE_CHECKING:
+    from zoopipe.report import EntryTypedDict
+
+
+class SQLExpansionHook(BaseHook):
+    def __init__(
+        self, connection_factory: typing.Callable[[], typing.Any], table_name: str
+    ):
+        super().__init__()
+        self.connection_factory = connection_factory
+        self.table_name = table_name
+        self.logger = get_logger()
+
+    def setup(self, store: HookStore) -> None:
+        store["db_conn"] = self.connection_factory()
+
+    def execute(
+        self, entries: list["EntryTypedDict"], store: HookStore
+    ) -> list["EntryTypedDict"]:
+        expanded = []
+        cursor = store["db_conn"].cursor()
+
+        self.logger.debug(
+            f"SQLExpansionHook: Expanding batch of {len(entries)} anchor(s)"
+        )
+
+        for anchor in entries:
+            raw = anchor["raw_data"]
+            min_id = raw.get("min_id")
+            max_id = raw.get("max_id")
+
+            if min_id is None or max_id is None:
+                continue
+
+            cursor.execute(
+                f"SELECT * FROM {self.table_name} WHERE id BETWEEN ? AND ?",
+                (min_id, max_id),
+            )
+
+            columns = (
+                [column[0] for column in cursor.description]
+                if cursor.description
+                else []
+            )
+
+            rows = cursor.fetchall()
+
+            for row in rows:
+                if columns:
+                    data = dict(zip(columns, row))
+                else:
+                    data = dict(row)
+
+                expanded.append(
+                    {
+                        "id": None,
+                        "position": None,
+                        "status": EntryStatus.PENDING,
+                        "raw_data": data,
+                        "validated_data": None,
+                        "metadata": anchor["metadata"],
+                        "errors": [],
+                    }
+                )
+
+        cursor.close()
+        return expanded
+
+    def teardown(self, store: HookStore) -> None:
+        if "db_conn" in store:
+            store["db_conn"].close()

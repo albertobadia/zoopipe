@@ -58,6 +58,38 @@ print(f"Finished! Processed {pipe.report.total_processed} items.")
 ### Core Concepts
 
 - [**Executors Guide**](docs/executors.md) - Choose and configure execution strategies
+- [**Hooks Guide**](#hooks) - Transform and enrich data using Python hooks
+
+#### Hooks
+
+Hooks are Python classes that allow you to intercept, transform, and enrich data at different stages of the pipeline.
+
+**Hook Lifecycle:**
+- `setup(store)`: Called once at the beginning of the pipeline. Use it to initialize connections or resources.
+- `execute(entries, store)`: Called for each batch of data. Receives a list of `EntryTypedDict` and returns a modified list.
+- `teardown(store)`: Called once at the end of the pipeline. Use it to clean up resources.
+
+**Usage:**
+```python
+from zoopipe.hooks.base import BaseHook
+
+class MyHook(BaseHook):
+    def execute(self, entries, store):
+        for entry in entries:
+            entry["raw_data"]["source"] = "zoopipe"
+        return entries
+
+pipe = Pipe(
+    ...,
+    pre_validation_hooks=[MyHook()],
+    post_validation_hooks=[]
+)
+```
+
+> [!IMPORTANT]
+> If you are using a `schema_model`, the pipeline will output the contents of `validated_data` for successful records.
+> - To modify data **before** validation, use `pre_validation_hooks` and modify `entry["raw_data"]`.
+> - To modify data **after** validation (and ensure it reaches the output), use `post_validation_hooks` and modify `entry["validated_data"]`.
 
 ### Input/Output Adapters
 

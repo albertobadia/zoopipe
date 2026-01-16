@@ -1,3 +1,5 @@
+import typing
+
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.zoopipe_rust_core import SQLReader
 
@@ -32,4 +34,35 @@ class SQLInputAdapter(BaseInputAdapter):
         )
 
 
-__all__ = ["SQLInputAdapter"]
+class SQLPaginationInputAdapter(SQLInputAdapter):
+    def __init__(
+        self,
+        uri: str,
+        table_name: str,
+        id_column: str,
+        chunk_size: int,
+        connection_factory: typing.Callable[[], typing.Any],
+    ):
+        self.table_name = table_name
+        self.id_column = id_column
+        self.chunk_size = chunk_size
+        self.connection_factory = connection_factory
+
+        query = f"""
+        WITH RECURSIVE ranges(n) AS (
+            SELECT MIN({id_column}) FROM {table_name}
+            UNION ALL
+            SELECT n + {chunk_size} FROM ranges 
+            WHERE n + {chunk_size} <= (SELECT MAX({id_column}) FROM {table_name})
+        )
+        SELECT n as min_id, n + {chunk_size} - 1 as max_id FROM ranges
+        """
+        super().__init__(uri, query=query)
+
+    def get_hooks(self):
+        from zoopipe.hooks.sql import SQLExpansionHook
+
+        return [SQLExpansionHook(self.connection_factory, self.table_name)]
+
+
+__all__ = ["SQLInputAdapter", "SQLPaginationInputAdapter"]
