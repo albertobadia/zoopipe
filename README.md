@@ -20,6 +20,14 @@
 ### Installation
 
 ```bash
+pip install zoopipe
+```
+Or uv:
+```bash
+uv install zoopipe
+```
+Or from source:
+```bash
 uv build
 uv run maturin develop --release
 ```
