@@ -22,11 +22,11 @@
 ```bash
 pip install zoopipe
 ```
-Or uv:
+Or using uv:
 ```bash
-uv install zoopipe
+uv add zoopipe
 ```
-Or from source:
+Or from source (uv recommended):
 ```bash
 uv build
 uv run maturin develop --release
