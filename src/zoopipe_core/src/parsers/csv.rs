@@ -15,6 +15,29 @@ use crate::utils::interning::InternedKeys;
 struct CSVReaderState {
     reader: SmartReader<StringRecord>,
     position: usize,
+    limit: Option<usize>,
+}
+
+// Helper struct for byte-bounded iteration
+struct BoundedCsvIter<R: std::io::Read> {
+    iter: csv::StringRecordsIntoIter<R>,
+    start_byte: u64,
+    end_byte: Option<u64>,
+}
+
+impl<R: std::io::Read> Iterator for BoundedCsvIter<R> {
+    type Item = Result<StringRecord, String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(end) = self.end_byte {
+            // Position is relative to the start of the reader (start_byte)
+            let current_absolute_pos = self.start_byte + self.iter.reader().position().byte();
+            if current_absolute_pos >= end {
+                return None;
+            }
+        }
+        self.iter.next().map(|res: std::result::Result<csv::StringRecord, csv::Error>| res.map_err(|e| format!("{}", e)))
+    }
 }
 
 /// High-performance CSV reader implemented in Rust.
@@ -33,7 +56,7 @@ pub struct CSVReader {
 #[pymethods]
 impl CSVReader {
     #[new]
-    #[pyo3(signature = (path, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true))]
+    #[pyo3(signature = (path, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true, limit=None, start_byte=0, end_byte=None))]
     fn new(
         py: Python<'_>,
         path: String,
@@ -42,22 +65,44 @@ impl CSVReader {
         skip_rows: usize,
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
+        limit: Option<usize>,
+        start_byte: u64,
+        end_byte: Option<u64>,
     ) -> PyResult<Self> {
         use crate::io::storage::StorageController;
         use object_store::path::Path;
         use crate::io::RemoteReader;
 
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let boxed_reader = if path.starts_with("s3://") {
-            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+        use std::io::{Seek, SeekFrom};
+        
+        // Handle byte range seeking
+        let mut boxed_reader = if path.starts_with("s3://") {
+             BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
         } else {
-            let file = File::open(&path).map_err(wrap_py_err)?;
-            BoxedReader::File(BufReader::new(file))
+             let file = File::open(&path).map_err(wrap_py_err)?;
+             let mut reader = BufReader::new(file);
+             if start_byte > 0 {
+                 reader.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
+             }
+             BoxedReader::File(reader)
         };
+
+        if start_byte > 0 {
+             // Discard partial line if we started in the middle
+             use std::io::BufRead;
+             let mut dummy = String::new();
+             if let BoxedReader::File(ref mut r) = boxed_reader {
+                 r.read_line(&mut dummy).map_err(wrap_py_err)?;
+             }
+             // For RemoteReader, partial line skipping might be complex, 
+             // but here we assume local file optimization mainly.
+        }
 
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
+            .has_headers(start_byte == 0) 
             .from_reader(boxed_reader);
 
         for _ in 0..skip_rows {
@@ -87,7 +132,11 @@ impl CSVReader {
             &path,
             reader,
             move |r| {
-                r.into_records().map(|res| res.map_err(|e| format!("{}", e)))
+                BoundedCsvIter {
+                    iter: r.into_records(),
+                    start_byte,
+                    end_byte,
+                }
             }
         );
 
@@ -96,7 +145,11 @@ impl CSVReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            state: Mutex::new(CSVReaderState { reader, position: 0 }),
+            state: Mutex::new(CSVReaderState { 
+                reader, 
+                position: 0, 
+                limit, 
+            }),
             headers,
             status_pending,
             generate_ids,
@@ -105,7 +158,7 @@ impl CSVReader {
     }
 
     #[staticmethod]
-    #[pyo3(signature = (data, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true))]
+    #[pyo3(signature = (data, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true, limit=None))]
     fn from_bytes(
         py: Python<'_>,
         data: Vec<u8>,
@@ -114,6 +167,7 @@ impl CSVReader {
         skip_rows: usize,
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
+        limit: Option<usize>,
     ) -> PyResult<Self> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
@@ -147,7 +201,11 @@ impl CSVReader {
             "", // Empty path forces Sync
             reader,
             move |r| {
-                r.into_records().map(|res| res.map_err(|e| format!("{}", e)))
+                BoundedCsvIter {
+                    iter: r.into_records(),
+                    start_byte: 0,
+                    end_byte: limit.map(|_| u64::MAX), // Not using byte limit for bytes reader usually
+                }
             }
         );
 
@@ -156,12 +214,51 @@ impl CSVReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            state: Mutex::new(CSVReaderState { reader: reader_impl, position: 0 }),
+            state: Mutex::new(CSVReaderState { 
+                reader: reader_impl, 
+                position: 0, 
+                limit,
+            }),
             headers,
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
         })
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (path, delimiter=b',', quote=b'"', has_header=true))]
+    fn count_rows(
+        path: String,
+        delimiter: u8,
+        quote: u8,
+        has_header: bool,
+    ) -> PyResult<usize> {
+        use crate::io::storage::StorageController;
+        use object_store::path::Path;
+        use crate::io::RemoteReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(delimiter)
+            .quote(quote)
+            .has_headers(has_header)
+            .from_reader(boxed_reader);
+
+        let mut count = 0;
+        let mut record = csv::ByteRecord::new();
+        while reader.read_byte_record(&mut record).map_err(wrap_py_err)? {
+            count += 1;
+        }
+
+        Ok(count)
     }
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -196,6 +293,12 @@ impl CSVReader {
 impl CSVReader {
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        
+        if let Some(lim) = state.limit {
+            if state.position >= lim {
+                return Ok(None);
+            }
+        }
         
         match state.reader.next() {
             Some(Ok(record)) => {
@@ -380,4 +483,59 @@ fn write_record_to_csv(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_bounded_csv_iter_basic() {
+        let data = "col1,col2\nval1,val2\nval3,val4";
+        let reader = Cursor::new(data);
+        let csv_reader = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(reader);
+        
+        let mut iter = BoundedCsvIter {
+            iter: csv_reader.into_records(),
+            start_byte: 0,
+            end_byte: None,
+        };
+
+        let rec1 = iter.next().unwrap().unwrap();
+        assert_eq!(rec1.get(0).unwrap(), "val1");
+        
+        let rec2 = iter.next().unwrap().unwrap();
+        assert_eq!(rec2.get(0).unwrap(), "val3");
+        
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_bounded_csv_iter_limit_byte() {
+        // "col1,col2\n" -> 10 bytes
+        // "val1,val2\n" -> 10 bytes (total 20)
+        // "val3,val4"   -> 9 bytes (total 29)
+        let data = "col1,col2\nval1,val2\nval3,val4";
+        let reader = Cursor::new(data);
+        let csv_reader = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(reader);
+            
+
+        let mut iter = BoundedCsvIter {
+            iter: csv_reader.into_records(),
+            start_byte: 0,
+            end_byte: Some(15), 
+        };
+
+        // First record starts at 10. 10 < 15. OK.
+        let rec1 = iter.next().unwrap().unwrap();
+        assert_eq!(rec1.get(0).unwrap(), "val1");
+
+        // Second record starts at 20. 20 >= 15. Should be None.
+        assert!(iter.next().is_none());
+    }
 }

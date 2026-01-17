@@ -519,3 +519,52 @@ def test_pipemanager_report_caching(tmp_path):
     assert report1 is report2
     assert report1.is_finished
     assert report2.is_finished
+
+
+def test_pipemanager_parallelize_pipe_csv(tmp_path):
+    input_csv = tmp_path / "input_parallel.csv"
+    output_base = tmp_path / "output_parallel.jsonl"
+
+    lines = ["user_id,username,age"]
+    count = 100
+    for i in range(count):
+        lines.append(f"{i},user_{i},{20 + i}")
+    input_csv.write_text("\n".join(lines))
+
+    pipe = Pipe(
+        input_adapter=CSVInputAdapter(str(input_csv)),
+        output_adapter=JSONOutputAdapter(str(output_base), format="jsonl"),
+        schema_model=UserSchema,
+    )
+
+    manager = PipeManager.parallelize_pipe(pipe, workers=2)
+
+    assert manager.pipe_count == 2
+    assert len(manager.pipes) == 2
+
+    shard0 = manager.pipes[0].input_adapter
+    shard1 = manager.pipes[1].input_adapter
+    assert isinstance(shard0, CSVInputAdapter)
+    assert isinstance(shard1, CSVInputAdapter)
+    assert shard0.start_byte == 0
+    assert shard0.end_byte is not None
+    assert shard1.start_byte == shard0.end_byte
+    assert shard1.end_byte is None
+
+    out0 = manager.pipes[0].output_adapter
+    out1 = manager.pipes[1].output_adapter
+    assert "part_1" in out0.output_path
+    assert "part_2" in out1.output_path
+
+    manager.start()
+    manager.wait(timeout=10.0)
+
+    assert manager.report.is_finished
+    assert manager.report.total_processed == count
+
+    manager.merge()
+
+    assert output_base.exists()
+    with open(output_base, "r") as f:
+        lines = f.readlines()
+        assert len(lines) == count

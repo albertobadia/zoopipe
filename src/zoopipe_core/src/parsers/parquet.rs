@@ -20,6 +20,39 @@ struct ParquetReaderState {
     position: usize,
 }
 
+impl ParquetReaderState {
+    // Returns (Batch, RowIndex, Position) or None
+    fn next_record(&mut self) -> Option<Result<(RecordBatch, usize, usize), String>> {
+         if self.current_batch.is_none() {
+            match self.reader.next() {
+                Some(Ok(batch)) => {
+                    self.current_batch = Some((batch, 0));
+                },
+                Some(Err(e)) => return Some(Err(e.to_string())),
+                None => return None,
+            }
+        }
+
+        if let Some((batch, row_idx)) = self.current_batch.as_mut() {
+            let current_pos = self.position;
+            self.position += 1;
+            
+            // Clone batch handle for return? RecordBatch is cheap to clone (Arc internal)
+            let batch_ref = batch.clone();
+            let current_idx = *row_idx;
+
+            *row_idx += 1;
+            if *row_idx >= batch.num_rows() {
+                self.current_batch = None;
+            }
+            
+            return Some(Ok((batch_ref, current_idx, current_pos)));
+        }
+        
+        None
+    }
+}
+
 /// Fast Parquet reader that leverages the Arrow ecosystem for columnar I/O.
 /// 
 /// It supports streaming from both local paths and S3, performing 
@@ -120,48 +153,33 @@ impl ParquetReader {
 
 impl ParquetReader {
     fn next_internal<'py>(&self, py: Python<'py>, state: &mut ParquetReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
-        if state.current_batch.is_none() {
-            if let Some(batch_res) = state.reader.next() {
-                let batch = batch_res.map_err(wrap_py_err)?;
-                state.current_batch = Some((batch, 0));
-            } else {
-                return Ok(None);
-            }
-        }
+        match state.next_record() {
+            Some(Ok((batch, row_idx, pos))) => {
+                let raw_data = PyDict::new(py);
+                for (i, header) in self.headers.iter().enumerate() {
+                    let col = batch.column(i);
+                    let val = arrow_to_py(py, col, row_idx)?;
+                    raw_data.set_item(header.bind(py), val)?;
+                }
 
-        if let Some((batch, row_idx)) = state.current_batch.as_mut() {
-            let current_pos = state.position;
-            state.position += 1;
+                let envelope = PyDict::new(py);
+                let id = if self.generate_ids {
+                    crate::utils::generate_entry_id(py)?
+                } else {
+                    py.None().into_bound(py)
+                };
 
-            let raw_data = PyDict::new(py);
-            for (i, header) in self.headers.iter().enumerate() {
-                let col = batch.column(i);
-                let val = arrow_to_py(py, col, *row_idx)?;
-                raw_data.set_item(header.bind(py), val)?;
-            }
+                envelope.set_item(self.keys.get_id(py), id)?;
+                envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
+                envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
+                envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
+                envelope.set_item(self.keys.get_position(py), pos)?;
+                envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
 
-            *row_idx += 1;
-            if *row_idx >= batch.num_rows() {
-                state.current_batch = None;
-            }
-
-            let envelope = PyDict::new(py);
-            let id = if self.generate_ids {
-                crate::utils::generate_entry_id(py)?
-            } else {
-                py.None().into_bound(py)
-            };
-
-            envelope.set_item(self.keys.get_id(py), id)?;
-            envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-            envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-            envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-            envelope.set_item(self.keys.get_position(py), current_pos)?;
-            envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-            Ok(Some(envelope.into_any()))
-        } else {
-            Ok(None)
+                Ok(Some(envelope.into_any()))
+            },
+            Some(Err(_e)) => Ok(None),
+            None => Ok(None),
         }
     }
 }
@@ -246,5 +264,66 @@ impl ParquetWriter {
             w.close().map_err(wrap_py_err)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use crate::io::BoxedReader;
+
+    fn make_test_batch(rows: usize) -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("col1", DataType::Int32, false),
+        ]));
+        
+        let mut builder = arrow::array::Int32Builder::with_capacity(rows);
+        for i in 0..rows {
+            builder.append_value(i as i32);
+        }
+        let array = builder.finish();
+        
+        RecordBatch::try_new(schema, vec![Arc::new(array)]).unwrap()
+    }
+
+    #[test]
+    fn test_parquet_state_iteration() {
+        let batch = make_test_batch(3); // 0, 1, 2
+        
+        let boxed_reader = BoxedReader::Cursor(std::io::Cursor::new(vec![]));
+        let reader = SmartReader::new(
+             "",
+             boxed_reader,
+             |_| std::iter::empty::<Result<RecordBatch, String>>()
+        );
+        
+        let mut state = ParquetReaderState {
+             reader, 
+             current_batch: Some((batch.clone(), 0)),
+             position: 0,
+        };
+        
+        // Row 0
+        let res1 = state.next_record();
+        assert!(res1.is_some());
+        let (_b1, r1, p1) = res1.unwrap().unwrap();
+        assert_eq!(r1, 0);
+        assert_eq!(p1, 0);
+        
+        // Row 1
+        let res2 = state.next_record();
+        let (_, r2, p2) = res2.unwrap().unwrap();
+        assert_eq!(r2, 1);
+        assert_eq!(p2, 1);
+        
+        // Row 2
+        let res3 = state.next_record();
+        let (_, r3, p3) = res3.unwrap().unwrap();
+        assert_eq!(r3, 2);
+        assert_eq!(p3, 2);
+        
+        // Row 3 -> Should exhaust batch.
+        assert!(state.next_record().is_none());
     }
 }

@@ -1,3 +1,5 @@
+import csv
+import os
 import pathlib
 import typing
 
@@ -21,6 +23,9 @@ class CSVInputAdapter(BaseInputAdapter):
         skip_rows: int = 0,
         fieldnames: list[str] | None = None,
         generate_ids: bool = True,
+        limit: int | None = None,
+        start_byte: int = 0,
+        end_byte: int | None = None,
     ):
         """
         Initialize the CSVInputAdapter.
@@ -32,6 +37,9 @@ class CSVInputAdapter(BaseInputAdapter):
             skip_rows: Number of rows to skip at the beginning.
             fieldnames: Optional list of column names.
             generate_ids: Whether to generate unique IDs for each record.
+            limit: Maximum number of rows to read (optional).
+            start_byte: Byte offset to start reading from.
+            end_byte: Byte offset to stop reading at.
         """
         self.source_path = str(source)
         self.delimiter = delimiter
@@ -39,8 +47,61 @@ class CSVInputAdapter(BaseInputAdapter):
         self.skip_rows = skip_rows
         self.fieldnames = fieldnames
         self.generate_ids = generate_ids
+        self.limit = limit
+        self.start_byte = start_byte
+        self.end_byte = end_byte
+
+    def split(self, workers: int) -> typing.List["CSVInputAdapter"]:
+        """
+        Split the CSV input into `workers` byte-range shards.
+        """
+
+        # S3 support would require specialized size checking, limiting to local for now
+        if self.source_path.startswith("s3://"):
+            # For S3, we might return [self] essentially effectively disabling
+            # parallel read for now. Or implement a HEAD request to get size.
+            # Falling back to single worker for S3 to avoid complexity.
+            return [self]
+
+        file_size = os.path.getsize(self.source_path)
+        chunk_size = file_size // workers
+
+        # Ensure we have fieldnames if not explicitly provided
+        # This is CRITICAL for partial reads (start_byte > 0)
+        final_fieldnames = self.fieldnames
+        if final_fieldnames is None:
+            with open(self.source_path, "r") as f:
+                reader = csv.reader(
+                    f, delimiter=self.delimiter, quotechar=self.quotechar
+                )
+                try:
+                    final_fieldnames = next(reader)
+                except StopIteration:
+                    final_fieldnames = []
+
+        shards = []
+        for i in range(workers):
+            start = i * chunk_size
+            # Last worker takes rest of file
+            end = (i + 1) * chunk_size if i < workers - 1 else None
+
+            shards.append(
+                self.__class__(
+                    source=self.source_path,
+                    delimiter=self.delimiter,
+                    quotechar=self.quotechar,
+                    skip_rows=self.skip_rows,
+                    fieldnames=final_fieldnames,
+                    generate_ids=self.generate_ids,
+                    limit=self.limit,
+                    start_byte=start,
+                    end_byte=end,
+                )
+            )
+        return shards
 
     def get_native_reader(self) -> CSVReader:
+        # Pass start_byte and end_byte
         return CSVReader(
             self.source_path,
             delimiter=ord(self.delimiter),
@@ -48,6 +109,38 @@ class CSVInputAdapter(BaseInputAdapter):
             skip_rows=self.skip_rows,
             fieldnames=self.fieldnames,
             generate_ids=self.generate_ids,
+            limit=self.limit,
+            start_byte=self.start_byte,
+            end_byte=self.end_byte,
+        )
+
+    @staticmethod
+    def count_rows(
+        source: str | pathlib.Path,
+        delimiter: str = ",",
+        quotechar: str = '"',
+        has_header: bool = True,
+    ) -> int:
+        """
+        Efficiently count the number of rows in a CSV file using the Rust core.
+
+        Args:
+            source: Path to the CSV file.
+            delimiter: Column separator. (Default: ',')
+            quotechar: Character used for quoting. (Default: '"')
+            has_header: Whether the file has a header row to ignore in user count
+                (if used in context where header matters, though CSVReader.count_rows
+                name implies all records).
+                Actually pass this to rust to decide if first row is record or header.
+
+        Returns:
+            Number of rows (records).
+        """
+        return CSVReader.count_rows(
+            str(source),
+            ord(delimiter),
+            ord(quotechar),
+            has_header,
         )
 
 

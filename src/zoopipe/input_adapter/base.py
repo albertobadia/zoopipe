@@ -28,3 +28,16 @@ class BaseInputAdapter(abc.ABC):
         before they reach the main processing stage.
         """
         return []
+
+    def split(self, workers: int) -> typing.List["BaseInputAdapter"]:
+        """
+        Split the input adapter into `workers` shards for parallel processing.
+
+        Args:
+            workers: Number of partitions to create.
+
+        Returns:
+            A list of input adapters, each responsible for a subset of the data.
+            Default implementation returns [self] (no splitting).
+        """
+        return [self]

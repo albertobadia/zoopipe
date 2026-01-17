@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
+import shutil
 from ctypes import c_int, c_longlong
 from dataclasses import dataclass
 from datetime import datetime
@@ -265,6 +267,101 @@ class PipeManager:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self.is_running:
             self.shutdown()
+
+    @classmethod
+    def parallelize_pipe(cls, pipe: "Pipe", workers: int) -> "PipeManager":
+        """
+        Create a PipeManager that runs the given pipe in parallel across
+        `workers` processes.
+
+        Automatically splits the input and output adapters to ensure safe
+        parallel execution.
+
+        Args:
+            pipe: The source pipe to parallelize.
+            workers: Number of worker processes to use.
+
+        Returns:
+            A configured PipeManager instance.
+        """
+        input_shards = pipe.input_adapter.split(workers)
+        output_shards = pipe.output_adapter.split(workers)
+
+        if len(input_shards) != workers or len(output_shards) != workers:
+            raise ValueError(
+                f"Adapters failed to split into {workers} shards. "
+                f"Got {len(input_shards)} inputs and {len(output_shards)} outputs."
+            )
+
+        pipes = []
+        for i in range(workers):
+            sharded_pipe = type(pipe)(
+                input_adapter=input_shards[i],
+                output_adapter=output_shards[i],
+                schema_model=pipe.schema_model,
+                pre_validation_hooks=pipe.pre_validation_hooks,
+                post_validation_hooks=pipe.post_validation_hooks,
+                report_update_interval=pipe.report_update_interval,
+            )
+            pipes.append(sharded_pipe)
+
+        manager = cls(pipes)
+        manager._merge_info = {
+            "target": getattr(pipe.output_adapter, "output_path", None),
+            "sources": [getattr(shard, "output_path", None) for shard in output_shards],
+        }
+        return manager
+
+    def merge(self) -> None:
+        """
+        Merge the output files from all pipes into the final destination.
+
+        Uses zero-copy I/O for maximum performance.
+        Should be called after the pipeline has finished successfully.
+        """
+        if not self._should_merge():
+            return
+
+        target = self._merge_info["target"]
+        sources = [s for s in self._merge_info["sources"] if s]
+
+        if not sources:
+            return
+
+        self._merge_files(target, sources)
+
+    def _should_merge(self) -> bool:
+        return hasattr(self, "_merge_info") and bool(self._merge_info.get("target"))
+
+    def _merge_files(self, target: str, sources: list[str]) -> None:
+        """Merging orchestration: ensuring target is clean and iterating sources."""
+        with open(target, "wb") as dest:
+            for src_path in sources:
+                if os.path.exists(src_path):
+                    self._append_file_content(dest, src_path)
+
+    def _append_file_content(self, dest_file, source_path: str) -> None:
+        """Append a single file content to the destination file efficiently."""
+        with open(source_path, "rb") as src:
+            try:
+                self._perform_sendfile_copy(dest_file, src)
+            except (OSError, AttributeError):
+                # Fallback if sendfile not available or fails
+                src.seek(0)
+                shutil.copyfileobj(src, dest_file, length=10 * 1024 * 1024)
+
+    def _perform_sendfile_copy(self, dest_file, src_file) -> None:
+        """Platform-optimized zero-copy transfer loop."""
+        offset = 0
+        chunk_size = 128 * 1024 * 1024  # 128MB chunks
+        while True:
+            # os.sendfile provides zero-copy I/O
+            count = os.sendfile(
+                dest_file.fileno(), src_file.fileno(), offset, chunk_size
+            )
+            if count == 0:
+                break
+            offset += count
 
     def __repr__(self) -> str:
         status = "running" if self.is_running else "stopped"

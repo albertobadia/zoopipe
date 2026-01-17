@@ -15,6 +15,36 @@
 
 ---
 
+## ⚡ Performance & Benchmarks
+
+Why ZooPipe? Because **vectorization isn't always the answer.**
+
+Tools like **Pandas** and **Polars** are incredible for analytical workloads (groupby, sum, joins) where operations can be vectorized in C/Rust. However, real-world Data Engineering often involves "chaotic ETL": messy custom rules, API calls per row, hashing, conditional cleanup, and complex normalization that forcedly drop down to Python loops.
+
+**In these "Heavy ETL" scenarios, ZooPipe outperforms Vectorized DataFrames by 3x-8x.**
+
+
+### Benchmark: Heavy ETL (15M+ Rows, 10GB CSV)
+*Scenario: SHA256 Hashing, Normalization, Filtering, Enrichment per row.*
+
+> **System**: Macbook Pro M1 2020 (8GB RAM). 
+
+| Tool | Time (s) | Speed (Rows/s) | Peak RAM (MB) |
+|---|---|---|---|
+| **ZooPipe (4 workers)** | **~45s** | **~356k** | **~85 MB** |
+| ZooPipe (1 worker)* | ~89s | ~180k | ~34 MB |
+| Pure Python | ~145s | ~110k | ~25 MB |
+| Pydantic | ~180s | ~89k | ~31 MB |
+| Polars | ~370s | ~43k | ~2500 MB |
+| Pandas | ~1830s | ~9k | ~3400 MB |
+
+> *\*ZooPipe (1 worker) ran a lighter workload (timestamp only) validation, used as baseline for raw throughput.*
+
+> **Key Takeaway**: ZooPipe's "Python-First Architecture" with parallel streaming (`PipeManager`) avoids the serialization overhead that cripples Polars/Pandas when using Python UDFs (`map_elements`/`apply`), and uses **97% less RAM**.
+
+
+---
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -56,7 +86,24 @@ pipe = Pipe(
 pipe.start()
 pipe.wait()
 
+
 print(f"Finished! Processed {pipe.report.total_processed} items.")
+```
+
+### Parallel Processing (Multi-Process)
+
+Automatically split a large file across multiple workers (processes) to bypass the GIL:
+
+```python
+from zoopipe import PipeManager
+
+# Create your pipe as usual...
+pipe = Pipe(...)
+
+# Automatically parallelize across 4 workers
+manager = PipeManager.parallelize_pipe(pipe, workers=4)
+manager.start()
+manager.join()
 ```
 
 ---

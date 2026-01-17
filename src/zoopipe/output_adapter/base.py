@@ -28,3 +28,9 @@ class BaseOutputAdapter(abc.ABC):
         after the data has been written.
         """
         return []
+
+    def split(self, workers: int) -> typing.List["BaseOutputAdapter"]:
+        """
+        Split the output adapter into `workers` partitions for parallel writing.
+        """
+        return [self]

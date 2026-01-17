@@ -17,6 +17,44 @@ struct JSONReaderState {
     position: usize,
 }
 
+impl JSONReaderState {
+    fn next_value(&mut self) -> Option<Result<(Value, usize), String>> {
+        if let Some(ref mut ai) = self.array_iter {
+            if let Some(val) = ai.next() {
+                let current_pos = self.position;
+                self.position += 1;
+                return Some(Ok((val, current_pos)));
+            } else {
+                self.array_iter = None;
+            }
+        }
+
+        match self.reader.next() {
+            Some(Ok(value)) => {
+                if let Value::Array(arr) = value {
+                    let mut ai = arr.into_iter();
+                    if let Some(val) = ai.next() {
+                        let current_pos = self.position;
+                        self.position += 1;
+                        self.array_iter = Some(ai);
+                        return Some(Ok((val, current_pos)));
+                    } else {
+                        return None; 
+                    }
+                }
+                let current_pos = self.position;
+                self.position += 1;
+                Some(Ok((value, current_pos)))
+            }
+            Some(Err(e)) => {
+                let pos = self.position + 1;
+                Some(Err(format!("JSON parse error at position {}: {}", pos, e)))
+            }
+            None => None,
+        }
+    }
+}
+
 /// Fast JSON reader that handles both single objects and arrays of objects.
 /// 
 /// It streams data efficiently using a background thread and supports
@@ -125,40 +163,17 @@ impl JSONReader {
 
 impl JSONReader {
     fn next_internal<'py>(&self, py: Python<'py>, state: &mut JSONReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
-        if let Some(ref mut ai) = state.array_iter {
-            if let Some(val) = ai.next() {
-                let current_pos = state.position;
-                state.position += 1;
-                return Ok(Some(self.wrap_in_envelope(py, val, current_pos)?));
-            } else {
-                state.array_iter = None;
-            }
-        }
-
-        match state.reader.next() {
-            Some(Ok(value)) => {
-                if let Value::Array(arr) = value {
-                    let mut ai = arr.into_iter();
-                    if let Some(val) = ai.next() {
-                        let current_pos = state.position;
-                        state.position += 1;
-                        state.array_iter = Some(ai);
-                        return Ok(Some(self.wrap_in_envelope(py, val, current_pos)?));
-                    } else {
-                        return Ok(None);
-                    }
-                }
-                let current_pos = state.position;
-                state.position += 1;
-                Ok(Some(self.wrap_in_envelope(py, value, current_pos)?))
-            }
+        match state.next_value() {
+            Some(Ok((value, pos))) => {
+                 Ok(Some(self.wrap_in_envelope(py, value, pos)?))
+            },
             Some(Err(e)) => {
-                let pos = state.position + 1;
-                Err(PipeError::Other(format!("JSON parse error at position {}: {}", pos, e)).into())
-            }
-            None => Ok(None),
+                 Err(PipeError::Other(e).into())
+            },
+            None => Ok(None)
         }
     }
+
     fn wrap_in_envelope<'py>(&self, py: Python<'py>, value: Value, position: usize) -> PyResult<Bound<'py, PyAny>> {
         let envelope = PyDict::new(py);
         envelope.set_item(self.keys.get_id(py), crate::utils::generate_entry_id(py)?)?;
@@ -289,5 +304,80 @@ impl JSONWriter {
         
         *is_first = false;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+    use serde_json::json;
+
+    fn create_state(data: Vec<u8>) -> JSONReaderState {
+        let boxed_reader = BoxedReader::Cursor(Cursor::new(data));
+        let reader = SmartReader::new(
+            "",
+            boxed_reader,
+            |r| serde_json::Deserializer::from_reader(r)
+                .into_iter::<Value>()
+                .map(|res| res.map_err(|e| format!("{}", e)))
+        );
+        JSONReaderState {
+            reader,
+            array_iter: None,
+            position: 0,
+        }
+    }
+
+    #[test]
+    fn test_json_reader_single_objects() {
+        // NDJSON / Concatenated JSON
+        let data = r#"{"a": 1}{"b": 2}"#.as_bytes().to_vec();
+        let mut state = create_state(data);
+
+        let (val1, pos1) = state.next_value().unwrap().unwrap();
+        assert_eq!(val1, json!({"a": 1}));
+        assert_eq!(pos1, 0);
+
+        let (val2, pos2) = state.next_value().unwrap().unwrap();
+        assert_eq!(val2, json!({"b": 2}));
+        assert_eq!(pos2, 1);
+
+        assert!(state.next_value().is_none());
+    }
+
+    #[test]
+    fn test_json_reader_array() {
+        // Single array
+        let data = r#"[{"a": 1}, {"b": 2}]"#.as_bytes().to_vec();
+        let mut state = create_state(data);
+
+        let (val1, pos1) = state.next_value().unwrap().unwrap();
+        assert_eq!(val1, json!({"a": 1}));
+        assert_eq!(pos1, 0);
+
+        let (val2, pos2) = state.next_value().unwrap().unwrap();
+        assert_eq!(val2, json!({"b": 2}));
+        assert_eq!(pos2, 1);
+
+        assert!(state.next_value().is_none());
+    }
+
+    #[test]
+    fn test_json_reader_mixed() {
+        // Array then object
+        let data = r#"[{"a": 1}] {"b": 2}"#.as_bytes().to_vec();
+        let mut state = create_state(data);
+
+        let (val1, pos1) = state.next_value().unwrap().unwrap();
+        assert_eq!(val1, json!({"a": 1}));
+        assert_eq!(pos1, 0);
+
+        // After array finishes, next_value() calls reader.next()
+        let (val2, pos2) = state.next_value().unwrap().unwrap();
+        assert_eq!(val2, json!({"b": 2}));
+        assert_eq!(pos2, 1);
+
+        assert!(state.next_value().is_none());
     }
 }

@@ -33,6 +33,27 @@ class JSONOutputAdapter(BaseOutputAdapter):
         self.format = format
         self.indent = indent
 
+    def split(self, workers: int) -> typing.List["JSONOutputAdapter"]:
+        """
+        Split the output adapter into `workers` partitions.
+        Generates filenames like `filename_part_0.jsonl`.
+        """
+        path = pathlib.Path(self.output_path)
+        stem = path.stem
+        suffix = path.suffix
+        parent = path.parent
+
+        shards = []
+        for i in range(workers):
+            part_name = f"{stem}_part_{i + 1}{suffix}"
+            part_path = parent / part_name
+            shards.append(
+                self.__class__(
+                    output=str(part_path), format=self.format, indent=self.indent
+                )
+            )
+        return shards
+
     def get_native_writer(self) -> JSONWriter:
         pathlib.Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         return JSONWriter(
