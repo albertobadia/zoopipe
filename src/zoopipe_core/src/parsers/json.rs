@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use std::fs::File;
 use std::io::{BufReader, Write};
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 use serde_json::Value;
 use serde::Serialize;
 use crate::io::{BoxedReader, SmartReader};
@@ -15,6 +15,26 @@ struct JSONReaderState {
     reader: SmartReader<Value>,
     array_iter: Option<std::vec::IntoIter<Value>>,
     position: usize,
+}
+
+// Helper struct for byte-bounded JSON iteration
+struct BoundedJsonIter<I> {
+    iter: I,
+    count: Arc<std::sync::atomic::AtomicU64>,
+    end_byte: Option<u64>,
+}
+
+impl<I: Iterator<Item = Result<Value, String>>> Iterator for BoundedJsonIter<I> {
+    type Item = Result<Value, String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(end) = self.end_byte {
+            if self.count.load(std::sync::atomic::Ordering::Relaxed) >= end {
+                return None;
+            }
+        }
+        self.iter.next()
+    }
 }
 
 impl JSONReaderState {
@@ -69,25 +89,52 @@ pub struct JSONReader {
 #[pymethods]
 impl JSONReader {
     #[new]
-    fn new(py: Python<'_>, path: String) -> PyResult<Self> {
+    #[pyo3(signature = (path, start_byte=0, end_byte=None))]
+    fn new(py: Python<'_>, path: String, start_byte: u64, end_byte: Option<u64>) -> PyResult<Self> {
         use crate::io::storage::StorageController;
         use object_store::path::Path;
         use crate::io::RemoteReader;
+        use std::io::{BufRead, Seek, SeekFrom};
 
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
-            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+            let mut rr = RemoteReader::new(controller.store(), Path::from(controller.path()));
+            if start_byte > 0 {
+                rr.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
+                // Skip partial line
+                let mut dummy = String::new();
+                rr.read_line(&mut dummy).map_err(wrap_py_err)?;
+            }
+            BoxedReader::Remote(rr)
         } else {
             let file = File::open(&path).map_err(wrap_py_err)?;
-            BoxedReader::File(BufReader::new(file))
+            let mut br = BufReader::new(file);
+            if start_byte > 0 {
+                br.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
+                // Skip partial line
+                let mut dummy = String::new();
+                br.read_line(&mut dummy).map_err(wrap_py_err)?;
+            }
+            BoxedReader::File(br)
         };
         
         let reader = SmartReader::new(
             &path,
             boxed_reader,
-            |r| serde_json::Deserializer::from_reader(r)
-                .into_iter::<Value>()
-                .map(|res| res.map_err(|e| format!("{}", e)))
+            move |r| {
+                use crate::io::CountingReader;
+                let counting_reader = CountingReader::new(r, start_byte);
+                let count_handle = counting_reader.get_count_handle();
+                let iter = serde_json::Deserializer::from_reader(counting_reader)
+                    .into_iter::<Value>()
+                    .map(|res| res.map_err(|e| format!("{}", e)));
+                
+                BoundedJsonIter {
+                    iter,
+                    count: count_handle,
+                    end_byte,
+                }
+            }
         );
         
         let models = py.import("zoopipe.report")?;
@@ -267,7 +314,7 @@ impl JSONWriter {
             }
             writer.write_all(b"]").map_err(wrap_py_err)?;
         }
-        writer.flush().map_err(wrap_py_err)?;
+        writer.close().map_err(wrap_py_err)?;
         Ok(())
     }
 }

@@ -1,8 +1,7 @@
 use pyo3::prelude::*;
 use std::fs::File;
-use std::io::BufReader;
 use std::sync::Mutex;
-use calamine::{Reader, Xlsx, Data, open_workbook};
+use calamine::{Reader, Xlsx, Data};
 use rust_xlsxwriter::{Workbook, Worksheet, Format};
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
@@ -40,7 +39,23 @@ impl ExcelReader {
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
     ) -> PyResult<Self> {
-        let mut workbook: Xlsx<BufReader<File>> = open_workbook(&path).map_err(wrap_py_err)?;
+        use crate::io::storage::StorageController;
+        use crate::io::get_runtime;
+        use std::io::{Cursor, Read};
+
+        let data = if path.starts_with("s3://") {
+            let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+            get_runtime().block_on(async {
+                controller.store().get(&object_store::path::Path::from(controller.path())).await.map_err(wrap_py_err)?.bytes().await.map_err(wrap_py_err)
+            })?.to_vec()
+        } else {
+            let mut file = File::open(&path).map_err(wrap_py_err)?;
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).map_err(wrap_py_err)?;
+            buf
+        };
+
+        let mut workbook: Xlsx<Cursor<Vec<u8>>> = calamine::open_workbook_from_rs(Cursor::new(data)).map_err(wrap_py_err)?;
         
         let sheet_name = match sheet {
             Some(SheetSelector::Name(name)) => name,
@@ -127,7 +142,23 @@ impl ExcelReader {
     }
     #[staticmethod]
     pub fn list_sheets(path: String) -> PyResult<Vec<String>> {
-        let workbook: Xlsx<BufReader<File>> = open_workbook(&path).map_err(wrap_py_err)?;
+        use crate::io::storage::StorageController;
+        use crate::io::get_runtime;
+        use std::io::{Cursor, Read};
+
+        let data = if path.starts_with("s3://") {
+            let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+            get_runtime().block_on(async {
+                controller.store().get(&object_store::path::Path::from(controller.path())).await.map_err(wrap_py_err)?.bytes().await.map_err(wrap_py_err)
+            })?.to_vec()
+        } else {
+            let mut file = File::open(&path).map_err(wrap_py_err)?;
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).map_err(wrap_py_err)?;
+            buf
+        };
+
+        let workbook: Xlsx<Cursor<Vec<u8>>> = calamine::open_workbook_from_rs(Cursor::new(data)).map_err(wrap_py_err)?;
         Ok(workbook.sheet_names().to_vec())
     }
 
@@ -270,7 +301,18 @@ impl ExcelWriter {
         let path = state.path.clone();
         let worksheet = std::mem::replace(&mut state.worksheet, Worksheet::new());
         state.workbook.push_worksheet(worksheet);
-        state.workbook.save(&path).map_err(wrap_py_err)?;
+        
+        if path.starts_with("s3://") {
+            let buffer = state.workbook.save_to_buffer().map_err(wrap_py_err)?;
+            use crate::io::storage::StorageController;
+            use crate::io::get_runtime;
+            let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+            get_runtime().block_on(async {
+                controller.store().put(&object_store::path::Path::from(controller.path()), buffer.into()).await.map_err(wrap_py_err)
+            })?;
+        } else {
+            state.workbook.save(&path).map_err(wrap_py_err)?;
+        }
         
         Ok(())
     }

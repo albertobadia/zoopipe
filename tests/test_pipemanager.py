@@ -537,7 +537,7 @@ def test_pipemanager_parallelize_pipe_csv(tmp_path):
         schema_model=UserSchema,
     )
 
-    manager = PipeManager.parallelize_pipe(pipe, workers=2)
+    manager = PipeManager.parallelize_pipe(pipe, workers=2, should_merge=True)
 
     assert manager.pipe_count == 2
     assert len(manager.pipes) == 2

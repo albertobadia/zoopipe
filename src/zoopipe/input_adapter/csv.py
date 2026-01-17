@@ -4,7 +4,7 @@ import pathlib
 import typing
 
 from zoopipe.input_adapter.base import BaseInputAdapter
-from zoopipe.zoopipe_rust_core import CSVReader
+from zoopipe.zoopipe_rust_core import CSVReader, get_file_size
 
 
 class CSVInputAdapter(BaseInputAdapter):
@@ -56,28 +56,26 @@ class CSVInputAdapter(BaseInputAdapter):
         Split the CSV input into `workers` byte-range shards.
         """
 
-        # S3 support would require specialized size checking, limiting to local for now
-        if self.source_path.startswith("s3://"):
-            # For S3, we might return [self] essentially effectively disabling
-            # parallel read for now. Or implement a HEAD request to get size.
-            # Falling back to single worker for S3 to avoid complexity.
-            return [self]
+        file_size = get_file_size(self.source_path)
 
-        file_size = os.path.getsize(self.source_path)
         chunk_size = file_size // workers
 
         # Ensure we have fieldnames if not explicitly provided
         # This is CRITICAL for partial reads (start_byte > 0)
         final_fieldnames = self.fieldnames
         if final_fieldnames is None:
-            with open(self.source_path, "r") as f:
-                reader = csv.reader(
-                    f, delimiter=self.delimiter, quotechar=self.quotechar
-                )
-                try:
-                    final_fieldnames = next(reader)
-                except StopIteration:
-                    final_fieldnames = []
+            if self.source_path.startswith("s3://"):
+                # Use Rust reader to discover headers from S3
+                final_fieldnames = self.get_native_reader().headers
+            else:
+                with open(self.source_path, "r") as f:
+                    reader = csv.reader(
+                        f, delimiter=self.delimiter, quotechar=self.quotechar
+                    )
+                    try:
+                        final_fieldnames = next(reader)
+                    except StopIteration:
+                        final_fieldnames = []
 
         shards = []
         for i in range(workers):

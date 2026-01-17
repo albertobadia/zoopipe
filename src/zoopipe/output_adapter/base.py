@@ -10,6 +10,11 @@ class BaseOutputAdapter(abc.ABC):
     They provide the native Rust writer used by the execution core.
     """
 
+    @property
+    def can_split(self) -> bool:
+        """Return True if this adapter supports parallel splitting."""
+        return type(self).split != BaseOutputAdapter.split
+
     @abc.abstractmethod
     def get_native_writer(self) -> typing.Any:
         """

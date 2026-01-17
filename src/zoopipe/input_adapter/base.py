@@ -29,6 +29,11 @@ class BaseInputAdapter(abc.ABC):
         """
         return []
 
+    @property
+    def can_split(self) -> bool:
+        """Return True if this adapter supports parallel splitting."""
+        return type(self).split != BaseInputAdapter.split
+
     def split(self, workers: int) -> typing.List["BaseInputAdapter"]:
         """
         Split the input adapter into `workers` shards for parallel processing.

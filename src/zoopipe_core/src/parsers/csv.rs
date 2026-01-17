@@ -1,12 +1,13 @@
 use pyo3::prelude::*;
 use std::fs::File;
 use std::io::{BufReader, Cursor};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex as StdMutex};
 use csv::StringRecord;
-use crate::io::{BoxedReader, SmartReader};
+use crate::io::{BoxedReader, SmartReader, BoxedWriter, SharedWriter};
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
+use std::sync::Mutex;
 
 use crate::utils::interning::InternedKeys;
 
@@ -78,7 +79,11 @@ impl CSVReader {
         
         // Handle byte range seeking
         let mut boxed_reader = if path.starts_with("s3://") {
-             BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+             let mut r = RemoteReader::new(controller.store(), Path::from(controller.path()));
+             if start_byte > 0 {
+                 r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
+             }
+             BoxedReader::Remote(r)
         } else {
              let file = File::open(&path).map_err(wrap_py_err)?;
              let mut reader = BufReader::new(file);
@@ -92,11 +97,7 @@ impl CSVReader {
              // Discard partial line if we started in the middle
              use std::io::BufRead;
              let mut dummy = String::new();
-             if let BoxedReader::File(ref mut r) = boxed_reader {
-                 r.read_line(&mut dummy).map_err(wrap_py_err)?;
-             }
-             // For RemoteReader, partial line skipping might be complex, 
-             // but here we assume local file optimization mainly.
+             boxed_reader.read_line(&mut dummy).map_err(wrap_py_err)?;
         }
 
         let mut reader = csv::ReaderBuilder::new()
@@ -261,6 +262,15 @@ impl CSVReader {
         Ok(count)
     }
 
+    #[getter]
+    fn headers(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let mut res = Vec::new();
+        for h in &self.headers {
+            res.push(h.bind(py).to_string());
+        }
+        Ok(res)
+    }
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -346,7 +356,8 @@ pub struct CSVWriter {
 }
 
 struct CSVWriterState {
-    writer: csv::Writer<crate::io::BoxedWriter>,
+    writer: csv::Writer<SharedWriter>,
+    inner_writer: Arc<StdMutex<BoxedWriter>>,
     fieldnames: Option<Vec<Py<PyString>>>,
     header_written: bool,
 }
@@ -373,11 +384,12 @@ impl CSVWriter {
             let file = File::create(&path).map_err(wrap_py_err)?;
             BoxedWriter::File(std::io::BufWriter::new(file))
         };
-
+        
+        let shared_writer = Arc::new(StdMutex::new(boxed_writer));
         let writer = csv::WriterBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
-            .from_writer(boxed_writer);
+            .from_writer(SharedWriter(shared_writer.clone()));
         
         let py_fieldnames = fieldnames.map(|names| {
             names.into_iter().map(|s| PyString::new(py, &s).unbind()).collect()
@@ -386,6 +398,7 @@ impl CSVWriter {
         Ok(CSVWriter {
             state: Mutex::new(CSVWriterState {
                 writer,
+                inner_writer: shared_writer,
                 fieldnames: py_fieldnames,
                 header_written: false,
             }),
@@ -414,7 +427,11 @@ impl CSVWriter {
     }
 
     pub fn close(&self) -> PyResult<()> {
-        self.flush()
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+        state.writer.flush().map_err(wrap_py_err)?;
+        let mut inner = state.inner_writer.lock().unwrap();
+        inner.close().map_err(wrap_py_err)?;
+        Ok(())
     }
 }
 

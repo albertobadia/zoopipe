@@ -269,7 +269,9 @@ class PipeManager:
             self.shutdown()
 
     @classmethod
-    def parallelize_pipe(cls, pipe: "Pipe", workers: int) -> "PipeManager":
+    def parallelize_pipe(
+        cls, pipe: "Pipe", workers: int, should_merge: bool = False
+    ) -> "PipeManager":
         """
         Create a PipeManager that runs the given pipe in parallel across
         `workers` processes.
@@ -280,10 +282,16 @@ class PipeManager:
         Args:
             pipe: The source pipe to parallelize.
             workers: Number of worker processes to use.
+            should_merge: Whether to merge the output shards into a single file
+                automatically after execution.
 
         Returns:
             A configured PipeManager instance.
         """
+        # If any adapter cannot be split, we degrade to a single worker
+        if not pipe.input_adapter.can_split or not pipe.output_adapter.can_split:
+            workers = 1
+
         input_shards = pipe.input_adapter.split(workers)
         output_shards = pipe.output_adapter.split(workers)
 
@@ -306,6 +314,7 @@ class PipeManager:
             pipes.append(sharded_pipe)
 
         manager = cls(pipes)
+        manager.should_merge = should_merge
         manager._merge_info = {
             "target": getattr(pipe.output_adapter, "output_path", None),
             "sources": [getattr(shard, "output_path", None) for shard in output_shards],
@@ -331,7 +340,15 @@ class PipeManager:
         self._merge_files(target, sources)
 
     def _should_merge(self) -> bool:
-        return hasattr(self, "_merge_info") and bool(self._merge_info.get("target"))
+        if not getattr(self, "should_merge", False):
+            return False
+
+        if not hasattr(self, "_merge_info") or not self._merge_info.get("target"):
+            return False
+
+        # We need to have more than 1 source to justify a merge
+        sources = [s for s in self._merge_info.get("sources", []) if s]
+        return len(sources) > 1
 
     def _merge_files(self, target: str, sources: list[str]) -> None:
         """Merging orchestration: ensuring target is clean and iterating sources."""

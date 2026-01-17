@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, Mutex as StdMutex};
 use arrow::record_batch::RecordBatch;
 
 use arrow::datatypes::*;
@@ -12,41 +12,63 @@ use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyDict, PyList, PyString, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch, infer_type};
-use crate::io::SmartReader;
+use crate::io::{SmartReader, BoxedWriter, SharedWriter};
 
 struct ParquetReaderState {
     reader: SmartReader<RecordBatch>,
     current_batch: Option<(RecordBatch, usize)>,
     position: usize,
+    rows_to_skip: usize,
+    rows_to_read: Option<usize>,
+    rows_read: usize,
 }
 
 impl ParquetReaderState {
     // Returns (Batch, RowIndex, Position) or None
     fn next_record(&mut self) -> Option<Result<(RecordBatch, usize, usize), String>> {
-         if self.current_batch.is_none() {
-            match self.reader.next() {
-                Some(Ok(batch)) => {
-                    self.current_batch = Some((batch, 0));
-                },
-                Some(Err(e)) => return Some(Err(e.to_string())),
-                None => return None,
+        if let Some(limit) = self.rows_to_read {
+            if self.rows_read >= limit {
+                return None;
             }
         }
 
-        if let Some((batch, row_idx)) = self.current_batch.as_mut() {
-            let current_pos = self.position;
-            self.position += 1;
-            
-            // Clone batch handle for return? RecordBatch is cheap to clone (Arc internal)
-            let batch_ref = batch.clone();
-            let current_idx = *row_idx;
-
-            *row_idx += 1;
-            if *row_idx >= batch.num_rows() {
-                self.current_batch = None;
+        loop {
+            if self.current_batch.is_none() {
+                match self.reader.next() {
+                    Some(Ok(batch)) => {
+                        self.current_batch = Some((batch, 0));
+                    },
+                    Some(Err(e)) => return Some(Err(e.to_string())),
+                    None => return None,
+                }
             }
-            
-            return Some(Ok((batch_ref, current_idx, current_pos)));
+
+            if let Some((batch, row_idx)) = self.current_batch.as_mut() {
+                if self.rows_to_skip > 0 {
+                    let skip = std::cmp::min(self.rows_to_skip, batch.num_rows() - *row_idx);
+                    self.rows_to_skip -= skip;
+                    *row_idx += skip;
+                    if *row_idx >= batch.num_rows() {
+                        self.current_batch = None;
+                        continue;
+                    }
+                }
+
+                let current_pos = self.position;
+                self.position += 1;
+                self.rows_read += 1;
+                
+                let batch_ref = batch.clone();
+                let current_idx = *row_idx;
+
+                *row_idx += 1;
+                if *row_idx >= batch.num_rows() {
+                    self.current_batch = None;
+                }
+                
+                return Some(Ok((batch_ref, current_idx, current_pos)));
+            }
+            break;
         }
         
         None
@@ -71,8 +93,16 @@ use crate::utils::interning::InternedKeys;
 #[pymethods]
 impl ParquetReader {
     #[new]
-    #[pyo3(signature = (path, generate_ids=true, batch_size=1024))]
-    fn new(py: Python<'_>, path: String, generate_ids: bool, batch_size: usize) -> PyResult<Self> {
+    #[pyo3(signature = (path, generate_ids=true, batch_size=1024, limit=None, offset=0, row_groups=None))]
+    fn new(
+        py: Python<'_>,
+        path: String,
+        generate_ids: bool,
+        batch_size: usize,
+        limit: Option<usize>,
+        offset: usize,
+        row_groups: Option<Vec<usize>>,
+    ) -> PyResult<Self> {
         use crate::io::storage::StorageController;
         use object_store::path::Path as ObjectPath;
         use crate::io::{BoxedReader, RemoteReader};
@@ -86,7 +116,10 @@ impl ParquetReader {
             BoxedReader::File(BufReader::new(file))
         };
 
-        let builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
+        let mut builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
+        if let Some(groups) = row_groups {
+            builder = builder.with_row_groups(groups);
+        }
         let schema = builder.schema().clone();
         
         let headers: Vec<Py<PyString>> = schema.fields()
@@ -112,12 +145,58 @@ impl ParquetReader {
                 reader,
                 current_batch: None,
                 position: 0,
+                rows_to_skip: offset,
+                rows_to_read: limit,
+                rows_read: 0,
             }),
             headers,
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
         })
+    }
+
+    #[staticmethod]
+    pub fn count_rows(path: String) -> PyResult<usize> {
+        use crate::io::storage::StorageController;
+        use object_store::path::Path as ObjectPath;
+        use crate::io::{BoxedReader, RemoteReader};
+        use std::io::BufReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), ObjectPath::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+
+        let builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
+        Ok(builder.metadata().file_metadata().num_rows() as usize)
+    }
+
+    #[staticmethod]
+    pub fn get_row_groups_info(path: String) -> PyResult<Vec<usize>> {
+        use crate::io::storage::StorageController;
+        use object_store::path::Path as ObjectPath;
+        use crate::io::{BoxedReader, RemoteReader};
+        use std::io::BufReader;
+
+        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+        let boxed_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(controller.store(), ObjectPath::from(controller.path())))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+
+        let builder = ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
+        let metadata = builder.metadata();
+        let mut info = Vec::new();
+        for i in 0..metadata.num_row_groups() {
+            info.push(metadata.row_group(i).num_rows() as usize);
+        }
+        Ok(info)
     }
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -191,7 +270,8 @@ impl ParquetReader {
 #[pyclass]
 pub struct ParquetWriter {
     path: String,
-    writer: Mutex<Option<ArrowWriter<crate::io::BoxedWriter>>>,
+    writer: Mutex<Option<ArrowWriter<SharedWriter>>>,
+    inner_writer: Mutex<Option<Arc<StdMutex<BoxedWriter>>>>,
     schema: Mutex<Option<SchemaRef>>,
 }
 
@@ -202,6 +282,7 @@ impl ParquetWriter {
         ParquetWriter {
             path,
             writer: Mutex::new(None),
+            inner_writer: Mutex::new(None),
             schema: Mutex::new(None),
         }
     }
@@ -217,6 +298,7 @@ impl ParquetWriter {
             use crate::io::storage::StorageController;
             use object_store::path::Path as ObjectPath;
             use crate::io::{BoxedWriter, RemoteWriter};
+            use std::sync::Arc;
 
             let first = list.get_item(0)?;
             let dict = first.cast::<PyDict>()?;
@@ -242,12 +324,15 @@ impl ParquetWriter {
                 BoxedWriter::File(std::io::BufWriter::new(file))
             };
             
+            let shared_writer = Arc::new(StdMutex::new(boxed_writer));
             let props = WriterProperties::builder()
                 .set_max_row_group_size(8_192)
                 .build();
 
-            *writer_guard = Some(ArrowWriter::try_new(boxed_writer, schema.clone(), Some(props)).map_err(wrap_py_err)?);
+            *writer_guard = Some(ArrowWriter::try_new(SharedWriter(shared_writer.clone()), schema.clone(), Some(props)).map_err(wrap_py_err)?);
             *schema_guard = Some(schema);
+            let mut inner_guard = self.inner_writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+            *inner_guard = Some(shared_writer);
         }
 
         let writer = writer_guard.as_mut().expect("ParquetWriter not initialized");
@@ -261,7 +346,12 @@ impl ParquetWriter {
     pub fn close(&self) -> PyResult<()> {
         let mut writer_guard = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(w) = writer_guard.take() {
-            w.close().map_err(wrap_py_err)?;
+            let _: parquet::file::metadata::ParquetMetaData = w.close().map_err(wrap_py_err)?;
+        }
+        let mut inner_guard = self.inner_writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+        if let Some(shared) = inner_guard.take() {
+            let mut writer = shared.lock().unwrap();
+            writer.close().map_err(wrap_py_err)?;
         }
         Ok(())
     }
@@ -302,6 +392,9 @@ mod tests {
              reader, 
              current_batch: Some((batch.clone(), 0)),
              position: 0,
+             rows_to_skip: 0,
+             rows_to_read: None,
+             rows_read: 0,
         };
         
         // Row 0

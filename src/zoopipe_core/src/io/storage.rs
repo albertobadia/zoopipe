@@ -19,7 +19,9 @@ impl StorageController {
             let bucket = url.host_str().ok_or_else(|| PipeError::Other("Invalid S3 bucket".into()))?;
             
             let builder = AmazonS3Builder::from_env()
-                .with_bucket_name(bucket);
+                .with_bucket_name(bucket)
+                .with_retry(object_store::RetryConfig::default())
+                .with_client_options(object_store::ClientOptions::default());
             
             let s3 = builder.build().map_err(|e| PipeError::Other(e.to_string()))?;
             
@@ -42,6 +44,12 @@ impl StorageController {
 
     pub fn path(&self) -> &str {
         &self.prefix
+    }
+
+    pub async fn get_size(&self) -> Result<u64, PipeError> {
+        let meta = self.inner.head(&object_store::path::Path::from(self.prefix.as_str())).await
+            .map_err(|e| PipeError::Other(e.to_string()))?;
+        Ok(meta.size as u64)
     }
 }
 

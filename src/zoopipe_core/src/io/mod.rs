@@ -22,52 +22,126 @@ pub enum BoxedReader {
     Remote(RemoteReader),
 }
 
+pub struct CountingReader<R> {
+    inner: R,
+    count: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl<R> CountingReader<R> {
+    pub fn new(inner: R, initial_count: u64) -> Self {
+        Self {
+            inner,
+            count: Arc::new(std::sync::atomic::AtomicU64::new(initial_count)),
+        }
+    }
+
+    pub fn get_count_handle(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        self.count.clone()
+    }
+}
+
+impl<R: std::io::Read> std::io::Read for CountingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.count.fetch_add(n as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(n)
+    }
+}
+
+impl<R: std::io::BufRead> std::io::BufRead for CountingReader<R> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.inner.fill_buf()
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.inner.consume(amt);
+        self.count.fetch_add(amt as u64, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl<R: std::io::Seek> std::io::Seek for CountingReader<R> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        let n = self.inner.seek(pos)?;
+        self.count.store(n, std::sync::atomic::Ordering::Relaxed);
+        Ok(n)
+    }
+}
+
 use std::sync::OnceLock;
 
 pub fn get_runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
-        Runtime::new().expect("Failed to create Tokio runtime")
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create Tokio runtime")
     })
 }
+
+const READ_BUFFER_SIZE: usize = 8 * 1024 * 1024; // 8MB
+const WRITE_BUFFER_SIZE: usize = 8 * 1024 * 1024; // 8MB
 
 pub struct RemoteReader {
     store: Arc<dyn ObjectStore>,
     path: Path,
-    buffer: Vec<u8>,
+    buffer: Bytes,
     pos: u64,
+    file_len: u64,
 }
 
 impl RemoteReader {
     pub fn new(store: Arc<dyn ObjectStore>, path: Path) -> Self {
+        let file_len = get_runtime().block_on(async {
+            store.head(&path).await.map(|m| m.size as u64).unwrap_or(0)
+        });
+
+        Self::new_with_len(store, path, file_len)
+    }
+
+    pub fn new_with_len(store: Arc<dyn ObjectStore>, path: Path, file_len: u64) -> Self {
         Self {
             store,
             path,
-            buffer: Vec::new(),
+            buffer: Bytes::new(),
             pos: 0,
+            file_len,
         }
     }
 
-    fn fetch_if_needed(&mut self) -> std::io::Result<()> {
-        if self.buffer.is_empty() {
-            let path = self.path.clone();
-            let store = self.store.clone();
-            let bytes = get_runtime().block_on(async move {
-                let res = store.get(&path).await.map_err(std::io::Error::other)?;
-                res.bytes().await.map_err(std::io::Error::other)
-            })?;
-            self.buffer = bytes.to_vec();
+    fn fetch_next_chunk(&mut self) -> std::io::Result<()> {
+        if self.pos >= self.file_len {
+            return Ok(());
         }
+
+        let end = std::cmp::min(self.pos + READ_BUFFER_SIZE as u64, self.file_len);
+        let range = self.pos as usize..end as usize;
+        
+        let path = self.path.clone();
+        let store = self.store.clone();
+        
+        let bytes = get_runtime().block_on(async move {
+            store.get_range(&path, range).await.map_err(std::io::Error::other)
+        })?;
+        
+        self.buffer = bytes;
         Ok(())
     }
 }
 
 impl Read for RemoteReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.fetch_if_needed()?;
-        let available = self.buffer.len() as u64 - self.pos;
-        let to_copy = std::cmp::min(available, buf.len() as u64) as usize;
-        buf[..to_copy].copy_from_slice(&self.buffer[self.pos as usize..self.pos as usize + to_copy]);
+        if self.buffer.is_empty() && self.pos < self.file_len {
+            self.fetch_next_chunk()?;
+        }
+
+        if self.buffer.is_empty() {
+            return Ok(0);
+        }
+
+        let to_copy = std::cmp::min(self.buffer.len(), buf.len());
+        buf[..to_copy].copy_from_slice(&self.buffer[..to_copy]);
+        self.buffer = self.buffer.slice(to_copy..);
         self.pos += to_copy as u64;
         Ok(to_copy)
     }
@@ -75,30 +149,46 @@ impl Read for RemoteReader {
 
 impl BufRead for RemoteReader {
     fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
-        self.fetch_if_needed()?;
-        Ok(&self.buffer[self.pos as usize..])
+        if self.buffer.is_empty() && self.pos < self.file_len {
+            self.fetch_next_chunk()?;
+        }
+        Ok(&self.buffer)
     }
 
     fn consume(&mut self, amt: usize) {
-        self.pos = std::cmp::min(self.pos + amt as u64, self.buffer.len() as u64);
+        let amt = std::cmp::min(amt, self.buffer.len());
+        self.buffer = self.buffer.slice(amt..);
+        self.pos += amt as u64;
     }
 }
 
 impl Seek for RemoteReader {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        self.fetch_if_needed()?;
         let new_pos = match pos {
             SeekFrom::Start(p) => p as i64,
-            SeekFrom::End(p) => self.buffer.len() as i64 + p,
-            SeekFrom::Current(p) => self.pos as i64 + p,
+            SeekFrom::End(p) => self.file_len as i64 + p,
+            SeekFrom::Current(p) => (self.pos - self.buffer.len() as u64) as i64 + p,
         };
 
         if new_pos < 0 {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid seek to a negative or overflowing position"));
         }
 
-        self.pos = std::cmp::min(new_pos as u64, self.buffer.len() as u64);
-        Ok(self.pos)
+        let new_pos = new_pos as u64;
+        
+        // If the new position is within the current buffer, we just slice it
+        let current_start = self.pos - self.buffer.len() as u64;
+        if new_pos >= current_start && new_pos < self.pos {
+            let offset = (new_pos - current_start) as usize;
+            self.buffer = self.buffer.slice(offset..);
+            // pos remains the same as it points to the end of the buffered chunk
+        } else {
+            // Otherwise, we invalidate the buffer and seek
+            self.buffer = Bytes::new();
+            self.pos = std::cmp::min(new_pos, self.file_len);
+        }
+
+        Ok(new_pos)
     }
 }
 
@@ -173,13 +263,9 @@ impl ChunkReader for BoxedReader {
                 Ok(BoxedReaderChild::Bytes(Bytes::copy_from_slice(&bytes[start as usize..])))
             }
             BoxedReader::Remote(r) => {
-                let path = r.path.clone();
-                let store = r.store.clone();
-                let bytes = get_runtime().block_on(async move {
-                    store.get(&path).await.map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?
-                        .bytes().await.map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))
-                })?;
-                Ok(BoxedReaderChild::Bytes(bytes.slice(start as usize..)))
+                let mut child_reader = RemoteReader::new_with_len(r.store.clone(), r.path.clone(), r.file_len);
+                child_reader.seek(SeekFrom::Start(start)).map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?;
+                Ok(BoxedReaderChild::Remote(child_reader))
             }
         }
     }
@@ -214,6 +300,7 @@ impl ChunkReader for BoxedReader {
 pub enum BoxedReaderChild {
     Bytes(Bytes),
     File(File),
+    Remote(RemoteReader),
 }
 
 impl Read for BoxedReaderChild {
@@ -226,6 +313,7 @@ impl Read for BoxedReaderChild {
                 Ok(to_copy)
             }
             BoxedReaderChild::File(f) => f.read(buf),
+            BoxedReaderChild::Remote(r) => r.read(buf),
         }
     }
 }
@@ -243,6 +331,7 @@ pub struct RemoteWriter {
     store: Arc<dyn ObjectStore>,
     path: Path,
     buffer: Vec<u8>,
+    multipart: Option<Box<dyn object_store::MultipartUpload>>,
 }
 
 impl RemoteWriter {
@@ -250,7 +339,8 @@ impl RemoteWriter {
         Self {
             store,
             path,
-            buffer: Vec::new(),
+            buffer: Vec::with_capacity(WRITE_BUFFER_SIZE),
+            multipart: None,
         }
     }
 }
@@ -258,17 +348,51 @@ impl RemoteWriter {
 impl Write for RemoteWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend_from_slice(buf);
+        if self.buffer.len() >= WRITE_BUFFER_SIZE {
+            self.flush()?;
+        }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let path = self.path.clone();
+        if self.buffer.len() < WRITE_BUFFER_SIZE {
+            return Ok(());
+        }
+        self.force_flush()
+    }
+}
+
+impl RemoteWriter {
+    fn force_flush(&mut self) -> std::io::Result<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+
         let store = self.store.clone();
-        let buffer = std::mem::take(&mut self.buffer);
-        get_runtime().block_on(async move {
-            store.put(&path, buffer.into()).await
-                .map_err(std::io::Error::other)
+        let path = self.path.clone();
+        let data = std::mem::take(&mut self.buffer);
+        let mut m_opt = self.multipart.take();
+
+        m_opt = get_runtime().block_on(async move {
+            let mut m = match m_opt {
+                Some(m) => m,
+                None => store.put_multipart(&path).await.map_err(std::io::Error::other)?,
+            };
+            m.put_part(data.into()).await.map_err(std::io::Error::other)?;
+            Ok::<Option<Box<dyn object_store::MultipartUpload>>, std::io::Error>(Some(m))
         })?;
+        
+        self.multipart = m_opt;
+        Ok(())
+    }
+
+    pub fn close(&mut self) -> std::io::Result<()> {
+        self.force_flush()?;
+        if let Some(mut m) = self.multipart.take() {
+            get_runtime().block_on(async move {
+                m.complete().await.map_err(std::io::Error::other)
+            })?;
+        }
         Ok(())
     }
 }
@@ -286,6 +410,26 @@ impl Write for BoxedWriter {
             BoxedWriter::File(f) => f.flush(),
             BoxedWriter::Remote(r) => r.flush(),
         }
+    }
+}
+
+impl BoxedWriter {
+    pub fn close(&mut self) -> std::io::Result<()> {
+        match self {
+            BoxedWriter::File(f) => f.flush(),
+            BoxedWriter::Remote(r) => r.close(),
+        }
+    }
+}
+
+pub struct SharedWriter(pub Arc<std::sync::Mutex<BoxedWriter>>);
+
+impl Write for SharedWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.lock().unwrap().flush()
     }
 }
 
@@ -451,5 +595,47 @@ mod tests {
         let mut buf2 = vec![0u8; 3];
         child.read_exact(&mut buf2).unwrap();
         assert_eq!(buf2, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn test_parquet_remote_reader_integration() {
+        use object_store::memory::InMemory;
+        use parquet::arrow::ArrowWriter;
+        use arrow::array::{Int32Array, ArrayRef};
+        use arrow::record_batch::RecordBatch;
+        use arrow::datatypes::{Schema, Field, DataType};
+
+        let store = Arc::new(InMemory::new());
+        let path = Path::from("test.parquet");
+        
+        // 1. Setup: Create a real parquet file in memory using a temporary runtime
+        {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let schema = Arc::new(Schema::new(vec![Field::new("a", DataType::Int32, false)]));
+                let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef]).unwrap();
+                
+                let mut buffer = Vec::new();
+                {
+                    let mut writer = ArrowWriter::try_new(&mut buffer, schema, None).unwrap();
+                    writer.write(&batch).unwrap();
+                    writer.close().unwrap();
+                }
+                store.put(&path, buffer.into()).await.unwrap();
+            });
+        }
+
+        // 2. Verification: Read it back using BoxedReader::Remote in a clean thread
+        // We use spawn to ensure we are NOT in a tokio runtime context when we call RemoteReader
+        std::thread::spawn(move || {
+            let remote_reader = RemoteReader::new(store, path);
+            let boxed_reader = BoxedReader::Remote(remote_reader);
+            
+            let builder = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(boxed_reader).unwrap();
+            let mut reader = builder.build().unwrap();
+            
+            let read_batch = reader.next().unwrap().unwrap();
+            assert_eq!(read_batch.num_rows(), 3);
+        }).join().unwrap();
     }
 }

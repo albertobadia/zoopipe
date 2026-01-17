@@ -27,6 +27,18 @@ fn get_version() -> PyResult<String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
+#[pyfunction]
+fn get_file_size(path: String) -> PyResult<u64> {
+    use crate::io::storage::StorageController;
+    use crate::io::get_runtime;
+    use crate::utils::wrap_py_err;
+
+    let controller = StorageController::new(&path).map_err(wrap_py_err)?;
+    get_runtime().block_on(async {
+        controller.get_size().await.map_err(wrap_py_err)
+    })
+}
+
 #[pymodule]
 fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CSVReader>()?;
@@ -55,6 +67,7 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<MultiThreadExecutor>()?;
     
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
+    m.add_function(wrap_pyfunction!(get_file_size, m)?)?;
     
     Ok(())
 }

@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use std::sync::{Mutex, OnceLock};
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
-use tokio::runtime::Runtime;
 use futures_util::StreamExt;
 use sqlx::{Row, Column, AnyPool, query, any::AnyPoolOptions, QueryBuilder, Any};
 use crate::error::PipeError;
@@ -16,12 +15,7 @@ fn init_drivers() {
     });
 }
 
-fn get_runtime() -> &'static Runtime {
-    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| {
-        Runtime::new().expect("Failed to create Tokio runtime")
-    })
-}
+use crate::io::get_runtime;
 
 fn ensure_parent_dir(uri: &str) {
     let path_part = if let Some(path) = uri.strip_prefix("sqlite:///") {
