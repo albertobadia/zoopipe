@@ -3,23 +3,15 @@ from __future__ import annotations
 import os
 import re
 from datetime import datetime
+from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
-try:
-    from dask.distributed import Client, get_client
-except ImportError:
-    # Dask not installed
-    pass
+from dask.distributed import Client, get_client
 
 from zoopipe.engines.base import BaseEngine
 from zoopipe.engines.local import PipeReport
 from zoopipe.report import FlowReport, FlowStatus
 from zoopipe.utils.dependency import install_dependencies as _install_dependencies
-
-try:
-    import importlib.metadata as metadata
-except ImportError:
-    import importlib_metadata as metadata  # type: ignore
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
