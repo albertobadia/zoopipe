@@ -1,6 +1,13 @@
 # PipeManager
 
-`PipeManager` orchestrates multiple `Pipe` instances to run in parallel, each in its own process. This enables true parallelism for running multiple independent data processing workflows concurrently.
+`PipeManager` orchestrates multiple `Pipe` instances to run in parallel. It uses an **Engine** abstraction to handle the distribution of work across processes or nodes, making it independent of the underlying execution strategy.
+
+## Execution Engines
+
+ZooPipe separates orchestration from execution. `PipeManager` delegates the lifecycle of pipes to an engine:
+
+- **`MultiProcessEngine` (Default)**: Runs each pipe in a separate Python process. Ideal for bypassing the GIL on a single machine.
+- **Experimental Engines**: Interfaces are ready for `RayEngine` and `DaskEngine` for large-scale cluster distribution.
 
 ## When to Use PipeManager
 
@@ -84,18 +91,37 @@ with PipeManager(pipes=[pipe1, pipe2, pipe3]) as manager:
 
 ## API Reference
 
-### PipeManager
-
 #### Constructor
 
 ```python
-PipeManager(pipes: list[Pipe])
+PipeManager(pipes: list[Pipe], engine: BaseEngine | None = None)
 ```
 
 Parameters:
-- `pipes`: List of `Pipe` instances to run in parallel
+- `pipes`: List of `Pipe` instances to run.
+- `engine`: The orchestration engine to use. Defaults to `MultiProcessEngine()`.
 
-#### Methods
+#### Class Methods
+
+##### `parallelize_pipe(...)`
+
+```python
+@classmethod
+def parallelize_pipe(
+    pipe: Pipe,
+    workers: int,
+    should_merge: bool = False,
+    executor: BatchExecutor | None = None,
+    engine: BaseEngine | None = None
+) -> PipeManager
+```
+
+Creates a managed parallel pipeline by sharding the adapters of the source `pipe`.
+
+Parameters:
+- `workers`: Number of parallel shards.
+- `executor`: The Rust executor (Single/MultiThread) to use *within* each worker.
+- `engine`: The engine to handle the worker distribution.
 
 ##### `start() -> None`
 
@@ -140,7 +166,7 @@ Returns the number of pipes being managed.
 
 ##### `is_running -> bool`
 
-Returns `True` if any pipe is still running.
+Returns `True` if the engine reports that execution is still active.
 
 ##### `pipe_reports -> list[PipeReport]`
 
@@ -163,16 +189,16 @@ Individual pipe report with the following fields:
 - `has_error`: Whether the pipe encountered an error
 - `is_alive`: Whether the pipe process is still alive
 
-## Process Model
+## The MultiProcessEngine
 
-Each pipe runs in its own process using Python's `multiprocessing` module with the `fork` start method. This provides:
+The default engine uses Python's `multiprocessing` module with a forking strategy.
 
-- **True parallelism**: Each pipe runs on a separate CPU core
-- **Memory isolation**: Each pipe has its own memory space
-- **Fault isolation**: If one pipe crashes, others continue running
+- **True parallelism**: Each pipe runs on a separate CPU core.
+- **Memory isolation**: Each pipe has its own memory space.
+- **Fault isolation**: If one pipe crashes, others continue running.
 
-> [!NOTE]
-> On macOS, the default multiprocessing start method is `spawn`, but ZooPipe forces `fork` for better performance. This is safe for ZooPipe's use case but may cause issues if you're using libraries that aren't fork-safe.
+### Process Start Method
+ZooPipe initializes `multiprocessing` using the `fork` start method. This is significantly faster for data-heavy workloads as it avoids re-loading the Python interpreter and modules for every worker.
 
 ## Performance Considerations
 

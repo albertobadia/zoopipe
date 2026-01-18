@@ -1,3 +1,4 @@
+from zoopipe.engines import BaseEngine, MultiProcessEngine
 from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.hooks.sql import SQLExpansionHook
 from zoopipe.input_adapter.arrow import ArrowInputAdapter
@@ -33,6 +34,8 @@ from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 __all__ = [
     "Pipe",
     "PipeManager",
+    "BaseEngine",
+    "MultiProcessEngine",
     "FlowReport",
     "FlowStatus",
     "BaseHook",

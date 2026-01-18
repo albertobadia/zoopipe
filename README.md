@@ -10,8 +10,8 @@
 - 🔍 **Declarative Validation**: Use [Pydantic](https://docs.pydantic.dev/) models to define and validate your data structures naturally.
 - 🪝 **Python Hooks**: Transform and enrich data at any stage using standard Python functions or classes.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
-- 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases (via SQLx with batch inserts).
-- 🔧 **Pluggable Executors**: Choose between single-threaded or multi-threaded execution strategies.
+- 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases.
+- 🔧 **Two-Tier Parallelism**: Orchestrate across processes or clusters with **Engines**, and scale throughput at the node level with Rust **Executors**.
 
 ---
 
@@ -90,20 +90,22 @@ pipe.wait()
 print(f"Finished! Processed {pipe.report.total_processed} items.")
 ```
 
-### Parallel Processing (Multi-Process)
-
-Automatically split a large file across multiple workers (processes) to bypass the GIL:
+Automatically split large files or manage multiple independent workflows:
 
 ```python
-from zoopipe import PipeManager
+from zoopipe import PipeManager, MultiProcessEngine
 
-# Create your pipe as usual...
+# Create your pipe as usual (Pipe is purely declarative)
 pipe = Pipe(...)
 
-# Automatically parallelize across 4 workers
-manager = PipeManager.parallelize_pipe(pipe, workers=4)
+# Automatically parallelize across 4 workers using MultiProcessing
+manager = PipeManager.parallelize_pipe(
+    pipe, 
+    workers=4, 
+    engine=MultiProcessEngine() # Defaults to local MultiProcessing
+)
 manager.start()
-manager.join()
+manager.wait()
 ```
 
 ---
@@ -168,13 +170,16 @@ class MyHook(BaseHook):
 
 ## 🛠 Architecture
 
-ZooPipe is designed as a thin Python wrapper around a powerful Rust core:
+ZooPipe is designed as a thin Python wrapper around a powerful Rust core, featuring a two-tier parallel architecture:
 
-1. **Python Layer**: Configuration, Pydantic models, and custom Hooks.
-2. **Rust Core**: 
-   - **Adapters**: High-speed CSV/JSON/SQL Readers and Writers with optimized batch operations.
-   - **NativePipe**: Orchestrates the loop, fetching chunks, calling a consolidated Python batch processor, and routing result batches.
-   - **Executors**: Single-threaded or multi-threaded batch processing strategies.
+1. **Orchestration Tier (Python Engines)**: 
+   - Manage distribution across processes or nodes (e.g., `MultiProcessEngine`).
+   - Handles data sharding, process lifecycle, and metrics aggregation.
+2. **Execution Tier (Rust BatchExecutors)**: 
+   - **Internal Throughput**: High-speed processing within a single process.
+   - **Adapters**: Native CSV/JSON/SQL Readers and Writers.
+   - **NativePipe**: Orchestrates the loop, fetching chunks and routing result batches.
+   - **Executors**: Multi-threaded Rust strategies to bypass the GIL within a node.
 
 ---
 

@@ -11,6 +11,9 @@ from zoopipe import (
     SingleThreadExecutor,
 )
 
+# NOTE: This example focuses on intra-pipe parallelism (threads).
+# For process-level parallelism and distributed execution, see 13_pipemanager.py.
+
 
 class UserSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")

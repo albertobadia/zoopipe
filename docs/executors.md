@@ -39,6 +39,22 @@ with pipe:
 print(f"Processed {pipe.report.total_processed} records")
 ```
 
+## Two-Tier Parallel Model
+
+ZooPipe uses a dual-layer approach to maximize performance:
+
+1.  **Orchestyration Tier (Engines)**: Used to scale **out** across multiple processes or eventually nodes (Ray, Dask). Managed via `PipeManager`.
+2.  **Execution Tier (Executors)**: Used to scale **up** within a single node by utilizing multiple Rust threads. Managed via the `executor` parameter in `Pipe`.
+
+### Comparison at a Glance
+
+| Level | Component | Scaling Type | Parallelism |
+| :--- | :--- | :--- | :--- |
+| **Cluster/Node** | `Engine` | Scaling Out | Python Processes / Distributed |
+| **Process** | `Executor` | Scaling Up | Rust Native Threads |
+
+For most high-throughput local workloads, the most powerful pattern is combining both: **A `PipeManager` with 4 workers, where each worker uses a `MultiThreadExecutor`**.
+
 ## When to Use Each Executor
 
 ### SingleThreadExecutor

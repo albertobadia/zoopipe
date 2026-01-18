@@ -8,6 +8,8 @@ from zoopipe import (
     CSVInputAdapter,
     HookStore,
     JSONOutputAdapter,
+    MultiProcessEngine,
+    MultiThreadExecutor,
     Pipe,
     PipeManager,
 )
@@ -49,8 +51,8 @@ class HeavyETLHook(BaseHook):
 def main():
     import os
 
-    file_path = "examples/sample_data/users_data.csv"
-    output_path = "examples/output_data/users_data_dual.jsonl"
+    file_path = os.path.abspath("examples/sample_data/users_data.csv")
+    output_path = os.path.abspath("examples/output_data/users_data_dual.jsonl")
 
     file_size_mb = os.path.getsize(file_path) / 1024 / 1024
     print(f"File Size: {file_size_mb:.2f} MB")
@@ -62,8 +64,15 @@ def main():
         post_validation_hooks=[HeavyETLHook()],
     )
 
-    print("Parallelizing pipe...")
-    pipe_manager = PipeManager.parallelize_pipe(base_pipe, workers=2)
+    print(
+        "Parallelizing pipe with 2 worker processes and MultiThreadExecutor in each..."
+    )
+    pipe_manager = PipeManager.parallelize_pipe(
+        base_pipe,
+        workers=2,
+        executor=MultiThreadExecutor(max_workers=2, batch_size=1000),
+        engine=MultiProcessEngine(),  # Explicit engine (defaults to MultiProcessEngine)
+    )
     pipe_manager.start()
 
     while not pipe_manager.report.is_finished:

@@ -19,7 +19,9 @@ class Pipe:
 
     A Pipe connects an input adapter to one or more output adapters,
     handles validation via Pydantic models, and executes pre- and post-validation hooks.
-    It runs asynchronously in a separate thread.
+
+    By default, a Pipe executes sequentially. For parallel execution across
+    multiple cores or processes, it is recommended to use `PipeManager`.
     """
 
     def __init__(
@@ -47,7 +49,8 @@ class Pipe:
             logger: Optional custom logger.
             report_update_interval: How often (in batches) to update the
                 progress report.
-            executor: Strategy for batch processing (SingleThread or MultiThread).
+            executor: Strategy for batch processing. Defaults to SingleThreadExecutor.
+                For advanced parallel execution, use `PipeManager`.
         """
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
