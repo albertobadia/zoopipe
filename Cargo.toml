@@ -1,6 +1,6 @@
 [package]
 name = "zoopipe_rust_core"
-version = "2026.1.16"
+version = "2026.1.18"
 edition = "2024"
 
 [lib]
