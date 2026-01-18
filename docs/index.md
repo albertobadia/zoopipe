@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
-    <img alt="ZooPipe Logo" src="docs/assets/logo-light.svg" width="600">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
+    <img alt="ZooPipe Logo" src="assets/logo-light.svg" width="600">
   </picture>
 </p>
 
@@ -13,7 +13,6 @@
 [![PyPI](https://img.shields.io/pypi/v/zoopipe)](https://pypi.org/project/zoopipe/)
 ![Downloads](https://img.shields.io/pypi/dm/zoopipe)
 [![CI](https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml/badge.svg)](https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml)
-[![ReadTheDocs](https://img.shields.io/readthedocs/zoopipe)](https://zoopipe.readthedocs.io/)
 
 ---
 
@@ -37,7 +36,7 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 **In these "Heavy ETL" scenarios, ZooPipe outperforms Vectorized DataFrames by 3x-8x.**
 
-![Benchmark Chart](docs/assets/benchmark.svg)
+![Benchmark Chart](assets/benchmark.svg)
 
 > **Key Takeaway**: ZooPipe's "Python-First Architecture" with parallel streaming (`PipeManager`) avoids the serialization overhead that cripples Polars/Pandas when using Python UDFs (`map_elements`/`apply`), and uses **97% less RAM**.
 
@@ -135,7 +134,7 @@ manager.wait()
 
 Hooks are Python classes that allow you to intercept, transform, and enrich data at different stages of the pipeline.
 
-**[📘 Read the full Hooks Guide](docs/hooks.md)** to learn about lifecycle methods (`setup`, `execute`, `teardown`), state management, and advanced patterns like cursor pagination.
+**[📘 Read the full Hooks Guide](hooks.md)** to learn about lifecycle methods (`setup`, `execute`, `teardown`), state management, and advanced patterns like cursor pagination.
 
 ### Quick Example
 
@@ -158,34 +157,34 @@ class MyHook(BaseHook):
 
 Executors control how ZooPipe scales **up** within a single node using Rust-managed threads. They are the engine under the hood that drives high throughput.
 
-**[📘 Read the full Executors Guide](docs/executors.md)** to understand the difference between `SingleThreadExecutor` (debug/ordered) and `MultiThreadExecutor` (high-throughput).
+**[📘 Read the full Executors Guide](executors.md)** to understand the difference between `SingleThreadExecutor` (debug/ordered) and `MultiThreadExecutor` (high-throughput).
 
 ### Input/Output Adapters
 
 #### File Formats
 
-- [**CSV Adapters**](docs/csv.md) - High-performance CSV reading and writing
-- [**JSON Adapters**](docs/json.md) - JSONL and JSON array format support
-- [**Excel Adapters**](docs/excel.md) - Read and write Excel (.xlsx) files
-- [**Parquet Adapters**](docs/parquet.md) - Columnar storage for analytics and data lakes
-- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for high-throughput interoperability
+- [**CSV Adapters**](csv.md) - High-performance CSV reading and writing
+- [**JSON Adapters**](json.md) - JSONL and JSON array format support
+- [**Excel Adapters**](excel.md) - Read and write Excel (.xlsx) files
+- [**Parquet Adapters**](parquet.md) - Columnar storage for analytics and data lakes
+- [**Arrow Adapters**](arrow.md) - Apache Arrow IPC format for high-throughput interoperability
 
 #### Databases
 
-- [**SQL Adapters**](docs/sql.md) - Read from and write to SQL databases with batch optimization
-- [**SQL Pagination**](docs/sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
-- [**DuckDB Adapters**](docs/duckdb.md) - Analytical database for OLAP workloads
+- [**SQL Adapters**](sql.md) - Read from and write to SQL databases with batch optimization
+- [**SQL Pagination**](sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
+- [**DuckDB Adapters**](duckdb.md) - Analytical database for OLAP workloads
 
 #### Messaging Systems
 
-- [**Kafka Adapters**](docs/kafka.md) - High-throughput messaging
+- [**Kafka Adapters**](kafka.md) - High-throughput messaging
 
 #### Advanced
 
-- [**Python Generator Adapters**](docs/pygen.md) - In-memory streaming and testing
-- [**Cloud Storage (S3)**](docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
-- [**PipeManager**](docs/pipemanager.md) - Run multiple pipes in parallel for distributed processing
-- [**Ray Guide**](docs/ray.md) - Zero-config distributed execution on Ray clusters
+- [**Python Generator Adapters**](pygen.md) - In-memory streaming and testing
+- [**Cloud Storage (S3)**](cloud-storage.md) - Read and write data from Amazon S3 and compatible services
+- [**PipeManager**](pipemanager.md) - Run multiple pipes in parallel for distributed processing
+- [**Ray Guide**](ray.md) - Zero-config distributed execution on Ray clusters
 
 ---
 
@@ -206,4 +205,4 @@ ZooPipe is designed as a thin Python wrapper around a powerful Rust core, featur
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/albertobadia/zoopipe/blob/main/LICENSE) file for details.
