@@ -10,6 +10,7 @@ import ray
 from zoopipe.engines.base import BaseEngine
 from zoopipe.engines.local import PipeReport
 from zoopipe.report import FlowReport, FlowStatus
+from zoopipe.utils.dependency import install_dependencies
 
 try:
     import importlib.metadata as metadata
@@ -28,15 +29,12 @@ class RayPipeWorker:
     """
 
     def __init__(self, pipe: Pipe, index: int):
-        # We assume Pipe is picklable now or we handle it.
-        # If it fails, we might need to send (input_adapter, output_adapter, ...)
         self.pipe = pipe
         self.index = index
         self.is_finished = False
         self.has_error = False
 
     def run(self) -> None:
-        """Execute the pipe."""
         try:
             self.pipe.start(wait=True)
         except Exception:
@@ -45,7 +43,6 @@ class RayPipeWorker:
             self.is_finished = True
 
     def get_report(self) -> PipeReport:
-        """Get the current progress snapshot from the pipe."""
         report = self.pipe.report
         return PipeReport(
             pipe_index=self.index,
@@ -59,6 +56,11 @@ class RayPipeWorker:
         )
 
 
+@ray.remote
+def _install_dependencies(packages: list[str]) -> None:
+    install_dependencies(packages)
+
+
 class RayEngine(BaseEngine):
     """
     Distributed execution engine using Ray.
@@ -69,8 +71,8 @@ class RayEngine(BaseEngine):
             # Silence the accelerator visible devices warning for future Ray versions
             os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
 
-            # Prepare default runtime_env
-            runtime_env = self._prepare_runtime_env(kwargs.pop("runtime_env", {}))
+            # Prepare default runtime_env and get dependencies
+            runtime_env, deps = self._prepare_runtime_env(kwargs.pop("runtime_env", {}))
 
             # Default to lean initialization
             ray_args = {
@@ -83,15 +85,46 @@ class RayEngine(BaseEngine):
             }
             ray.init(**ray_args)
 
+            # Manually install dependencies on all nodes using our agnostic strategy
+            if deps:
+                self._install_deps_on_all_nodes(deps)
+
         self._workers: list[Any] = []
         self._futures: list[Any] = []
         self._start_time: datetime | None = None
         self._cached_report: FlowReport | None = None
 
-    def _prepare_runtime_env(self, runtime_env: dict[str, Any]) -> dict[str, Any]:
+    def _install_deps_on_all_nodes(self, deps: list[str]) -> None:
+        """
+        Run the agnostic dependency installer on all connected Ray nodes.
+        This provides support for pip, uv, and poetry environments.
+        """
+        nodes = ray.nodes()
+        alive_nodes = [n for n in nodes if n.get("Alive")]
+
+        refs = []
+        for node in alive_nodes:
+            # We use resources placement group strategy to force execution
+            # on specific node. The 'node:<ip>' resource is automatically
+            # present on each node.
+            node_ip = node.get("NodeManagerAddress")
+            if node_ip:
+                refs.append(
+                    _install_dependencies.options(
+                        resources={f"node:{node_ip}": 0.001}
+                    ).remote(deps)
+                )
+
+        if refs:
+            ray.get(refs)
+
+    def _prepare_runtime_env(
+        self, runtime_env: dict[str, Any]
+    ) -> tuple[dict[str, Any], list[str]]:
         """
         Configure the Ray runtime environment based on whether we are in
         development mode or being used as a library.
+        Returns modified runtime_env and a list of dependencies to install manually.
         """
         # 1. Detect environment and versions
         is_dev_mode = False
@@ -107,8 +140,8 @@ class RayEngine(BaseEngine):
             pass
 
         # 2. Setup pip dependencies
+        deps = []
         if "pip" not in runtime_env:
-            deps = []
             if is_dev_mode:
                 # Dev mode: Extract dependencies from pyproject.toml (Source of Truth)
                 try:
@@ -132,7 +165,9 @@ class RayEngine(BaseEngine):
                     # Fallback to hardcoded core if everything fails
                     deps = ["pydantic>=2.0"]
 
-            runtime_env["pip"] = deps
+        # NOTE: We DO NOT set 'pip' in runtime_env because we want to use our
+        # agnostic installer.
+        # runtime_env["pip"] = deps  <-- REMOVED
 
         # 3. Ship code and binaries
         if "working_dir" not in runtime_env:

@@ -32,16 +32,21 @@ manager.start()
 manager.wait()
 ```
 
-## Zero-Config Deployment
+## Zero-Config Dependency Injection
 
-The `RayEngine` is designed to be truly "Zero-Config" by automatically handling the `runtime_env` on your behalf:
+One of the biggest pain points in distributed computing is managing dependencies on workers. ZooPipe's `RayEngine` solves this automatically:
 
-### 1. Auto-Installation
-When you start `RayEngine`, it detects your environment:
-- **Library Mode**: It automatically tells Ray to install the correct version of `zoopipe` and its dependencies (like `pydantic`) on all workers via `pip`.
-- **Development Mode**: If it detects you are working in the ZooPipe repository, it extracts dependencies from `pyproject.toml` and ships your local source code and pre-compiled binaries to the workers.
+1. **Agnostic Installation**: The engine intelligently detects your environment manager (`pip`, `uv`, or `poetry`).
+2. **Auto-Sync**: When running in development mode (e.g. from a repo), it automatically syncs your dependencies defined in `pyproject.toml` to all workers.
+3. **No Boilerplate**: You don't need to build Docker images or manually provision workers for simple tasks.
 
-### 2. Binary Shipping (.so / .abi3.so)
+### Supported Strategies
+- **Pip**: Standard behavior.
+- **Uv**: If `uv` is found, `uv pip install` is used for faster setup.
+- **Poetry**: If running in a poetry env, `poetry run pip install` is used.
+- **Manual**: If no package manager is found, we assume the environment is already provisioned (e.g. via Docker) and skip installation.
+
+### Binary Shipping (.so / .abi3.so)
 ZooPipe ships its pre-compiled Rust binaries to Ray workers. This avoids the need to have a Rust compiler (`rustc`) installed on the worker nodes, drastically reducing startup time and RAM consumption.
 
 ### 3. Smart Filtering (.rayignore)
