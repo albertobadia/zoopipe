@@ -45,7 +45,7 @@
   <g transform="translate(30, 40)">
     <!-- Header -->
     <text x="0" y="0" class="title">ZooPipe Performance Benchmark</text>
-    <text x="0" y="25" class="subtitle">Heavy ETL Scenario: 15M Rows CSV • Hashing + Normalization • Macbook Pro M1 (8GB RAM)</text>
+    <text x="0" y="25" class="subtitle">Heavy ETL Scenario: 15M Rows CSV - 10GB • Hashing + Normalization • Macbook Pro M1 (8GB RAM) - CSV to JSONL</text>
 
     <!-- Column Headers (Adjusted positions) -->
     <g transform="translate(0, 60)">

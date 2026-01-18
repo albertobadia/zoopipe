@@ -1,0 +1,65 @@
+<svg width="800" height="500" viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .logo-text { font-family: 'Segoe UI', 'Roboto', sans-serif; font-weight: 800; letter-spacing: -1px; }
+    .slogan-text { font-family: 'Segoe UI', 'Roboto', sans-serif; font-weight: 500; text-transform: uppercase; letter-spacing: 2px; }
+  </style>
+
+  <defs>
+    <!-- Vibrant African Sunset Gradient -->
+    <linearGradient id="sunsetSky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF5722" />  <!-- Deep Orange -->
+      <stop offset="60%" stop-color="#FFC107" /> <!-- Amber -->
+      <stop offset="100%" stop-color="#FFF8E1" /> <!-- Light Yellow -->
+    </linearGradient>
+
+    <!-- Tree Orange Gradient -->
+    <linearGradient id="treeOrange" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#D84315" />  <!-- Burnt Orange -->
+      <stop offset="50%" stop-color="#EF6C00" />  <!-- Orange -->
+      <stop offset="100%" stop-color="#FF9800" /> <!-- Light Orange -->
+    </linearGradient>
+  </defs>
+
+  <!-- Background Sunset Circle -->
+  <circle cx="400" cy="200" r="160" fill="url(#sunsetSky)" opacity="0.9" />
+
+  <!-- Asymmetric Pipe-Tree Composition -->
+  <g transform="translate(400, 280)">
+    <!-- Main Trunk -->
+    <path d="M-20 120 Q-25 100 -20 80 Q-10 40 0 0 Q10 40 20 80 Q35 100 40 120 Z" fill="url(#treeOrange)" />
+
+    <!-- Pipe Branches (Left) -->
+    <g stroke="url(#treeOrange)" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M-10 40 L-60 20 L-100 20" /> 
+      <path d="M0 10 L-50 -30 L-90 -30" />
+      <rect x="-65" y="14" width="10" height="12" fill="#BF360C" transform="rotate(0)" />
+      <rect x="-55" y="-36" width="10" height="12" fill="#BF360C" transform="rotate(0)" />
+    </g>
+
+    <!-- Pipe Branches (Right) -->
+    <g stroke="url(#treeOrange)" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 30 L50 10 L110 10" />
+      <path d="M5 0 L40 -40 L80 -40" />
+      <rect x="45" y="4" width="10" height="12" fill="#BF360C" />
+      <rect x="35" y="-46" width="10" height="12" fill="#BF360C" />
+    </g>
+
+    <!-- Wide Horizontal Canopies -->
+    <g fill="#2E7D32" opacity="0.9">
+      <ellipse cx="-100" cy="15" rx="50" ry="12" />
+      <ellipse cx="-80" cy="-35" rx="55" ry="14" />
+      <ellipse cx="100" cy="5" rx="55" ry="14" />
+      <ellipse cx="70" cy="-45" rx="45" ry="12" />
+      <ellipse cx="0" cy="-50" rx="60" ry="15" />
+    </g>
+  </g>
+
+  <!-- Text Section (DARK MODE COLORS) -->
+  <g text-anchor="middle">
+    <!-- Main Title: Gold with Shadow -->
+    <text x="400" y="450" class="logo-text" font-size="85" fill="#FFD700" style="text-shadow: 0px 2px 4px rgba(0,0,0,0.5);">ZooPipe</text>
+    
+    <!-- Slogan: Light Grey -->
+    <text x="400" y="485" class="slogan-text" font-size="20" fill="#E0E0E0">Streaming the Data Zoo</text>
+  </g>
+</svg>

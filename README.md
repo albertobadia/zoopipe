@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="logo.svg" alt="ZooPipe Logo" width="600">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="logo-light.svg">
+    <img alt="ZooPipe Logo" src="logo-light.svg" width="600">
+  </picture>
 </p>
 
 # ZooPipe
@@ -32,17 +36,7 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 **In these "Heavy ETL" scenarios, ZooPipe outperforms Vectorized DataFrames by 3x-8x.**
 
-
-### Benchmark: Heavy ETL (15M+ Rows, 10GB CSV)
-*Scenario: SHA256 Hashing, Normalization, Filtering, Enrichment per row.*
-
-> **System**: Macbook Pro M1 2020 (8GB RAM). 
-
-> **System**: Macbook Pro M1 2020 (8GB RAM). 
->
-> ![Benchmark Chart](benchmark.svg)
-
-> *\*ZooPipe (1 worker) ran a lighter workload (timestamp only) validation, used as baseline for raw throughput.*
+![Benchmark Chart](benchmark.svg)
 
 > **Key Takeaway**: ZooPipe's "Python-First Architecture" with parallel streaming (`PipeManager`) avoids the serialization overhead that cripples Polars/Pandas when using Python UDFs (`map_elements`/`apply`), and uses **97% less RAM**.
 
