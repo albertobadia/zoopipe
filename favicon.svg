@@ -1,0 +1,23 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sunset Background -->
+  <linearGradient id="favSunset" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#FF5722" />
+    <stop offset="100%" stop-color="#FFC107" />
+  </linearGradient>
+  <rect width="64" height="64" rx="12" fill="url(#favSunset)" />
+
+  <!-- Asymmetric Orange Tree -->
+  <g transform="translate(32, 48)">
+    <!-- Trunk -->
+    <path d="M-4 12 L-2 0 L2 0 L4 12 Z" fill="#BF360C" />
+    
+    <!-- Pipe Branches -->
+    <path d="M-2 4 L-12 -2 L-20 -2" stroke="#BF360C" stroke-width="2" fill="none" />
+    <path d="M2 2 L10 -6 L22 -6" stroke="#BF360C" stroke-width="2" fill="none" />
+    
+    <!-- Canopy Patches -->
+    <ellipse cx="-16" cy="-4" rx="12" ry="4" fill="#1B5E20" />
+    <ellipse cx="16" cy="-8" rx="14" ry="5" fill="#1B5E20" />
+    <ellipse cx="0" cy="-10" rx="10" ry="3" fill="#1B5E20" />
+  </g>
+</svg>

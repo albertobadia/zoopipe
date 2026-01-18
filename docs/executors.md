@@ -46,6 +46,13 @@ ZooPipe uses a dual-layer approach to maximize performance:
 1.  **Orchestyration Tier (Engines)**: Used to scale **out** across multiple processes or eventually nodes (Ray, Dask). Managed via `PipeManager`.
 2.  **Execution Tier (Executors)**: Used to scale **up** within a single node by utilizing multiple Rust threads. Managed via the `executor` parameter in `Pipe`.
 
+### ⚡ Performance Context: ZooPipe vs DataFrames
+
+ZooPipe's executors are designed for **"Row-Complex"** workloads (hashing, API calls, Pydantic validation), where vectorized engines struggle.
+
+- **Vectorized Engines (Polars/Pandas)**: Excellent for bulk math (SUM, AVG) but incur huge serialization overhead when you need a custom Python function (`map_elements`).
+- **ZooPipe Executors**: Run Python logic in parallel native streaming batches. This makes them significantly faster (and lighter on RAM) for "chaotic" ETL tasks that require custom logic per row.
+
 ### Comparison at a Glance
 
 | Level | Component | Scaling Type | Parallelism |

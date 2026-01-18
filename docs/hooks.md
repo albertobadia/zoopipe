@@ -1,5 +1,8 @@
 # ZooPipe Hooks Guide
 
+> **Why Hooks? (vs `df.apply`)**
+> In vectorized libraries like Pandas/Polars, using `.apply()` forces serialization overhead per row. **ZooPipe Hooks** execute inside a Rust-managed parallel thread pool, allowing complex Python logic (API calls, DB queries) to run in efficient parallel streams without the "DataFrame tax".
+
 Hooks are a powerful feature in ZooPipe that allow you to inject custom logic into the pipeline's lifecycle. They enable you to transform data, manage resources, and perform complex enrichments without modifying the core adapter logic.
 
 ## The BaseHook Class

@@ -1,6 +1,14 @@
+<p align="center">
+  <img src="logo.svg" alt="ZooPipe Logo" width="600">
+</p>
+
 # ZooPipe
 
 **ZooPipe** is a lean, ultra-high-performance data processing engine for Python. It leverages a **100% Rust core** to handle I/O and orchestration, while keeping the flexibility of Python for schema validation (via Pydantic) and custom data enrichment (via Hooks).
+
+[![PyPI](https://img.shields.io/pypi/v/zoopipe)](https://pypi.org/project/zoopipe/)
+![Downloads](https://img.shields.io/pypi/dm/zoopipe)
+[![CI](https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml/badge.svg)](https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml)
 
 ---
 
@@ -30,18 +38,29 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 > **System**: Macbook Pro M1 2020 (8GB RAM). 
 
-| Tool | Time (s) | Speed (Rows/s) | Peak RAM (MB) |
-|---|---|---|---|
-| **ZooPipe (4 workers)** | **~45s** | **~356k** | **~85 MB** |
-| ZooPipe (1 worker)* | ~89s | ~180k | ~34 MB |
-| Pure Python | ~145s | ~110k | ~25 MB |
-| Pydantic | ~180s | ~89k | ~31 MB |
-| Polars | ~370s | ~43k | ~2500 MB |
-| Pandas | ~1830s | ~9k | ~3400 MB |
+> **System**: Macbook Pro M1 2020 (8GB RAM). 
+>
+> ![Benchmark Chart](benchmark.svg)
 
 > *\*ZooPipe (1 worker) ran a lighter workload (timestamp only) validation, used as baseline for raw throughput.*
 
 > **Key Takeaway**: ZooPipe's "Python-First Architecture" with parallel streaming (`PipeManager`) avoids the serialization overhead that cripples Polars/Pandas when using Python UDFs (`map_elements`/`apply`), and uses **97% less RAM**.
+
+### ⚖️ Is this unfair to Pandas/Polars?
+
+**Yes and No.**
+
+- **Unfair**: If your workload is purely analytical (e.g., `GROUP BY`, `SUM`, `JOIN`), **Polars and Pandas will likely destroy ZooPipe** because they can use vectorized C/Rust operations on whole columns at once.
+- **Fair**: In real-world Data Engineering, many pipelines are "chaotic". They require custom hashing, API calls per row, conditional normalization, or complex Pydantic validation. **In these "Python-UDF heavy" scenarios, vectorization breaks down**, and ZooPipe shines by orchestrating parallel Python execution efficiently without the DataFrame overhead.
+
+### ❓ When to use what?
+
+| Use **ZooPipe** When... | Use **Pandas / Polars** When... |
+|---|---|
+| 🏗️ You have complex, custom Python logic per row (hash, clean, validate). | 🧮 You are doing aggregations (SUM, AVG) or Relational Algebra (JOIN, GROUP BY). |
+| 🔄 You are processing streaming data or files larger than RAM. | 💾 Your dataset fits comfortably in RAM (or use LazyFrames). |
+| 🛡️ You need strict schema validation (Pydantic) and error handling. | 🔬 You are doing data exploration or statistical analysis. |
+| 🚀 You want to mix Rust I/O performance with Python flexibility. | ⚡ Your entire pipeline can be expressed in vectorized expressions. |
 
 
 ---
@@ -116,8 +135,6 @@ manager.wait()
 
 ### Core Concepts
 
-- [**Executors Guide**](docs/executors.md) - Choose and configure execution strategies
-- [**Hooks Guide**](#hooks) - Transform and enrich data using Python hooks
 
 #### Hooks
 
@@ -141,6 +158,12 @@ class MyHook(BaseHook):
 > If you are using a `schema_model`, the pipeline will output the contents of `validated_data` for successful records.
 > - To modify data **before** validation, use `pre_validation_hooks` and modify `entry["raw_data"]`.
 > - To modify data **after** validation (and ensure it reaches the output), use `post_validation_hooks` and modify `entry["validated_data"]`.
+
+#### Executors
+
+Executors control how ZooPipe scales **up** within a single node using Rust-managed threads. They are the engine under the hood that drives high throughput.
+
+**[📘 Read the full Executors Guide](docs/executors.md)** to understand the difference between `SingleThreadExecutor` (debug/ordered) and `MultiThreadExecutor` (high-throughput).
 
 ### Input/Output Adapters
 
