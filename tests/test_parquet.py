@@ -58,34 +58,38 @@ def test_csv_to_parquet_to_jsonl(tmp_path):
     assert rows[1]["username"] == "bob"
     assert int(rows[1]["age"]) == 25
 
+
 def test_parquet_row_group_splitting(tmp_path):
     path = str(tmp_path / "groups.parquet")
-    
+
     # ParquetWriter has a fixed row group size of 8192.
     # Let's write 10,000 rows to get 2 row groups.
     # We use a large enough batch to trigger multiple row groups (8192 is the threshold)
-    data = [{"user_id": str(i), "username": f"user_{i}", "age": i} for i in range(10000)]
-    
+    data = [
+        {"user_id": str(i), "username": f"user_{i}", "age": i} for i in range(10000)
+    ]
+
     writer = ParquetOutputAdapter(path)
     # Manual write for testing
     native_writer = writer.get_native_writer()
     native_writer.write_batch(data)
     native_writer.close()
-    
+
     # Verify we can use ParquetReader directly to get info
     from zoopipe.zoopipe_rust_core import ParquetReader
+
     info = ParquetReader.get_row_groups_info(path)
     assert len(info) >= 2, f"Should have at least 2 row groups, got {len(info)}"
     assert sum(info) == 10000
-    
+
     # Test splitting
     adapter = ParquetInputAdapter(path)
     shards = adapter.split(workers=2)
-    
+
     assert len(shards) == 2
     assert shards[0].row_groups is not None
     assert shards[1].row_groups is not None
-    
+
     # Verify reading from shards
     total_read = 0
     for shard in shards:
@@ -96,5 +100,5 @@ def test_parquet_row_group_splitting(tmp_path):
             if not batch:
                 break
             total_read += len(batch)
-            
+
     assert total_read == 10000

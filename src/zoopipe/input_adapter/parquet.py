@@ -45,10 +45,10 @@ class ParquetInputAdapter(BaseInputAdapter):
         """
         row_group_rows = ParquetReader.get_row_groups_info(self.source_path)
         num_groups = len(row_group_rows)
-        
+
         if num_groups < workers:
             workers = num_groups
-            
+
         if workers <= 1:
             return [self]
 
@@ -58,9 +58,9 @@ class ParquetInputAdapter(BaseInputAdapter):
         for i in range(workers):
             start_idx = i * groups_per_worker
             end_idx = (i + 1) * groups_per_worker if i < workers - 1 else num_groups
-            
+
             assigned_groups = list(range(start_idx, end_idx))
-            
+
             shards.append(
                 self.__class__(
                     source=self.source_path,
