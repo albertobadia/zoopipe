@@ -1,0 +1,19 @@
+.git
+.venv
+target
+dist
+__pycache__
+.pytest_cache
+.ruff_cache
+build
+
+# Exclude build manifests to stop Ray from attempting to install/build the package
+pyproject.toml
+uv.lock
+Cargo.toml
+Cargo.lock
+maturin.toml
+
+# Do NOT exclude .so files, we want to ship the pre-compiled binary
+!**/*.so
+!**/*.abi3.so

@@ -34,6 +34,30 @@ class CSVOutputAdapter(BaseOutputAdapter):
         self.quotechar = quotechar
         self.fieldnames = fieldnames
 
+    def split(self, workers: int) -> typing.List["CSVOutputAdapter"]:
+        """
+        Split the output adapter into `workers` partitions.
+        Generates filenames like `filename_part_1.csv`.
+        """
+        path = pathlib.Path(self.output_path)
+        stem = path.stem
+        suffix = path.suffix
+        parent = path.parent
+
+        shards = []
+        for i in range(workers):
+            part_name = f"{stem}_part_{i + 1}{suffix}"
+            part_path = parent / part_name
+            shards.append(
+                self.__class__(
+                    output=str(part_path),
+                    delimiter=self.delimiter,
+                    quotechar=self.quotechar,
+                    fieldnames=self.fieldnames,
+                )
+            )
+        return shards
+
     def get_native_writer(self) -> CSVWriter:
         pathlib.Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         return CSVWriter(

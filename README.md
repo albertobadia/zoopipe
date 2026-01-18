@@ -11,7 +11,8 @@
 - 🪝 **Python Hooks**: Transform and enrich data at any stage using standard Python functions or classes.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
 - 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases.
-- 🔧 **Two-Tier Parallelism**: Orchestrate across processes or clusters with **Engines**, and scale throughput at the node level with Rust **Executors**.
+- 🔧 **Two-Tier Parallelism**: Orchestrate across processes or clusters with **Engines** (Local, Ray), and scale throughput at the node level with Rust **Executors**.
+- ☁️ **Cloud Native**: Native S3 support and zero-config distributed execution on **Ray** clusters.
 
 ---
 
@@ -98,11 +99,12 @@ from zoopipe import PipeManager, MultiProcessEngine
 # Create your pipe as usual (Pipe is purely declarative)
 pipe = Pipe(...)
 
-# Automatically parallelize across 4 workers using MultiProcessing
+# Automatically parallelize across 4 workers
+# MultiProcessEngine() for local, RayEngine() for clusters
 manager = PipeManager.parallelize_pipe(
     pipe, 
     workers=4, 
-    engine=MultiProcessEngine() # Defaults to local MultiProcessing
+    engine=MultiProcessEngine() 
 )
 manager.start()
 manager.wait()
@@ -165,6 +167,7 @@ class MyHook(BaseHook):
 - [**Python Generator Adapters**](docs/pygen.md) - In-memory streaming and testing
 - [**Cloud Storage (S3)**](docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
 - [**PipeManager**](docs/pipemanager.md) - Run multiple pipes in parallel for distributed processing
+- [**Ray Guide**](docs/ray.md) - Zero-config distributed execution on Ray clusters
 
 ---
 

@@ -7,7 +7,32 @@
 ZooPipe separates orchestration from execution. `PipeManager` delegates the lifecycle of pipes to an engine:
 
 - **`MultiProcessEngine` (Default)**: Runs each pipe in a separate Python process. Ideal for bypassing the GIL on a single machine.
-- **Experimental Engines**: Interfaces are ready for `RayEngine` and `DaskEngine` for large-scale cluster distribution.
+- **`RayEngine`**: Distributed execution across a cluster using Ray. Includes automatic environment synchronization (see [Ray Guide](ray.md)).
+
+## The Two-Tier Parallel Model
+
+ZooPipe uses a two-tier approach to maximize processing throughput:
+
+1.  **Tier 1: Horizontal Scaling (Engines)**: `PipeManager` uses an `Engine` to split work across multiple processes or nodes. This is "Parallelism at the Pipe level".
+2.  **Tier 2: Vertical Scaling (BatchExecutors)**: Each individual `Pipe` uses a `BatchExecutor` (Single/Multi-threaded) to process chunks of data. This is "Parallelism at the Record level".
+
+By combining both, you can, for example, run 4 processes in a node, each processing data with 4 threads.
+
+### Parallelizing a Single Pipe
+
+The fastest way to scale a single input source is to use `PipeManager.parallelize_pipe`. It shards the adapters and creates a distributed execution automatically:
+
+```python
+from zoopipe.engines.ray import RayEngine
+from zoopipe import MultiThreadExecutor
+
+manager = PipeManager.parallelize_pipe(
+    source_pipe,
+    workers=4,
+    engine=RayEngine(),
+    executor=MultiThreadExecutor(max_workers=4)
+)
+```
 
 ## When to Use PipeManager
 

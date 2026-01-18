@@ -158,3 +158,16 @@ class FlowReport:
             f"fps={self.items_per_second:.2f} "
             f"duration={self.duration:.2f}s>"
         )
+
+    def __getstate__(self) -> dict:
+        """Serialize the report state, excluding non-picklable lock objects."""
+        state = self.__dict__.copy()
+        del state["_finished_event"]
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore the report state and reconstruct the event lock."""
+        self.__dict__.update(state)
+        self._finished_event = threading.Event()
+        if self.status in (FlowStatus.COMPLETED, FlowStatus.FAILED, FlowStatus.ABORTED):
+            self._finished_event.set()

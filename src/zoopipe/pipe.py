@@ -216,5 +216,48 @@ class Pipe:
     def __repr__(self) -> str:
         return f"<Pipe input={self.input_adapter} output={self.output_adapter}>"
 
+    def __getstate__(self) -> dict:
+        """Serialize the pipe state, handling non-picklable Rust objects."""
+        state = self.__dict__.copy()
+
+        # Handle executor serialization
+        executor = state["executor"]
+        exec_config = {
+            "class_name": executor.__class__.__name__,
+            "batch_size": executor.get_batch_size(),
+        }
+        # MultiThreadExecutor specific attribute (not directly exposed via property,
+        # so we rely on the constructor's default or we'd need to store it if we could)
+        # For now, we'll try to use a safe reconstruction.
+        state["executor_config"] = exec_config
+        del state["executor"]
+
+        # Internal non-serializable objects
+        state["_thread"] = None
+        state["_validator"] = None
+        state["_batch_validator"] = None
+
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore the pipe state and reconstruct non-picklable objects."""
+        exec_config = state.pop("executor_config")
+
+        class_name = exec_config["class_name"]
+        batch_size = exec_config["batch_size"]
+
+        if class_name == "MultiThreadExecutor":
+            state["executor"] = MultiThreadExecutor(batch_size=batch_size)
+        else:
+            state["executor"] = SingleThreadExecutor(batch_size=batch_size)
+
+        self.__dict__.update(state)
+
+        # Reconstruct validators
+        self._validator = TypeAdapter(self.schema_model) if self.schema_model else None
+        self._batch_validator = (
+            TypeAdapter(list[self.schema_model]) if self.schema_model else None
+        )
+
 
 __all__ = ["Pipe", "SingleThreadExecutor", "MultiThreadExecutor"]

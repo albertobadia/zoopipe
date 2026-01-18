@@ -25,6 +25,23 @@ class ParquetOutputAdapter(BaseOutputAdapter):
         """
         self.path = str(path)
 
+    def split(self, workers: int) -> typing.List["ParquetOutputAdapter"]:
+        """
+        Split the output adapter into `workers` partitions.
+        Generates filenames like `filename_part_1.parquet`.
+        """
+        path = pathlib.Path(self.path)
+        stem = path.stem
+        suffix = path.suffix
+        parent = path.parent
+
+        shards = []
+        for i in range(workers):
+            part_name = f"{stem}_part_{i + 1}{suffix}"
+            part_path = parent / part_name
+            shards.append(self.__class__(path=str(part_path)))
+        return shards
+
     def get_native_writer(self) -> ParquetWriter:
         return ParquetWriter(self.path)
 

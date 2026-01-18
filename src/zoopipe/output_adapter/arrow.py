@@ -25,6 +25,23 @@ class ArrowOutputAdapter(BaseOutputAdapter):
         """
         self.output_path = str(output)
 
+    def split(self, workers: int) -> typing.List["ArrowOutputAdapter"]:
+        """
+        Split the output adapter into `workers` partitions.
+        Generates filenames like `filename_part_1.arrow`.
+        """
+        path = pathlib.Path(self.output_path)
+        stem = path.stem
+        suffix = path.suffix
+        parent = path.parent
+
+        shards = []
+        for i in range(workers):
+            part_name = f"{stem}_part_{i + 1}{suffix}"
+            part_path = parent / part_name
+            shards.append(self.__class__(output=str(part_path)))
+        return shards
+
     def get_native_writer(self) -> ArrowWriter:
         pathlib.Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         return ArrowWriter(self.output_path)
