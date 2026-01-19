@@ -1383,6 +1383,11 @@ dev = [
     { name = "ray" },
     { name = "ruff" },
 ]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings", extra = ["python"] },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1404,4 +1409,9 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ray", specifier = ">=2.53.0" },
     { name = "ruff", specifier = ">=0.14.10" },
+]
+docs = [
+    { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs-material", specifier = ">=9.7.1" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.0" },
 ]

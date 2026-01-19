@@ -30,6 +30,10 @@ impl SingleThreadExecutor {
     pub fn get_batch_size(&self) -> usize {
         self.batch_size
     }
+
+    pub fn get_concurrency(&self) -> usize {
+        1
+    }
 }
 
 impl SingleThreadExecutor {
@@ -77,6 +81,10 @@ impl MultiThreadExecutor {
 
     pub fn get_batch_size(&self) -> usize {
         self.batch_size
+    }
+
+    pub fn get_concurrency(&self) -> usize {
+        self.strategy.num_threads()
     }
 }
 

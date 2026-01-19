@@ -70,19 +70,25 @@ impl ExecutionStrategy for ParallelStrategy {
             .map(|b| b.unbind())
             .collect();
 
-        self.thread_pool.scope(|_scope| {
-            batch_data
-                .into_par_iter()
-                .enumerate()
-                .for_each(|(idx, batch)| {
-                    let result = Python::attach(|py| {
-                        let processor = processor_py.bind(py);
-                        let batch = batch.bind(py);
-                        processor.call1((batch,))
-                            .map(|res| res.unbind())
+        // Release the GIL while we wait for the Rayon threads to finish
+        // This is CRITICAL to avoid deadlocks:
+        // Main Thread (GIL) -> waits for Rayon -> Rayon Thread -> needs GIL -> DEADLOCK
+        Python::detach(py, || {
+            self.thread_pool.scope(|_scope| {
+                batch_data
+                    .into_par_iter()
+                    .enumerate()
+                    .for_each(|(idx, batch)| {
+                        // Re-acquire GIL per task to execute Python code
+                        let result = Python::attach(|py| {
+                            let processor = processor_py.bind(py);
+                            let batch = batch.bind(py);
+                            processor.call1((batch,))
+                                .map(|res| res.unbind())
+                        });
+                        let _ = result_tx.send((idx, result));
                     });
-                    let _ = result_tx.send((idx, result));
-                });
+            });
         });
 
         let mut results: Vec<Option<Py<PyAny>>> = (0..batch_count).map(|_| None).collect();

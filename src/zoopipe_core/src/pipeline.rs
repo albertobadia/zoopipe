@@ -118,6 +118,13 @@ impl PipeExecutor {
             PipeExecutor::MultiThread(e) => Ok(e.bind(py).borrow().get_batch_size()),
         }
     }
+
+    pub fn get_concurrency(&self, py: Python<'_>) -> PyResult<usize> {
+        match self {
+            PipeExecutor::SingleThread(e) => Ok(e.bind(py).borrow().get_concurrency()),
+            PipeExecutor::MultiThread(e) => Ok(e.bind(py).borrow().get_concurrency()),
+        }
+    }
 }
 
 pub struct PipeCounters {
@@ -202,30 +209,49 @@ impl NativePipe {
         report.call_method0("_mark_running")?;
 
         let batch_size = self.executor.get_batch_size(py)?;
-        let mut batch_entries = Vec::with_capacity(batch_size);
+        let concurrency = self.executor.get_concurrency(py)?;
+        
+        // Setup buffering for both row-wise accumulation and batch-wise accumulation
+        let mut row_buffer = Vec::with_capacity(batch_size);
+        let mut batch_buffer: Vec<Bound<'_, PyList>> = Vec::with_capacity(concurrency);
         
         loop {
+            // Priority 1: Check if reader has a full batch ready (e.g. Arrow/Parquet/SQL chunks)
             if let Some(batch) = self.reader.read_batch(py, batch_size)? {
-                let processed_entries = self.batch_processor.bind(py).call1((batch,))?;
-                let processed_list = processed_entries.cast::<PyList>()?;
-                self.handle_processed_entries(py, processed_list, report)?;
+                batch_buffer.push(batch);
+                if batch_buffer.len() >= concurrency {
+                    self.process_buffered_batches(py, &mut batch_buffer, report)?;
+                }
                 continue;
             }
 
+            // Priority 2: Streaming row-by-row (e.g. CSV/JSON/Generator)
             match self.reader.next(py)? {
                 Some(entry) => {
-                    batch_entries.push(entry);
-                    if batch_entries.len() >= batch_size {
-                        self.process_batch(py, &mut batch_entries, report)?;
-                        batch_entries.clear();
+                    row_buffer.push(entry);
+                    if row_buffer.len() >= batch_size {
+                        let py_list = PyList::new(py, row_buffer.iter())?;
+                        batch_buffer.push(py_list);
+                        row_buffer.clear();
+                        
+                        if batch_buffer.len() >= concurrency {
+                            self.process_buffered_batches(py, &mut batch_buffer, report)?;
+                        }
                     }
                 }
                 None => break,
             }
         }
 
-        if !batch_entries.is_empty() {
-            self.process_batch(py, &mut batch_entries, report)?;
+        // Flush remaining rows
+        if !row_buffer.is_empty() {
+             let py_list = PyList::new(py, row_buffer.iter())?;
+             batch_buffer.push(py_list);
+        }
+
+        // Flush remaining batches
+        if !batch_buffer.is_empty() {
+            self.process_buffered_batches(py, &mut batch_buffer, report)?;
         }
 
         self.sync_report(py, report)?;
@@ -238,19 +264,33 @@ impl NativePipe {
 
         Ok(())
     }
+
+
 }
 
 impl NativePipe {
-    fn process_batch(
+    fn process_buffered_batches(
         &self,
         py: Python<'_>,
-        batch: &mut Vec<Bound<'_, PyAny>>,
+        batch_buffer: &mut Vec<Bound<'_, PyList>>,
         report: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let py_list = PyList::new(py, batch.iter())?;
-        let processed_entries = self.batch_processor.bind(py).call1((py_list,))?;
-        let processed_list = processed_entries.cast::<PyList>()?;
-        self.handle_processed_entries(py, processed_list, report)?;
+        let batch_processor = self.batch_processor.bind(py);
+        
+        // This is where the magic happens: parallel execution via Rayon (if configured)
+        let results = self.executor.process_batches(py, batch_buffer.clone(), batch_processor)?;
+        
+        for (processed_entries, _original_input) in results.into_iter().zip(batch_buffer.iter()) {
+            if let Ok(processed_list) = processed_entries.cast::<PyList>() {
+               self.handle_processed_entries(py, processed_list, report)?;
+            } else {
+               // Fallback / Error handling if processor returns something weird
+               // Or potentially we could reuse the original input if we were just validating
+               // But usually we expect a list back.
+               return Err(PyRuntimeError::new_err("Batch processor returned non-list"));
+            }
+        }
+        batch_buffer.clear();
         Ok(())
     }
 
