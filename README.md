@@ -6,16 +6,18 @@
   </picture>
 </p>
 
-# ZooPipe
-
 **ZooPipe** is a lean, ultra-high-performance data processing engine for Python. It leverages a **100% Rust core** to handle I/O and orchestration, while keeping the flexibility of Python for schema validation (via Pydantic) and custom data enrichment (via Hooks).
 
-[![PyPI](https://img.shields.io/pypi/v/zoopipe)](https://pypi.org/project/zoopipe/)
-![Downloads](https://img.shields.io/pypi/dm/zoopipe)
-[![CI](https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml/badge.svg)](https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml)
-[![ReadTheDocs](https://img.shields.io/readthedocs/zoopipe)](https://zoopipe.readthedocs.io/)
+<p align="center">
+  <a href="https://pypi.org/project/zoopipe/"><img alt="PyPI" src="https://img.shields.io/pypi/v/zoopipe"></a>
+  <img alt="Downloads" src="https://img.shields.io/pypi/dm/zoopipe">
+  <a href="https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://zoopipe.readthedocs.io/"><img alt="ReadTheDocs" src="https://img.shields.io/readthedocs/zoopipe"></a>
+</p>
 
 ---
+
+Read the [docs](https://zoopipe.readthedocs.io/) for more information.
 
 ## ✨ Key Features
 
