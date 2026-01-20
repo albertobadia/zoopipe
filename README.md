@@ -1,14 +1,16 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
-    <img alt="ZooPipe Logo" src="docs/assets/logo-light.svg" width="600">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/albertobadia/zoopipe/main/docs/assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/albertobadia/zoopipe/main/docs/assets/logo-light.svg">
+    <img alt="ZooPipe Logo" src="https://raw.githubusercontent.com/albertobadia/zoopipe/main/docs/assets/logo-light.svg" width="600">
   </picture>
 </p>
 
 **ZooPipe** is a lean, ultra-high-performance data processing engine for Python. It leverages a **100% Rust core** to handle I/O and orchestration, while keeping the flexibility of Python for schema validation (via Pydantic) and custom data enrichment (via Hooks).
 
 <p align="center">
+  <a href="https://www.python.org/downloads/"><img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10+-blue.svg"></a>
+  <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
   <a href="https://pypi.org/project/zoopipe/"><img alt="PyPI" src="https://img.shields.io/pypi/v/zoopipe"></a>
   <img alt="Downloads" src="https://img.shields.io/pypi/dm/zoopipe">
   <a href="https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml/badge.svg"></a>
@@ -39,7 +41,7 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 **In these "Heavy ETL" scenarios, ZooPipe outperforms Vectorized DataFrames by 3x-8x.**
 
-![Benchmark Chart](docs/assets/benchmark.svg)
+![Benchmark Chart](https://raw.githubusercontent.com/albertobadia/zoopipe/main/docs/assets/benchmark.svg)
 
 > **Key Takeaway**: ZooPipe's "Python-First Architecture" with parallel streaming (`PipeManager`) avoids the serialization overhead that cripples Polars/Pandas when using Python UDFs (`map_elements`/`apply`), and uses **97% less RAM**.
 
@@ -137,7 +139,7 @@ manager.wait()
 
 Hooks are Python classes that allow you to intercept, transform, and enrich data at different stages of the pipeline.
 
-**[📘 Read the full Hooks Guide](docs/hooks.md)** to learn about lifecycle methods (`setup`, `execute`, `teardown`), state management, and advanced patterns like cursor pagination.
+**[📘 Read the full Hooks Guide](https://github.com/albertobadia/zoopipe/blob/main/docs/hooks.md)** to learn about lifecycle methods (`setup`, `execute`, `teardown`), state management, and advanced patterns like cursor pagination.
 
 ### Quick Example
 
@@ -160,34 +162,34 @@ class MyHook(BaseHook):
 
 Executors control how ZooPipe scales **up** within a single node using Rust-managed threads. They are the engine under the hood that drives high throughput.
 
-**[📘 Read the full Executors Guide](docs/executors.md)** to understand the difference between `SingleThreadExecutor` (debug/ordered) and `MultiThreadExecutor` (high-throughput).
+**[📘 Read the full Executors Guide](https://github.com/albertobadia/zoopipe/blob/main/docs/executors.md)** to understand the difference between `SingleThreadExecutor` (debug/ordered) and `MultiThreadExecutor` (high-throughput).
 
 ### Input/Output Adapters
 
 #### File Formats
 
-- [**CSV Adapters**](docs/csv.md) - High-performance CSV reading and writing
-- [**JSON Adapters**](docs/json.md) - JSONL and JSON array format support
-- [**Excel Adapters**](docs/excel.md) - Read and write Excel (.xlsx) files
-- [**Parquet Adapters**](docs/parquet.md) - Columnar storage for analytics and data lakes
-- [**Arrow Adapters**](docs/arrow.md) - Apache Arrow IPC format for high-throughput interoperability
+- [**CSV Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/csv.md) - High-performance CSV reading and writing
+- [**JSON Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/json.md) - JSONL and JSON array format support
+- [**Excel Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/excel.md) - Read and write Excel (.xlsx) files
+- [**Parquet Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/parquet.md) - Columnar storage for analytics and data lakes
+- [**Arrow Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/arrow.md) - Apache Arrow IPC format for high-throughput interoperability
 
 #### Databases
 
-- [**SQL Adapters**](docs/sql.md) - Read from and write to SQL databases with batch optimization
-- [**SQL Pagination**](docs/sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
-- [**DuckDB Adapters**](docs/duckdb.md) - Analytical database for OLAP workloads
+- [**SQL Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/sql.md) - Read from and write to SQL databases with batch optimization
+- [**SQL Pagination**](https://github.com/albertobadia/zoopipe/blob/main/docs/sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
+- [**DuckDB Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/duckdb.md) - Analytical database for OLAP workloads
 
 #### Messaging Systems
 
-- [**Kafka Adapters**](docs/kafka.md) - High-throughput messaging
+- [**Kafka Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/kafka.md) - High-throughput messaging
 
 #### Advanced
 
-- [**Python Generator Adapters**](docs/pygen.md) - In-memory streaming and testing
-- [**Cloud Storage (S3)**](docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
-- [**PipeManager**](docs/pipemanager.md) - Run multiple pipes in parallel for distributed processing
-- [**Ray Guide**](docs/ray.md) - Zero-config distributed execution on Ray clusters
+- [**Python Generator Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/pygen.md) - In-memory streaming and testing
+- [**Cloud Storage (S3)**](https://github.com/albertobadia/zoopipe/blob/main/docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
+- [**PipeManager**](https://github.com/albertobadia/zoopipe/blob/main/docs/pipemanager.md) - Run multiple pipes in parallel for distributed processing
+- [**Ray Guide**](https://github.com/albertobadia/zoopipe/blob/main/docs/ray.md) - Zero-config distributed execution on Ray clusters
 
 ---
 
