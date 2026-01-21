@@ -1,12 +1,18 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString, PyBytes};
-use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
-use kafka::producer::{Producer, Record, RequiredAcks};
+use pyo3::exceptions::PyRuntimeError;
 use std::sync::Mutex;
 use url::Url;
-use crate::utils::wrap_py_err;
+use std::time::Duration;
 use crate::error::PipeError;
 use crate::utils::interning::InternedKeys;
+use crate::io::get_runtime;
+
+use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
+use rdkafka::message::Message;
+use futures_util::StreamExt;
 
 #[derive(Debug)]
 enum KafkaData {
@@ -15,9 +21,6 @@ enum KafkaData {
 }
 
 /// Fast Kafka consumer that streams messages from a topic.
-/// 
-/// It runs in a background thread to stay connected to the cluster and 
-/// pull messages as they arrive, providing them to the pipeline in batches.
 #[pyclass]
 pub struct KafkaReader {
     receiver: Mutex<crossbeam_channel::Receiver<KafkaData>>,
@@ -38,8 +41,8 @@ impl KafkaReader {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("URI scheme must be 'kafka'"));
         }
 
-        let brokers: Vec<String> = parsed_url.host_str()
-            .map(|h| vec![format!("{}:{}", h, parsed_url.port().unwrap_or(9092))])
+        let brokers = parsed_url.host_str()
+            .map(|h| format!("{}:{}", h, parsed_url.port().unwrap_or(9092)))
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No brokers specified in URI"))?;
 
         let topic = parsed_url.path().trim_start_matches('/').to_string();
@@ -47,52 +50,49 @@ impl KafkaReader {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("No topic specified in URI path"));
         }
 
-        let mut builder = Consumer::from_hosts(brokers)
-            .with_topic(topic.clone());
-
+        let mut config = ClientConfig::new();
+        config.set("bootstrap.servers", &brokers);
+        
         if let Some(gid) = group_id {
-            builder = builder.with_group(gid)
-                .with_fallback_offset(FetchOffset::Earliest)
-                .with_offset_storage(Some(GroupOffsetStorage::Kafka));
+            config.set("group.id", &gid);
+            config.set("enable.auto.commit", "true");
+            config.set("auto.offset.reset", "earliest");
+        } else {
+            // If no group is provided, we still need one for rdkafka StreamConsumer usually
+            // or we could use BaseConsumer. For simplicity in a stream-oriented pipe, 
+            // generate a random group if none provided.
+            config.set("group.id", format!("zoopipe-{}", uuid::Uuid::new_v4()));
+            config.set("auto.offset.reset", "earliest");
         }
 
-        let mut consumer = builder.create().map_err(wrap_py_err)?;
+        let consumer: StreamConsumer = {
+            let _guard = get_runtime().enter();
+            config.create().map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+        };
+        consumer.subscribe(&[&topic]).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         
         let (tx, rx) = crossbeam_channel::bounded(1000);
 
         std::thread::spawn(move || {
-            loop {
-                let msets = match consumer.poll() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
-                        break;
-                    }
-                };
-
-                if msets.is_empty() {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                    continue;
-                }
-
-                for mset in msets.iter() {
-                    for msg in mset.messages() {
-                        let key_opt = if msg.key.is_empty() {
-                            None
-                        } else {
-                            Some(msg.key.to_vec())
-                        };
-                        
-                        if tx.send(KafkaData::Message(msg.value.to_vec(), key_opt)).is_err() {
-                            return;
+            let rt = get_runtime();
+            rt.block_on(async move {
+                let mut stream = consumer.stream();
+                while let Some(msg_res) = stream.next().await {
+                    match msg_res {
+                        Ok(msg) => {
+                            let value = msg.payload().unwrap_or_default().to_vec();
+                            let key = msg.key().map(|k| k.to_vec());
+                            if tx.send(KafkaData::Message(value, key)).is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
+                            break;
                         }
                     }
                 }
-                
-                if let Err(e) = consumer.commit_consumed() {
-                     let _ = tx.send(KafkaData::Error(format!("Kafka commit error: {}", e)));
-                }
-            }
+            });
         });
 
         let models = py.import("zoopipe.report")?;
@@ -112,15 +112,19 @@ impl KafkaReader {
         slf
     }
 
-    fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
+    pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
         let receiver = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
         
-        match receiver.recv() {
+        let result = py.detach(|| {
+            receiver.recv()
+        });
+
+        match result {
             Ok(KafkaData::Message(value_bytes, key_bytes)) => {
                 slf.create_envelope(py, value_bytes, key_bytes)
             },
-            Ok(KafkaData::Error(e)) => Err(crate::utils::wrap_py_err(std::io::Error::other(e))),
+            Ok(KafkaData::Error(e)) => Err(PyRuntimeError::new_err(e)),
             Err(_) => Ok(None),
         }
     }
@@ -159,12 +163,9 @@ impl KafkaReader {
 }
 
 /// Optimized Kafka producer for high-throughput message publishing.
-/// 
-/// Supports both single and batch sends with configurable acknowledgment 
-/// strategies and timeouts for reliable data egress.
 #[pyclass]
 pub struct KafkaWriter {
-    producer: Mutex<Producer>,
+    producer: FutureProducer,
     topic: String,
 }
 
@@ -179,8 +180,8 @@ impl KafkaWriter {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("URI scheme must be 'kafka'"));
         }
 
-        let brokers: Vec<String> = parsed_url.host_str()
-            .map(|h| vec![format!("{}:{}", h, parsed_url.port().unwrap_or(9092))])
+        let brokers = parsed_url.host_str()
+            .map(|h| format!("{}:{}", h, parsed_url.port().unwrap_or(9092)))
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No brokers specified in URI"))?;
 
         let topic = parsed_url.path().trim_start_matches('/').to_string();
@@ -188,96 +189,117 @@ impl KafkaWriter {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("No topic specified in URI path"));
         }
 
-        let required_acks = match acks {
-            0 => RequiredAcks::None,
-            1 => RequiredAcks::One,
-            -1 => RequiredAcks::All,
-            _ => RequiredAcks::One,
+        let acks_str = match acks {
+            0 => "0",
+            1 => "1",
+            -1 => "all",
+            _ => "1",
         };
 
-        let producer = Producer::from_hosts(brokers)
-            .with_ack_timeout(std::time::Duration::from_secs(timeout))
-            .with_required_acks(required_acks)
-            .create()
-            .map_err(wrap_py_err)?;
+        let producer: FutureProducer = {
+            let _guard = get_runtime().enter();
+            ClientConfig::new()
+                .set("bootstrap.servers", &brokers)
+                .set("request.timeout.ms", format!("{}", timeout * 1000))
+                .set("acks", acks_str)
+                .create()
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+        };
 
         Ok(KafkaWriter {
-            producer: Mutex::new(producer),
+            producer,
             topic,
         })
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let _ = py;
-        let mut producer = self.producer.lock().map_err(|_| PipeError::MutexLock)?;
+        let bytes = self.extract_bytes(py, data)?;
+        let topic = self.topic.clone();
+        let producer = self.producer.clone();
 
-        let raw_data = if let Ok(dict) = data.cast::<PyDict>() {
-            if let Some(rd) = dict.get_item("raw_data")? {
-                rd
-            } else {
-                data.clone()
-            }
-        } else {
-            data.clone()
-        };
-
-        let bytes = if let Ok(b) = raw_data.cast::<PyBytes>() {
-            b.as_bytes().to_vec()
-        } else if let Ok(s) = raw_data.cast::<PyString>() {
-            s.to_str()?.as_bytes().to_vec()
-        } else {
-            raw_data.to_string().as_bytes().to_vec()
-        };
-
-        producer.send(&Record::from_value(&self.topic, bytes)).map_err(wrap_py_err)?;
+        py.detach(|| {
+            get_runtime().block_on(async move {
+                producer.send(
+                    FutureRecord::<(), [u8]>::to(&topic)
+                        .payload(&bytes),
+                    Duration::from_secs(5)
+                ).await
+                .map_err(|(e, _)| PyRuntimeError::new_err(e.to_string()))
+            })
+        })?;
 
         Ok(())
     }
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
-        let _ = py;
-        let mut producer = self.producer.lock().map_err(|_| PipeError::MutexLock)?;
         let iterator = entries.try_iter()?;
+        let mut futures = Vec::new();
 
-        let mut all_bytes: Vec<Vec<u8>> = Vec::new();
-        
         for entry in iterator {
             let entry = entry?;
-            let raw_data = if let Ok(dict) = entry.cast::<PyDict>() {
-                if let Some(rd) = dict.get_item("raw_data")? {
-                    rd
-                } else {
-                    entry.clone()
+            let bytes = self.extract_bytes(py, entry)?;
+            let topic = self.topic.clone();
+            let producer = self.producer.clone();
+
+            futures.push(async move {
+                producer.send(
+                    FutureRecord::<(), [u8]>::to(&topic)
+                        .payload(&bytes),
+                    Duration::from_secs(5)
+                ).await
+            });
+        }
+
+        py.detach(|| {
+            get_runtime().block_on(async move {
+                let results = futures_util::future::join_all(futures).await;
+                for res in results {
+                    if let Err((e, _)) = res {
+                        return Err(PyRuntimeError::new_err(e.to_string()));
+                    }
                 }
-            } else {
-                entry.clone()
-            };
+                Ok(())
+            })
+        })?;
 
-            let bytes = if let Ok(b) = raw_data.cast::<PyBytes>() {
-                b.as_bytes().to_vec()
-            } else if let Ok(s) = raw_data.cast::<PyString>() {
-                s.to_str()?.as_bytes().to_vec()
-            } else {
-                raw_data.to_string().as_bytes().to_vec()
-            };
-            
-            all_bytes.push(bytes);
-        }
-
-        let mut batch_records = Vec::with_capacity(all_bytes.len());
-        for b in &all_bytes {
-            batch_records.push(Record::from_value(&self.topic, b.as_slice()));
-        }
-
-        producer.send_all(&batch_records).map_err(wrap_py_err)?;
         Ok(())
     }
 
     pub fn flush(&self) -> PyResult<()> {
+        let _guard = get_runtime().enter();
+        self.producer.flush(Duration::from_secs(10))
+            .map_err(|e| PyRuntimeError::new_err(format!("Kafka flush error: {}", e)))?;
         Ok(())
     }
 
     pub fn close(&self) -> PyResult<()> {
-        Ok(())
+        self.flush()
+    }
+}
+
+impl KafkaWriter {
+    fn extract_bytes(&self, py: Python<'_>, entry: Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+        let raw_data = if let Ok(dict) = entry.cast::<PyDict>() {
+            if let Some(rd) = dict.get_item("raw_data")? {
+                rd
+            } else {
+                entry.clone()
+            }
+        } else {
+            entry.clone()
+        };
+
+        if let Ok(b) = raw_data.cast::<PyBytes>() {
+            Ok(b.as_bytes().to_vec())
+        } else if let Ok(s) = raw_data.cast::<PyString>() {
+            Ok(s.to_str()?.as_bytes().to_vec())
+        } else if raw_data.is_instance_of::<PyDict>() {
+            let json = py.import("json")?;
+            let dumps = json.getattr("dumps")?;
+            let s: String = dumps.call1((&raw_data,))?.extract()?;
+            Ok(s.into_bytes())
+        } else {
+            Ok(raw_data.to_string().into_bytes())
+        }
     }
 }

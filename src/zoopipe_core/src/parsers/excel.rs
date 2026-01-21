@@ -6,6 +6,7 @@ use rust_xlsxwriter::{Workbook, Worksheet, Format};
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
+use object_store::ObjectStoreExt;
 
 struct ExcelReaderState {
     rows: std::vec::IntoIter<Vec<Data>>,
@@ -41,6 +42,7 @@ impl ExcelReader {
     ) -> PyResult<Self> {
         use crate::io::storage::StorageController;
         use crate::io::get_runtime;
+        use object_store::ObjectStoreExt;
         use std::io::{Cursor, Read};
 
         let data = if path.starts_with("s3://") {
@@ -94,7 +96,7 @@ impl ExcelReader {
         
         let headers: Vec<Py<PyString>> = headers_str
             .into_iter()
-            .map(|s| PyString::new(py, &s).unbind())
+            .map(|s: String| PyString::new(py, s.as_str()).unbind())
             .collect();
         
         let models = py.import("zoopipe.report")?;

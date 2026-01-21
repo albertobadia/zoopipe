@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use object_store::{ObjectStore, local::LocalFileSystem, aws::AmazonS3Builder};
+use object_store::{ObjectStore, ObjectStoreExt, local::LocalFileSystem, aws::AmazonS3Builder};
 use url::Url;
 use crate::error::PipeError;
 
@@ -18,10 +18,18 @@ impl StorageController {
             let url = Url::parse(path).map_err(|e| PipeError::Other(e.to_string()))?;
             let bucket = url.host_str().ok_or_else(|| PipeError::Other("Invalid S3 bucket".into()))?;
             
-            let builder = AmazonS3Builder::from_env()
+            let mut builder = AmazonS3Builder::from_env()
                 .with_bucket_name(bucket)
                 .with_retry(object_store::RetryConfig::default())
                 .with_client_options(object_store::ClientOptions::default());
+            
+            if let Ok(endpoint) = std::env::var("AWS_ENDPOINT_URL").or_else(|_| std::env::var("AWS_ENDPOINT")) {
+                builder = builder.with_endpoint(endpoint);
+            }
+            
+            if std::env::var("AWS_ALLOW_HTTP").map(|v| v.to_lowercase() == "true").unwrap_or(false) {
+                builder = builder.with_allow_http(true);
+            }
             
             let s3 = builder.build().map_err(|e| PipeError::Other(e.to_string()))?;
             
@@ -49,7 +57,7 @@ impl StorageController {
     pub async fn get_size(&self) -> Result<u64, PipeError> {
         let meta = self.inner.head(&object_store::path::Path::from(self.prefix.as_str())).await
             .map_err(|e| PipeError::Other(e.to_string()))?;
-        Ok(meta.size as u64)
+        Ok(meta.size)
     }
 }
 

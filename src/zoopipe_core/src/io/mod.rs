@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{BufReader, Read, BufRead, Write, Seek, SeekFrom};
 use std::sync::Arc;
 use object_store::path::Path;
-use object_store::ObjectStore;
+use object_store::{ObjectStore, ObjectStoreExt};
 use tokio::runtime::Runtime;
 use parquet::file::reader::{ChunkReader, Length};
 use bytes::Bytes;
@@ -93,7 +93,7 @@ pub struct RemoteReader {
 impl RemoteReader {
     pub fn new(store: Arc<dyn ObjectStore>, path: Path) -> Self {
         let file_len = get_runtime().block_on(async {
-            store.head(&path).await.map(|m| m.size as u64).unwrap_or(0)
+            store.head(&path).await.map(|m| m.size).unwrap_or(0)
         });
 
         Self::new_with_len(store, path, file_len)
@@ -115,7 +115,7 @@ impl RemoteReader {
         }
 
         let end = std::cmp::min(self.pos + READ_BUFFER_SIZE as u64, self.file_len);
-        let range = self.pos as usize..end as usize;
+        let range = self.pos..end;
         
         let path = self.path.clone();
         let store = self.store.clone();
@@ -237,7 +237,7 @@ impl Length for BoxedReader {
             BoxedReader::Cursor(c) => c.get_ref().len() as u64,
             BoxedReader::Remote(r) => {
                 let mut tmp = get_runtime().block_on(async {
-                    r.store.head(&r.path).await.map(|m| m.size as u64).unwrap_or(0)
+                    r.store.head(&r.path).await.map(|m| m.size).unwrap_or(0)
                 });
                 if tmp == 0 && !r.buffer.is_empty() {
                     tmp = r.buffer.len() as u64;
@@ -288,7 +288,7 @@ impl ChunkReader for BoxedReader {
                 let path = r.path.clone();
                 let store = r.store.clone();
                 let bytes = get_runtime().block_on(async move {
-                    let range = start as usize..(start as usize + length);
+                    let range = start..(start + length as u64);
                     store.get_range(&path, range).await.map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))
                 })?;
                 Ok(bytes)
