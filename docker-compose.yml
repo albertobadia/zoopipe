@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zoopipe-postgres-test
+    environment:
+      POSTGRES_DB: zoopipe_test
+      POSTGRES_USER: zoopipe
+      POSTGRES_PASSWORD: zoopipe
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zoopipe -d zoopipe_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
