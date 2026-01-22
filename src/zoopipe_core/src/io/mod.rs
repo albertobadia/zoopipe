@@ -38,7 +38,7 @@ impl BufRead for SendBufReader {
 
 pub fn get_reader(path: &str) -> std::io::Result<BoxedReader> {
 
-    let boxed_reader = if path.starts_with("s3://") {
+    let boxed_reader = if storage::is_cloud_path(path) {
         let store_controller = storage::StorageController::new(path).map_err(std::io::Error::other)?;
         BoxedReader::Remote(RemoteReader::new(store_controller.store(), object_store::path::Path::from(store_controller.path())))
     } else {
@@ -58,7 +58,7 @@ pub fn get_reader(path: &str) -> std::io::Result<BoxedReader> {
 
 
 pub fn get_writer(path: &str) -> std::io::Result<BoxedWriter> {
-    let boxed_writer = if path.starts_with("s3://") {
+    let boxed_writer = if storage::is_cloud_path(path) {
         let store_controller = storage::StorageController::new(path).map_err(std::io::Error::other)?;
         BoxedWriter::Remote(RemoteWriter::new(store_controller.store(), object_store::path::Path::from(store_controller.path())))
     } else {

@@ -25,7 +25,7 @@ futures-util = "0.3.31"
 thiserror = "2.0"
 parquet = "57.2.0"
 bytes = "1.11.0"
-object_store = { version = "0.13.1", features = ["aws"] }
+object_store = { version = "0.13.1", features = ["aws", "gcp", "azure"] }
 url = "2.5.8"
 calamine = "0.32.0"
 rust_xlsxwriter = "0.92.3"
