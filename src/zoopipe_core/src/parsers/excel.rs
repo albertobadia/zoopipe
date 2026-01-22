@@ -1,8 +1,12 @@
 use pyo3::prelude::*;
 use std::fs::File;
+use std::io::{Cursor, Read};
 use std::sync::Mutex;
 use calamine::{Reader, Xlsx, Data};
 use rust_xlsxwriter::{Workbook, Worksheet, Format};
+use object_store::ObjectStoreExt;
+use crate::io::storage::StorageController;
+use crate::io::get_runtime;
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
@@ -39,9 +43,6 @@ impl ExcelReader {
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use crate::io::get_runtime;
-        use std::io::{Cursor, Read};
 
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
@@ -73,28 +74,26 @@ impl ExcelReader {
         
         let range = workbook.worksheet_range(&sheet_name).map_err(wrap_py_err)?;
         
-        let mut all_rows: Vec<Vec<Data>> = range.rows()
-            .map(|r| r.to_vec())
-            .collect();
-        
-        for _ in 0..skip_rows {
-            if !all_rows.is_empty() {
-                all_rows.remove(0);
-            }
-        }
+        let has_header = fieldnames.is_none();
+        let header_offset = if has_header { 1 } else { 0 };
         
         let headers_str = if let Some(fields) = fieldnames {
             fields
-        } else if !all_rows.is_empty() {
-            let first_row = all_rows.remove(0);
-            first_row.iter().map(data_to_string).collect()
         } else {
-            Vec::new()
+            range.rows()
+                .nth(skip_rows)
+                .map(|row| row.iter().map(data_to_string).collect())
+                .unwrap_or_default()
         };
+        
+        let all_rows: Vec<Vec<Data>> = range.rows()
+            .skip(skip_rows + header_offset)
+            .map(|r| r.to_vec())
+            .collect();
         
         let headers: Vec<Py<PyString>> = headers_str
             .into_iter()
-            .map(|s| PyString::new(py, &s).unbind())
+            .map(|s: String| PyString::new(py, s.as_str()).unbind())
             .collect();
         
         let models = py.import("zoopipe.report")?;
@@ -142,9 +141,6 @@ impl ExcelReader {
     }
     #[staticmethod]
     pub fn list_sheets(path: String) -> PyResult<Vec<String>> {
-        use crate::io::storage::StorageController;
-        use crate::io::get_runtime;
-        use std::io::{Cursor, Read};
 
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
@@ -304,13 +300,12 @@ impl ExcelWriter {
         
         if path.starts_with("s3://") {
             let buffer = state.workbook.save_to_buffer().map_err(wrap_py_err)?;
-            use crate::io::storage::StorageController;
-            use crate::io::get_runtime;
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
             get_runtime().block_on(async {
                 controller.store().put(&object_store::path::Path::from(controller.path()), buffer.into()).await.map_err(wrap_py_err)
             })?;
         } else {
+            crate::io::ensure_parent_dir(&path).map_err(wrap_py_err)?;
             state.workbook.save(&path).map_err(wrap_py_err)?;
         }
         

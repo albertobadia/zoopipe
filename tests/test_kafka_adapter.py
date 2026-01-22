@@ -28,9 +28,12 @@ def test_kafka_native_connection_fail():
     when no Kafka broker is available.
     """
     adapter = KafkaInputAdapter("kafka://localhost:12345/nonexistent")
+    reader = adapter.get_native_reader()
 
     with pytest.raises(Exception) as excinfo:
-        adapter.get_native_reader()
+        # With rdkafka, the connection failure happens asynchronously.
+        # We need to try reading to see the error.
+        next(reader)
 
     assert (
         "Invalid Kafka URI" in str(excinfo.value)
@@ -38,6 +41,11 @@ def test_kafka_native_connection_fail():
         or "Io" in str(excinfo.value)
         or "failed to find" in str(excinfo.value)
         or "No host reachable" in str(excinfo.value)
+        or "Connection refused" in str(excinfo.value)
+        or "Broker: No host reachable" in str(excinfo.value)
+        or "Local: All broker connections are down" in str(excinfo.value)
+        or "Broker transport failure" in str(excinfo.value)
+        or "BrokerTransportFailure" in str(excinfo.value)
     )
 
 

@@ -55,7 +55,6 @@ class JSONOutputAdapter(BaseOutputAdapter):
         return shards
 
     def get_native_writer(self) -> JSONWriter:
-        pathlib.Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         return JSONWriter(
             self.output_path,
             format=self.format,

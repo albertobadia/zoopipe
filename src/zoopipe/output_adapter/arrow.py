@@ -43,7 +43,6 @@ class ArrowOutputAdapter(BaseOutputAdapter):
         return shards
 
     def get_native_writer(self) -> ArrowWriter:
-        pathlib.Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         return ArrowWriter(self.output_path)
 
 

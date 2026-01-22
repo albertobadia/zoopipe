@@ -59,7 +59,6 @@ class CSVOutputAdapter(BaseOutputAdapter):
         return shards
 
     def get_native_writer(self) -> CSVWriter:
-        pathlib.Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         return CSVWriter(
             self.output_path,
             delimiter=ord(self.delimiter),

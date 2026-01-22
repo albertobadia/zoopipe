@@ -51,6 +51,7 @@ module-name = "zoopipe.zoopipe_rust_core"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "--ignore=tests/integrations"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

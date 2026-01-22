@@ -10,6 +10,7 @@ use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::parquet::{ParquetReader, ParquetWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
+use crate::parsers::kafka::{KafkaReader, KafkaWriter};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
@@ -23,6 +24,7 @@ pub enum PipeReader {
     Parquet(Py<ParquetReader>),
     PyGen(Py<PyGeneratorReader>),
     Excel(Py<ExcelReader>),
+    Kafka(Py<KafkaReader>),
 }
 
 impl PipeReader {
@@ -36,6 +38,7 @@ impl PipeReader {
             PipeReader::Parquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Excel(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::PyGen(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::Kafka(_) => Ok(None),
         }
     }
     
@@ -49,6 +52,7 @@ impl PipeReader {
             PipeReader::Parquet(r) => ParquetReader::__next__(r.bind(py).borrow()),
             PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
             PipeReader::Excel(r) => ExcelReader::__next__(r.bind(py).borrow()),
+            PipeReader::Kafka(r) => KafkaReader::__next__(r.bind(py).borrow()),
         }
     }
 }
@@ -63,6 +67,7 @@ pub enum PipeWriter {
     Parquet(Py<ParquetWriter>),
     PyGen(Py<PyGeneratorWriter>),
     Excel(Py<ExcelWriter>),
+    Kafka(Py<KafkaWriter>),
 }
 
 impl PipeWriter {
@@ -76,6 +81,7 @@ impl PipeWriter {
             PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Kafka(w) => w.bind(py).borrow().write_batch(py, entries),
         }
     }
     
@@ -89,6 +95,7 @@ impl PipeWriter {
             PipeWriter::Parquet(w) => w.bind(py).borrow().close(),
             PipeWriter::PyGen(w) => w.bind(py).borrow().close(),
             PipeWriter::Excel(w) => w.bind(py).borrow().close(),
+            PipeWriter::Kafka(w) => w.bind(py).borrow().close(),
         }
     }
 }
@@ -173,7 +180,6 @@ pub struct NativePipe {
 #[pymethods]
 impl NativePipe {
     #[new]
-    #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         reader: PipeReader,
@@ -277,20 +283,16 @@ impl NativePipe {
     ) -> PyResult<()> {
         let batch_processor = self.batch_processor.bind(py);
         
-        // This is where the magic happens: parallel execution via Rayon (if configured)
-        let results = self.executor.process_batches(py, batch_buffer.clone(), batch_processor)?;
+        let batches = std::mem::take(batch_buffer);
+        let results = self.executor.process_batches(py, batches, batch_processor)?;
         
-        for (processed_entries, _original_input) in results.into_iter().zip(batch_buffer.iter()) {
+        for processed_entries in results {
             if let Ok(processed_list) = processed_entries.cast::<PyList>() {
                self.handle_processed_entries(py, processed_list, report)?;
             } else {
-               // Fallback / Error handling if processor returns something weird
-               // Or potentially we could reuse the original input if we were just validating
-               // But usually we expect a list back.
                return Err(PyRuntimeError::new_err("Batch processor returned non-list"));
             }
         }
-        batch_buffer.clear();
         Ok(())
     }
 

@@ -1,15 +1,15 @@
 use pyo3::prelude::*;
-use std::fs::File;
-use std::io::{BufReader, Cursor};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::io::{BufRead, Cursor, Seek, SeekFrom};
+use std::sync::{Arc, Mutex};
 use csv::StringRecord;
-use crate::io::{BoxedReader, SmartReader, BoxedWriter, SharedWriter};
+use crate::io::{BoxedReader, BoxedWriter, SharedWriter, SmartReader};
 use crate::utils::wrap_py_err;
+
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
-use std::sync::Mutex;
-
 use crate::utils::interning::InternedKeys;
+use itoa;
+use ryu;
 
 
 
@@ -70,32 +70,21 @@ impl CSVReader {
         start_byte: u64,
         end_byte: Option<u64>,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::RemoteReader;
-
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        use std::io::{Seek, SeekFrom};
         
-        // Handle byte range seeking
-        let mut boxed_reader = if path.starts_with("s3://") {
-             let mut r = RemoteReader::new(controller.store(), Path::from(controller.path()));
+        let mut boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err) {
              if start_byte > 0 {
+                 if path.ends_with(".gz") || path.ends_with(".zst") {
+                      return Err(PipeError::Other("Cannot use start_byte with compressed files".into()).into());
+                 }
                  r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
              }
-             BoxedReader::Remote(r)
+             r
         } else {
-             let file = File::open(&path).map_err(wrap_py_err)?;
-             let mut reader = BufReader::new(file);
-             if start_byte > 0 {
-                 reader.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
-             }
-             BoxedReader::File(reader)
+             return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
         };
 
+
         if start_byte > 0 {
-             // Discard partial line if we started in the middle
-             use std::io::BufRead;
              let mut dummy = String::new();
              boxed_reader.read_line(&mut dummy).map_err(wrap_py_err)?;
         }
@@ -235,17 +224,8 @@ impl CSVReader {
         quote: u8,
         has_header: bool,
     ) -> PyResult<usize> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::RemoteReader;
+        let boxed_reader = crate::io::get_reader(&path).map_err(wrap_py_err)?;
 
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let boxed_reader = if path.starts_with("s3://") {
-            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
-        } else {
-            let file = File::open(&path).map_err(wrap_py_err)?;
-            BoxedReader::File(BufReader::new(file))
-        };
 
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
@@ -304,10 +284,8 @@ impl CSVReader {
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         
-        if let Some(lim) = state.limit {
-            if state.position >= lim {
-                return Ok(None);
-            }
+        if let Some(lim) = state.limit && state.position >= lim {
+            return Ok(None);
         }
         
         match state.reader.next() {
@@ -357,7 +335,7 @@ pub struct CSVWriter {
 
 struct CSVWriterState {
     writer: csv::Writer<SharedWriter>,
-    inner_writer: Arc<StdMutex<BoxedWriter>>,
+    inner_writer: Arc<Mutex<BoxedWriter>>,
     fieldnames: Option<Vec<Py<PyString>>>,
     header_written: bool,
 }
@@ -373,19 +351,10 @@ impl CSVWriter {
         quote: u8,
         fieldnames: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::{BoxedWriter, RemoteWriter};
+        let boxed_writer = crate::io::get_writer(&path).map_err(wrap_py_err)?;
 
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let boxed_writer = if path.starts_with("s3://") {
-            BoxedWriter::Remote(RemoteWriter::new(controller.store(), Path::from(controller.path())))
-        } else {
-            let file = File::create(&path).map_err(wrap_py_err)?;
-            BoxedWriter::File(std::io::BufWriter::new(file))
-        };
         
-        let shared_writer = Arc::new(StdMutex::new(boxed_writer));
+        let shared_writer = Arc::new(Mutex::new(boxed_writer));
         let writer = csv::WriterBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
@@ -429,7 +398,7 @@ impl CSVWriter {
     pub fn close(&self) -> PyResult<()> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         state.writer.flush().map_err(wrap_py_err)?;
-        let mut inner = state.inner_writer.lock().unwrap();
+        let mut inner = state.inner_writer.lock().map_err(|_| PipeError::MutexLock)?;
         inner.close().map_err(wrap_py_err)?;
         Ok(())
     }
@@ -479,14 +448,16 @@ fn write_record_to_csv(
         }
 
         let mut row_out: Vec<Cow<str>> = Vec::with_capacity(names.len());
+        let mut itoa_buf = itoa::Buffer::new();
+        let mut ryu_buf = ryu::Buffer::new();
         for opt_val in &row_bounds {
             if let Some(v) = opt_val {
                 if let Ok(s) = v.cast::<PyString>() {
                     row_out.push(Cow::Borrowed(s.to_str().unwrap_or("")));
                 } else if let Ok(i) = v.extract::<i64>() {
-                    row_out.push(Cow::Owned(i.to_string()));
+                    row_out.push(Cow::Owned(itoa_buf.format(i).to_owned()));
                 } else if let Ok(f) = v.extract::<f64>() {
-                    row_out.push(Cow::Owned(f.to_string()));
+                    row_out.push(Cow::Owned(ryu_buf.format(f).to_owned()));
                 } else if let Ok(b) = v.extract::<bool>() {
                     row_out.push(Cow::Borrowed(if b { "true" } else { "false" }));
                 } else {

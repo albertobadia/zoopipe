@@ -1,16 +1,19 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
-use std::sync::Mutex;
+use std::io::BufReader;
+use std::sync::{Arc, Mutex};
 use arrow::ipc::reader::FileReader;
 use arrow::ipc::writer::FileWriter;
 use arrow::record_batch::RecordBatch;
 use arrow::datatypes::*;
+use object_store::path::Path as ObjectPath;
+use crate::io::{BoxedReader, BoxedWriter, RemoteReader, RemoteWriter};
+use crate::io::storage::StorageController;
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyString, PyDict, PyList, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch};
-use crate::io::BoxedReader;
 
 /// Fast Arrow IPC (Feather) reader for ultra-efficient data loading.
 /// 
@@ -34,10 +37,6 @@ impl ArrowReader {
     #[new]
     #[pyo3(signature = (path, generate_ids=true))]
     fn new(py: Python<'_>, path: String, generate_ids: bool) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path as ObjectPath;
-        use crate::io::{BoxedReader, RemoteReader};
-        use std::io::BufReader;
 
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
@@ -158,7 +157,8 @@ impl ArrowReader {
 #[pyclass]
 pub struct ArrowWriter {
     path: String,
-    writer: Mutex<Option<FileWriter<crate::io::BoxedWriter>>>,
+    writer: Mutex<Option<FileWriter<crate::io::SharedWriter>>>,
+    inner_writer: Mutex<Option<Arc<std::sync::Mutex<crate::io::BoxedWriter>>>>,
     schema: Mutex<Option<SchemaRef>>,
 }
 
@@ -169,6 +169,7 @@ impl ArrowWriter {
         ArrowWriter {
             path,
             writer: Mutex::new(None),
+            inner_writer: Mutex::new(None),
             schema: Mutex::new(None),
         }
     }
@@ -181,9 +182,6 @@ impl ArrowWriter {
         let mut schema_guard = self.schema.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         
         if writer_guard.is_none() {
-            use crate::io::storage::StorageController;
-            use object_store::path::Path as ObjectPath;
-            use crate::io::{BoxedWriter, RemoteWriter};
 
             let first = list.get_item(0)?;
             let dict = first.cast::<PyDict>()?;
@@ -204,20 +202,23 @@ impl ArrowWriter {
             }
             let schema = SchemaRef::new(Schema::new(fields));
             
-            let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
+            let controller = crate::io::storage::StorageController::new(&self.path).map_err(wrap_py_err)?;
             let boxed_writer = if self.path.starts_with("s3://") {
                 BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
             } else {
-                let file = File::create(&self.path).map_err(wrap_py_err)?;
+                let file = crate::io::create_local_file(&self.path).map_err(wrap_py_err)?;
                 BoxedWriter::File(std::io::BufWriter::new(file))
             };
 
-            *writer_guard = Some(FileWriter::try_new(boxed_writer, &schema).map_err(wrap_py_err)?);
+            let shared_writer = Arc::new(std::sync::Mutex::new(boxed_writer));
+            *writer_guard = Some(FileWriter::try_new(crate::io::SharedWriter(shared_writer.clone()), &schema).map_err(wrap_py_err)?);
             *schema_guard = Some(schema);
+            let mut inner_guard = self.inner_writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+            *inner_guard = Some(shared_writer);
         }
 
-        let writer = writer_guard.as_mut().expect("ArrowWriter not initialized");
-        let schema = schema_guard.as_ref().expect("ArrowWriter schema not initialized");
+        let writer = writer_guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("ArrowWriter failed to initialize"))?;
+        let schema = schema_guard.as_ref().ok_or_else(|| PyRuntimeError::new_err("ArrowWriter schema failed to initialize"))?;
         
         let batch = build_record_batch(py, schema, list)?;
         writer.write(&batch).map_err(wrap_py_err)?;
@@ -228,6 +229,11 @@ impl ArrowWriter {
         let mut writer_guard = self.writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(mut w) = writer_guard.take() {
             w.finish().map_err(wrap_py_err)?;
+        }
+        let mut inner_guard = self.inner_writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+        if let Some(shared) = inner_guard.take() {
+            let mut writer = shared.lock().map_err(|_| PyRuntimeError::new_err("Lock poisoned during close"))?;
+            writer.close().map_err(wrap_py_err)?;
         }
         Ok(())
     }

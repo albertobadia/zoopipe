@@ -1,5 +1,6 @@
 import typing
 
+from zoopipe.hooks.sql import SQLExpansionHook
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.zoopipe_rust_core import SQLReader
 
@@ -95,8 +96,6 @@ class SQLPaginationInputAdapter(SQLInputAdapter):
         super().__init__(uri, query=query)
 
     def get_hooks(self):
-        from zoopipe.hooks.sql import SQLExpansionHook
-
         return [SQLExpansionHook(self.connection_factory, self.table_name)]
 
 

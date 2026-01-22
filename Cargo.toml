@@ -25,12 +25,17 @@ futures-util = "0.3.31"
 thiserror = "2.0"
 parquet = "57.2.0"
 bytes = "1.11.0"
-object_store = { version = "0.11.2", features = ["aws"] }
+object_store = { version = "0.13.1", features = ["aws", "gcp", "azure"] }
 url = "2.5.8"
 calamine = "0.32.0"
 rust_xlsxwriter = "0.92.3"
-kafka = "0.10.0"
+rdkafka = { version = "0.38.0" }
 openssl = { version = "0.10", features = ["vendored"] }
+tokio-postgres = "0.7.16"
+itoa = "1.0.17"
+ryu = "1.0.22"
+zstd = "0.13.3"
+flate2 = "1.1.8"
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -40,3 +45,10 @@ tokio-test = "0.4.4"
 [[bench]]
 name = "zoopipe_benchmarks"
 harness = false
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+strip = true
+panic = "abort"

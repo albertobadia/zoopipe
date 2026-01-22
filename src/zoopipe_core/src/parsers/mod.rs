@@ -9,6 +9,7 @@ pub mod arrow_utils;
 pub mod excel;
 pub mod kafka;
 
+pub use sql::{SQLReader, SQLWriter};
 
 pub use csv::{CSVReader, CSVWriter};
 pub use json::{JSONReader, JSONWriter};

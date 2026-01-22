@@ -1,5 +1,5 @@
 #![allow(clippy::too_many_arguments)]
-#![allow(clippy::collapsible_if)]
+
 
 use pyo3::prelude::*;
 
@@ -10,6 +10,9 @@ pub mod parsers;
 pub mod pipeline;
 pub mod executor;
 
+use crate::io::storage::StorageController;
+use crate::io::get_runtime;
+use crate::utils::wrap_py_err;
 use crate::parsers::sql::{SQLReader, SQLWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
 use crate::parsers::csv::{CSVReader, CSVWriter};
@@ -29,10 +32,6 @@ fn get_version() -> PyResult<String> {
 
 #[pyfunction]
 fn get_file_size(path: String) -> PyResult<u64> {
-    use crate::io::storage::StorageController;
-    use crate::io::get_runtime;
-    use crate::utils::wrap_py_err;
-
     let controller = StorageController::new(&path).map_err(wrap_py_err)?;
     get_runtime().block_on(async {
         controller.get_size().await.map_err(wrap_py_err)
