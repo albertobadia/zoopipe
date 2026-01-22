@@ -1,14 +1,14 @@
 use pyo3::prelude::*;
 use std::fs::File;
-use std::io::{BufReader, Cursor};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::io::{BufRead, BufReader, Cursor, Seek, SeekFrom};
+use std::sync::{Arc, Mutex, Mutex as StdMutex};
 use csv::StringRecord;
-use crate::io::{BoxedReader, SmartReader, BoxedWriter, SharedWriter};
+use object_store::path::Path as ObjectPath;
+use crate::io::{BoxedReader, BoxedWriter, RemoteReader, RemoteWriter, SharedWriter, SmartReader};
+use crate::io::storage::StorageController;
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
-use std::sync::Mutex;
-
 use crate::utils::interning::InternedKeys;
 
 
@@ -70,16 +70,11 @@ impl CSVReader {
         start_byte: u64,
         end_byte: Option<u64>,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::RemoteReader;
-
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        use std::io::{Seek, SeekFrom};
         
         // Handle byte range seeking
         let mut boxed_reader = if path.starts_with("s3://") {
-             let mut r = RemoteReader::new(controller.store(), Path::from(controller.path()));
+             let mut r = RemoteReader::new(controller.store(), ObjectPath::from(controller.path()));
              if start_byte > 0 {
                  r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
              }
@@ -94,8 +89,6 @@ impl CSVReader {
         };
 
         if start_byte > 0 {
-             // Discard partial line if we started in the middle
-             use std::io::BufRead;
              let mut dummy = String::new();
              boxed_reader.read_line(&mut dummy).map_err(wrap_py_err)?;
         }
@@ -235,13 +228,9 @@ impl CSVReader {
         quote: u8,
         has_header: bool,
     ) -> PyResult<usize> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::RemoteReader;
-
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
-            BoxedReader::Remote(RemoteReader::new(controller.store(), Path::from(controller.path())))
+            BoxedReader::Remote(RemoteReader::new(controller.store(), ObjectPath::from(controller.path())))
         } else {
             let file = File::open(&path).map_err(wrap_py_err)?;
             BoxedReader::File(BufReader::new(file))
@@ -373,15 +362,11 @@ impl CSVWriter {
         quote: u8,
         fieldnames: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::{BoxedWriter, RemoteWriter};
-
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_writer = if path.starts_with("s3://") {
-            BoxedWriter::Remote(RemoteWriter::new(controller.store(), Path::from(controller.path())))
+            BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
         } else {
-            let file = File::create(&path).map_err(wrap_py_err)?;
+            let file = crate::io::create_local_file(&path).map_err(wrap_py_err)?;
             BoxedWriter::File(std::io::BufWriter::new(file))
         };
         

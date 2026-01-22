@@ -1,14 +1,15 @@
 use pyo3::prelude::*;
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::sync::{Mutex, Arc};
 use serde_json::Value;
 use serde::Serialize;
-use crate::io::{BoxedReader, SmartReader};
+use object_store::path::Path as ObjectPath;
+use crate::io::{BoxedReader, BoxedWriter, CountingReader, RemoteReader, RemoteWriter, SmartReader};
+use crate::io::storage::StorageController;
 use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyDict, PyList};
-
 use crate::utils::interning::InternedKeys;
 
 struct JSONReaderState {
@@ -91,14 +92,9 @@ impl JSONReader {
     #[new]
     #[pyo3(signature = (path, start_byte=0, end_byte=None))]
     fn new(py: Python<'_>, path: String, start_byte: u64, end_byte: Option<u64>) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::RemoteReader;
-        use std::io::{BufRead, Seek, SeekFrom};
-
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
-            let mut rr = RemoteReader::new(controller.store(), Path::from(controller.path()));
+            let mut rr = RemoteReader::new(controller.store(), ObjectPath::from(controller.path()));
             if start_byte > 0 {
                 rr.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
                 // Skip partial line
@@ -122,7 +118,6 @@ impl JSONReader {
             &path,
             boxed_reader,
             move |r| {
-                use crate::io::CountingReader;
                 let counting_reader = CountingReader::new(r, start_byte);
                 let count_handle = counting_reader.get_count_handle();
                 let iter = serde_json::Deserializer::from_reader(counting_reader)
@@ -255,15 +250,11 @@ impl JSONWriter {
         format: String,
         indent: Option<usize>,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path;
-        use crate::io::{BoxedWriter, RemoteWriter};
-
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let mut boxed_writer = if path.starts_with("s3://") {
-            BoxedWriter::Remote(RemoteWriter::new(controller.store(), Path::from(controller.path())))
+            BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
         } else {
-            let file = File::create(&path).map_err(wrap_py_err)?;
+            let file = crate::io::create_local_file(&path).map_err(wrap_py_err)?;
             BoxedWriter::File(std::io::BufWriter::new(file))
         };
 

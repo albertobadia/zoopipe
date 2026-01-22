@@ -2,7 +2,7 @@ import pathlib
 import typing
 
 from zoopipe.input_adapter.base import BaseInputAdapter
-from zoopipe.zoopipe_rust_core import JSONReader
+from zoopipe.zoopipe_rust_core import JSONReader, get_file_size
 
 
 class JSONInputAdapter(BaseInputAdapter):
@@ -42,7 +42,6 @@ class JSONInputAdapter(BaseInputAdapter):
         """
         Split the JSON input into `workers` byte-range shards.
         """
-        from zoopipe.zoopipe_rust_core import get_file_size
 
         file_size = get_file_size(self.source_path)
 

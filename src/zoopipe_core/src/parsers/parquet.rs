@@ -1,18 +1,20 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use std::fs::File;
+use std::io::BufReader;
 use std::sync::{Arc, Mutex, Mutex as StdMutex};
 use arrow::record_batch::RecordBatch;
-
 use arrow::datatypes::*;
+use object_store::path::Path as ObjectPath;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
+use crate::io::{BoxedReader, BoxedWriter, RemoteReader, RemoteWriter, SharedWriter, SmartReader};
+use crate::io::storage::StorageController;
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyDict, PyList, PyString, PyAnyMethods};
 use crate::parsers::arrow_utils::{arrow_to_py, build_record_batch, infer_type};
-use crate::io::{SmartReader, BoxedWriter, SharedWriter};
 
 struct ParquetReaderState {
     reader: SmartReader<RecordBatch>,
@@ -103,10 +105,6 @@ impl ParquetReader {
         offset: usize,
         row_groups: Option<Vec<usize>>,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path as ObjectPath;
-        use crate::io::{BoxedReader, RemoteReader};
-        use std::io::BufReader;
 
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
@@ -158,10 +156,6 @@ impl ParquetReader {
 
     #[staticmethod]
     pub fn count_rows(path: String) -> PyResult<usize> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path as ObjectPath;
-        use crate::io::{BoxedReader, RemoteReader};
-        use std::io::BufReader;
 
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
@@ -177,10 +171,6 @@ impl ParquetReader {
 
     #[staticmethod]
     pub fn get_row_groups_info(path: String) -> PyResult<Vec<usize>> {
-        use crate::io::storage::StorageController;
-        use object_store::path::Path as ObjectPath;
-        use crate::io::{BoxedReader, RemoteReader};
-        use std::io::BufReader;
 
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
@@ -295,10 +285,6 @@ impl ParquetWriter {
         let mut schema_guard = self.schema.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         
         if writer_guard.is_none() {
-            use crate::io::storage::StorageController;
-            use object_store::path::Path as ObjectPath;
-            use crate::io::{BoxedWriter, RemoteWriter};
-            use std::sync::Arc;
 
             let first = list.get_item(0)?;
             let dict = first.cast::<PyDict>()?;
@@ -320,7 +306,7 @@ impl ParquetWriter {
             let boxed_writer = if self.path.starts_with("s3://") {
                 BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
             } else {
-                let file = File::create(&self.path).map_err(wrap_py_err)?;
+                let file = crate::io::create_local_file(&self.path).map_err(wrap_py_err)?;
                 BoxedWriter::File(std::io::BufWriter::new(file))
             };
             

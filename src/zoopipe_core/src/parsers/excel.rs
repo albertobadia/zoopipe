@@ -1,12 +1,15 @@
 use pyo3::prelude::*;
 use std::fs::File;
+use std::io::{Cursor, Read};
 use std::sync::Mutex;
 use calamine::{Reader, Xlsx, Data};
 use rust_xlsxwriter::{Workbook, Worksheet, Format};
+use object_store::ObjectStoreExt;
+use crate::io::storage::StorageController;
+use crate::io::get_runtime;
 use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
-use object_store::ObjectStoreExt;
 
 struct ExcelReaderState {
     rows: std::vec::IntoIter<Vec<Data>>,
@@ -40,10 +43,6 @@ impl ExcelReader {
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
     ) -> PyResult<Self> {
-        use crate::io::storage::StorageController;
-        use crate::io::get_runtime;
-        use object_store::ObjectStoreExt;
-        use std::io::{Cursor, Read};
 
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
@@ -144,9 +143,6 @@ impl ExcelReader {
     }
     #[staticmethod]
     pub fn list_sheets(path: String) -> PyResult<Vec<String>> {
-        use crate::io::storage::StorageController;
-        use crate::io::get_runtime;
-        use std::io::{Cursor, Read};
 
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
@@ -306,13 +302,12 @@ impl ExcelWriter {
         
         if path.starts_with("s3://") {
             let buffer = state.workbook.save_to_buffer().map_err(wrap_py_err)?;
-            use crate::io::storage::StorageController;
-            use crate::io::get_runtime;
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
             get_runtime().block_on(async {
                 controller.store().put(&object_store::path::Path::from(controller.path()), buffer.into()).await.map_err(wrap_py_err)
             })?;
         } else {
+            crate::io::ensure_parent_dir(&path).map_err(wrap_py_err)?;
             state.workbook.save(&path).map_err(wrap_py_err)?;
         }
         

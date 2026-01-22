@@ -12,6 +12,20 @@ use bytes::Bytes;
 
 pub use smart_reader::SmartReader;
 
+pub fn ensure_parent_dir(path: &str) -> std::io::Result<()> {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn create_local_file(path: &str) -> std::io::Result<File> {
+    ensure_parent_dir(path)?;
+    File::create(path)
+}
+
 /// Unified reader that abstracts over local files, in-memory cursors, and remote storage.
 /// 
 /// It implements standard I/O traits and provides transparent access to 
