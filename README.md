@@ -28,8 +28,8 @@ Read the [docs](https://zoopipe.readthedocs.io/) for more information.
 - 🪝 **Python Hooks**: Transform and enrich data at any stage using standard Python functions or classes.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
 - 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases.
-- 🔧 **Two-Tier Parallelism**: Orchestrate across processes or clusters with **Engines** (Local, Ray), and scale throughput at the node level with Rust **Executors**.
-- ☁️ **Cloud Native**: Native S3 support and zero-config distributed execution on **Ray** clusters.
+- 🔧 **Two-Tier Parallelism**: Orchestrate across processes or clusters with **Engines** (Local, Ray, Dask), and scale throughput at the node level with Rust **Executors**.
+- ☁️ **Cloud Native**: Native S3, GCS, and Azure support, plus zero-config distributed execution on **Ray** or **Dask** clusters.
 
 ---
 
@@ -118,7 +118,7 @@ from zoopipe import PipeManager, MultiProcessEngine
 pipe = Pipe(...)
 
 # Automatically parallelize across 4 workers
-# MultiProcessEngine() for local, RayEngine() for clusters
+# MultiProcessEngine() for local, RayEngine() or DaskEngine() for clusters
 manager = PipeManager.parallelize_pipe(
     pipe, 
     workers=4, 
@@ -190,6 +190,7 @@ Executors control how ZooPipe scales **up** within a single node using Rust-mana
 - [**Cloud Storage (S3)**](https://github.com/albertobadia/zoopipe/blob/main/docs/cloud-storage.md) - Read and write data from Amazon S3 and compatible services
 - [**PipeManager**](https://github.com/albertobadia/zoopipe/blob/main/docs/pipemanager.md) - Run multiple pipes in parallel for distributed processing
 - [**Ray Guide**](https://github.com/albertobadia/zoopipe/blob/main/docs/ray.md) - Zero-config distributed execution on Ray clusters
+- [**Dask Guide**](https://github.com/albertobadia/zoopipe/blob/main/docs/dask.md) - Zero-config distributed execution on Dask clusters
 
 ---
 

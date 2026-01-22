@@ -271,10 +271,25 @@ Common errors:
 - Invalid UTF-8 encoding
 - Malformed CSV (unclosed quotes, inconsistent columns)
 
+## Compression
+
+ZooPipe supports transparent compression and decompression for CSV files. The compression format is automatically inferred from the file extension:
+
+- `filename.csv.gz`: Gzip compression
+- `filename.csv.zst`: Zstandard compression (recommended for speed)
+
+```python
+# Automatic decompression for input and compression for output
+pipe = Pipe(
+    input_adapter=CSVInputAdapter("large_data.csv.zst"),
+    output_adapter=CSVOutputAdapter("output.csv.gz"),
+)
+```
+
 ## Performance Tips
 
 1. **Use MultiThreadExecutor**: For files > 10MB, multi-threading provides significant speedup
 2. **Batch Size**: Default 2000 is optimal for most use cases
 3. **Memory Usage**: Constant ~50-100MB regardless of file size due to streaming
 4. **SSD vs HDD**: CSV reading is I/O bound, SSD provides 3-5x better performance
-5. **Compression**: Use uncompressed CSV for maximum speed (handle compression upstream)
+5. **Compression**: Use `.zst` (Zstandard) for a good balance of speed and size. ZooPipe handles it natively.

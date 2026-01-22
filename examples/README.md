@@ -178,6 +178,19 @@ This example demonstrates:
 - automatic hydration via `SQLExpansionHook`
 - Configuring chunk sizes for optimal throughput
 
+### 18_s3_to_parquet.py
+Cloud-native ETL: Read compressed CSV from S3 and write to Parquet on S3.
+
+```bash
+uv run python examples/18_s3_to_parquet.py
+```
+
+This example demonstrates:
+- Using `s3://` URIs for input and output
+- Transparent Zstd decompression for input files
+- Writing results directly to Parquet format in S3
+- Optimized multi-threaded execution for cloud storage latency
+
 ## Sample Data
 
 The `sample_data/` directory contains example CSV and JSONL files for testing.
