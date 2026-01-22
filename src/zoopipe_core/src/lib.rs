@@ -1,5 +1,5 @@
 #![allow(clippy::too_many_arguments)]
-#![allow(clippy::collapsible_if)]
+
 
 use pyo3::prelude::*;
 

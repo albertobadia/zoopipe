@@ -74,24 +74,22 @@ impl ExcelReader {
         
         let range = workbook.worksheet_range(&sheet_name).map_err(wrap_py_err)?;
         
-        let mut all_rows: Vec<Vec<Data>> = range.rows()
-            .map(|r| r.to_vec())
-            .collect();
-        
-        for _ in 0..skip_rows {
-            if !all_rows.is_empty() {
-                all_rows.remove(0);
-            }
-        }
+        let has_header = fieldnames.is_none();
+        let header_offset = if has_header { 1 } else { 0 };
         
         let headers_str = if let Some(fields) = fieldnames {
             fields
-        } else if !all_rows.is_empty() {
-            let first_row = all_rows.remove(0);
-            first_row.iter().map(data_to_string).collect()
         } else {
-            Vec::new()
+            range.rows()
+                .nth(skip_rows)
+                .map(|row| row.iter().map(data_to_string).collect())
+                .unwrap_or_default()
         };
+        
+        let all_rows: Vec<Vec<Data>> = range.rows()
+            .skip(skip_rows + header_offset)
+            .map(|r| r.to_vec())
+            .collect();
         
         let headers: Vec<Py<PyString>> = headers_str
             .into_iter()

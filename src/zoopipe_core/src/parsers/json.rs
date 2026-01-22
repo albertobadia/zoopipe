@@ -29,10 +29,8 @@ impl<I: Iterator<Item = Result<Value, String>>> Iterator for BoundedJsonIter<I> 
     type Item = Result<Value, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(end) = self.end_byte {
-            if self.count.load(std::sync::atomic::Ordering::Relaxed) >= end {
-                return None;
-            }
+        if let Some(end) = self.end_byte && self.count.load(std::sync::atomic::Ordering::Relaxed) >= end {
+            return None;
         }
         self.iter.next()
     }

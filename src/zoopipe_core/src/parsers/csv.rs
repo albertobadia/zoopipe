@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Seek, SeekFrom};
-use std::sync::{Arc, Mutex, Mutex as StdMutex};
+use std::sync::{Arc, Mutex};
 use csv::StringRecord;
 use object_store::path::Path as ObjectPath;
 use crate::io::{BoxedReader, BoxedWriter, RemoteReader, RemoteWriter, SharedWriter, SmartReader};
@@ -10,6 +10,8 @@ use crate::utils::wrap_py_err;
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use crate::utils::interning::InternedKeys;
+use itoa;
+use ryu;
 
 
 
@@ -293,10 +295,8 @@ impl CSVReader {
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         
-        if let Some(lim) = state.limit {
-            if state.position >= lim {
-                return Ok(None);
-            }
+        if let Some(lim) = state.limit && state.position >= lim {
+            return Ok(None);
         }
         
         match state.reader.next() {
@@ -346,7 +346,7 @@ pub struct CSVWriter {
 
 struct CSVWriterState {
     writer: csv::Writer<SharedWriter>,
-    inner_writer: Arc<StdMutex<BoxedWriter>>,
+    inner_writer: Arc<Mutex<BoxedWriter>>,
     fieldnames: Option<Vec<Py<PyString>>>,
     header_written: bool,
 }
@@ -370,7 +370,7 @@ impl CSVWriter {
             BoxedWriter::File(std::io::BufWriter::new(file))
         };
         
-        let shared_writer = Arc::new(StdMutex::new(boxed_writer));
+        let shared_writer = Arc::new(Mutex::new(boxed_writer));
         let writer = csv::WriterBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
@@ -464,14 +464,16 @@ fn write_record_to_csv(
         }
 
         let mut row_out: Vec<Cow<str>> = Vec::with_capacity(names.len());
+        let mut itoa_buf = itoa::Buffer::new();
+        let mut ryu_buf = ryu::Buffer::new();
         for opt_val in &row_bounds {
             if let Some(v) = opt_val {
                 if let Ok(s) = v.cast::<PyString>() {
                     row_out.push(Cow::Borrowed(s.to_str().unwrap_or("")));
                 } else if let Ok(i) = v.extract::<i64>() {
-                    row_out.push(Cow::Owned(i.to_string()));
+                    row_out.push(Cow::Owned(itoa_buf.format(i).to_owned()));
                 } else if let Ok(f) = v.extract::<f64>() {
-                    row_out.push(Cow::Owned(f.to_string()));
+                    row_out.push(Cow::Owned(ryu_buf.format(f).to_owned()));
                 } else if let Ok(b) = v.extract::<bool>() {
                     row_out.push(Cow::Borrowed(if b { "true" } else { "false" }));
                 } else {

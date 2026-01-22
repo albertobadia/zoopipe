@@ -11,6 +11,7 @@ use crate::utils::interning::InternedKeys;
 enum DuckDBData {
     Metadata(Vec<String>),
     Row(Vec<Value>),
+    Error(String),
 }
 
 struct DuckDBReaderState {
@@ -101,18 +102,20 @@ impl DuckDBReader {
             std::thread::spawn(move || {
                 let conn = match Connection::open(&db_path) {
                     Ok(c) => c,
-                    Err(_) => return,
+                    Err(e) => {
+                        let _ = tx.send(DuckDBData::Error(format!("Failed to open database: {}", e)));
+                        return;
+                    }
                 };
 
                 let meta_query = format!("SELECT * FROM ({}) LIMIT 0", query);
                 let col_count = {
-                    let meta_conn = match Connection::open(&db_path) {
-                        Ok(c) => c,
-                        Err(_) => return,
-                    };
-                    let mut meta_stmt = match meta_conn.prepare(&meta_query) {
+                    let mut meta_stmt = match conn.prepare(&meta_query) {
                         Ok(s) => s,
-                        Err(_) => return,
+                        Err(e) => {
+                            let _ = tx.send(DuckDBData::Error(format!("Failed to prepare metadata query: {}", e)));
+                            return;
+                        }
                     };
                     let _ = meta_stmt.query([]);
                     let cols: Vec<String> = meta_stmt.column_names().iter().map(|s| s.to_string()).collect();
@@ -125,12 +128,18 @@ impl DuckDBReader {
 
                 let mut stmt = match conn.prepare(&query) {
                     Ok(s) => s,
-                    Err(_) => return,
+                    Err(e) => {
+                        let _ = tx.send(DuckDBData::Error(format!("Failed to prepare query: {}", e)));
+                        return;
+                    }
                 };
                 
                 let mut rows = match stmt.query([]) {
                     Ok(r) => r,
-                    Err(_) => return,
+                    Err(e) => {
+                        let _ = tx.send(DuckDBData::Error(format!("Failed to execute query: {}", e)));
+                        return;
+                    }
                 };
 
                 while let Ok(Some(row)) = rows.next() {
@@ -205,6 +214,9 @@ impl DuckDBReader {
                     envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
 
                     return Ok(Some(envelope.into_any()));
+                }
+                Ok(DuckDBData::Error(e)) => {
+                    return Err(PyRuntimeError::new_err(e));
                 }
                 Err(_) => return Ok(None),
             }

@@ -32,6 +32,8 @@ rust_xlsxwriter = "0.92.3"
 rdkafka = { version = "0.38.0" }
 openssl = { version = "0.10", features = ["vendored"] }
 tokio-postgres = "0.7.16"
+itoa = "1.0.17"
+ryu = "1.0.22"
 
 [dev-dependencies]
 criterion = "0.8.1"

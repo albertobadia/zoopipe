@@ -28,10 +28,8 @@ struct ParquetReaderState {
 impl ParquetReaderState {
     // Returns (Batch, RowIndex, Position) or None
     fn next_record(&mut self) -> Option<Result<(RecordBatch, usize, usize), String>> {
-        if let Some(limit) = self.rows_to_read {
-            if self.rows_read >= limit {
-                return None;
-            }
+        if let Some(limit) = self.rows_to_read && self.rows_read >= limit {
+            return None;
         }
 
         loop {
