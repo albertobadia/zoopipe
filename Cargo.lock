@@ -4681,6 +4681,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "duckdb",
+ "flate2",
  "futures-util",
  "itoa",
  "memory-stats",
@@ -4702,6 +4703,7 @@ dependencies = [
  "tokio-test",
  "url",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

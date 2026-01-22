@@ -34,6 +34,8 @@ openssl = { version = "0.10", features = ["vendored"] }
 tokio-postgres = "0.7.16"
 itoa = "1.0.17"
 ryu = "1.0.22"
+zstd = "0.13.3"
+flate2 = "1.1.8"
 
 [dev-dependencies]
 criterion = "0.8.1"

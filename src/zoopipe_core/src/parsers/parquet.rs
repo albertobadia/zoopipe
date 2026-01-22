@@ -127,8 +127,10 @@ impl ParquetReader {
             &path,
             builder,
             move |b| {
-                let reader = b.with_batch_size(batch_size).build().expect("Failed to build parquet reader");
-                reader.map(|res| res.map_err(|e| format!("{}", e)))
+                match b.with_batch_size(batch_size).build() {
+                    Ok(reader) => Box::new(reader.map(|res| res.map_err(|e| format!("{}", e)))) as Box<dyn Iterator<Item = Result<RecordBatch, String>> + Send>,
+                    Err(e) => Box::new(std::iter::once(Err(format!("Failed to build parquet reader: {}", e)))) as Box<dyn Iterator<Item = Result<RecordBatch, String>> + Send>
+                }
             }
         );
 
@@ -319,8 +321,8 @@ impl ParquetWriter {
             *inner_guard = Some(shared_writer);
         }
 
-        let writer = writer_guard.as_mut().expect("ParquetWriter not initialized");
-        let schema = schema_guard.as_ref().expect("ParquetWriter schema not initialized");
+        let writer = writer_guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("ParquetWriter failed to initialize"))?;
+        let schema = schema_guard.as_ref().ok_or_else(|| PyRuntimeError::new_err("ParquetWriter schema failed to initialize"))?;
         
         let batch = build_record_batch(py, schema, list)?;
         writer.write(&batch).map_err(wrap_py_err)?;
@@ -334,7 +336,7 @@ impl ParquetWriter {
         }
         let mut inner_guard = self.inner_writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(shared) = inner_guard.take() {
-            let mut writer = shared.lock().unwrap();
+            let mut writer = shared.lock().map_err(|_| PyRuntimeError::new_err("Lock poisoned during close"))?;
             writer.close().map_err(wrap_py_err)?;
         }
         Ok(())

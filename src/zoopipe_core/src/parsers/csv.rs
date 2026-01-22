@@ -1,12 +1,10 @@
 use pyo3::prelude::*;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Cursor, Seek, SeekFrom};
+use std::io::{BufRead, Cursor, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 use csv::StringRecord;
-use object_store::path::Path as ObjectPath;
-use crate::io::{BoxedReader, BoxedWriter, RemoteReader, RemoteWriter, SharedWriter, SmartReader};
-use crate::io::storage::StorageController;
+use crate::io::{BoxedReader, BoxedWriter, SharedWriter, SmartReader};
 use crate::utils::wrap_py_err;
+
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use crate::utils::interning::InternedKeys;
@@ -72,23 +70,19 @@ impl CSVReader {
         start_byte: u64,
         end_byte: Option<u64>,
     ) -> PyResult<Self> {
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         
-        // Handle byte range seeking
-        let mut boxed_reader = if path.starts_with("s3://") {
-             let mut r = RemoteReader::new(controller.store(), ObjectPath::from(controller.path()));
+        let mut boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err) {
              if start_byte > 0 {
+                 if path.ends_with(".gz") || path.ends_with(".zst") {
+                      return Err(PipeError::Other("Cannot use start_byte with compressed files".into()).into());
+                 }
                  r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
              }
-             BoxedReader::Remote(r)
+             r
         } else {
-             let file = File::open(&path).map_err(wrap_py_err)?;
-             let mut reader = BufReader::new(file);
-             if start_byte > 0 {
-                 reader.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
-             }
-             BoxedReader::File(reader)
+             return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
         };
+
 
         if start_byte > 0 {
              let mut dummy = String::new();
@@ -230,13 +224,8 @@ impl CSVReader {
         quote: u8,
         has_header: bool,
     ) -> PyResult<usize> {
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let boxed_reader = if path.starts_with("s3://") {
-            BoxedReader::Remote(RemoteReader::new(controller.store(), ObjectPath::from(controller.path())))
-        } else {
-            let file = File::open(&path).map_err(wrap_py_err)?;
-            BoxedReader::File(BufReader::new(file))
-        };
+        let boxed_reader = crate::io::get_reader(&path).map_err(wrap_py_err)?;
+
 
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
@@ -362,13 +351,8 @@ impl CSVWriter {
         quote: u8,
         fieldnames: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let boxed_writer = if path.starts_with("s3://") {
-            BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
-        } else {
-            let file = crate::io::create_local_file(&path).map_err(wrap_py_err)?;
-            BoxedWriter::File(std::io::BufWriter::new(file))
-        };
+        let boxed_writer = crate::io::get_writer(&path).map_err(wrap_py_err)?;
+
         
         let shared_writer = Arc::new(Mutex::new(boxed_writer));
         let writer = csv::WriterBuilder::new()
@@ -414,7 +398,7 @@ impl CSVWriter {
     pub fn close(&self) -> PyResult<()> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         state.writer.flush().map_err(wrap_py_err)?;
-        let mut inner = state.inner_writer.lock().unwrap();
+        let mut inner = state.inner_writer.lock().map_err(|_| PipeError::MutexLock)?;
         inner.close().map_err(wrap_py_err)?;
         Ok(())
     }

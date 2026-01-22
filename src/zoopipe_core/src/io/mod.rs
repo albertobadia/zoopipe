@@ -10,7 +10,74 @@ use tokio::runtime::Runtime;
 use parquet::file::reader::{ChunkReader, Length};
 use bytes::Bytes;
 
+
+use flate2::bufread::GzDecoder;
+use flate2::write::GzEncoder;
+use zstd::stream::read::Decoder as ZstdDecoder;
+use zstd::stream::write::Encoder as ZstdEncoder;
+
+
 pub use smart_reader::SmartReader;
+
+pub struct SendBufReader(Box<dyn BufRead + Send + Sync>);
+
+impl Read for SendBufReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+impl BufRead for SendBufReader {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.0.fill_buf()
+    }
+    fn consume(&mut self, amt: usize) {
+        self.0.consume(amt)
+    }
+}
+
+
+pub fn get_reader(path: &str) -> std::io::Result<BoxedReader> {
+
+    let boxed_reader = if path.starts_with("s3://") {
+        let store_controller = storage::StorageController::new(path).map_err(std::io::Error::other)?;
+        BoxedReader::Remote(RemoteReader::new(store_controller.store(), object_store::path::Path::from(store_controller.path())))
+    } else {
+        BoxedReader::File(BufReader::new(create_local_file_read(path)?))
+    };
+
+    if path.ends_with(".gz") {
+        let r = SendBufReader(Box::new(BufReader::new(boxed_reader)));
+        Ok(BoxedReader::Gzip(Box::new(BufReader::new(GzDecoder::new(r)))))
+    } else if path.ends_with(".zst") {
+        let r = SendBufReader(Box::new(BufReader::new(boxed_reader)));
+        Ok(BoxedReader::Zstd(Box::new(BufReader::new(ZstdDecoder::new(r).map_err(std::io::Error::other)?))))
+    } else {
+        Ok(boxed_reader)
+    }
+}
+
+
+pub fn get_writer(path: &str) -> std::io::Result<BoxedWriter> {
+    let boxed_writer = if path.starts_with("s3://") {
+        let store_controller = storage::StorageController::new(path).map_err(std::io::Error::other)?;
+        BoxedWriter::Remote(RemoteWriter::new(store_controller.store(), object_store::path::Path::from(store_controller.path())))
+    } else {
+        BoxedWriter::File(std::io::BufWriter::new(create_local_file(path)?))
+    };
+
+    if path.ends_with(".gz") {
+        Ok(BoxedWriter::Gzip(Box::new(GzEncoder::new(boxed_writer, flate2::Compression::default()))))
+    } else if path.ends_with(".zst") {
+        Ok(BoxedWriter::Zstd(Box::new(ZstdEncoder::new(boxed_writer, 0).map_err(std::io::Error::other)?)))
+    } else {
+        Ok(boxed_writer)
+    }
+}
+
+pub fn create_local_file_read(path: &str) -> std::io::Result<File> {
+    File::open(path)
+}
+
 
 pub fn ensure_parent_dir(path: &str) -> std::io::Result<()> {
     if let Some(parent) = std::path::Path::new(path).parent() && !parent.as_os_str().is_empty() {
@@ -32,7 +99,10 @@ pub enum BoxedReader {
     File(BufReader<File>),
     Cursor(std::io::Cursor<Vec<u8>>),
     Remote(RemoteReader),
+    Gzip(Box<dyn BufRead + Send + Sync>),
+    Zstd(Box<dyn BufRead + Send + Sync>),
 }
+
 
 pub struct CountingReader<R> {
     inner: R,
@@ -210,9 +280,12 @@ impl Read for BoxedReader {
             BoxedReader::File(f) => f.read(buf),
             BoxedReader::Cursor(c) => c.read(buf),
             BoxedReader::Remote(r) => r.read(buf),
+            BoxedReader::Gzip(g) => g.read(buf),
+            BoxedReader::Zstd(z) => z.read(buf),
         }
     }
 }
+
 
 impl BufRead for BoxedReader {
     fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
@@ -220,6 +293,9 @@ impl BufRead for BoxedReader {
             BoxedReader::File(f) => f.fill_buf(),
             BoxedReader::Cursor(c) => c.fill_buf(),
             BoxedReader::Remote(r) => r.fill_buf(),
+            BoxedReader::Gzip(g) => g.fill_buf(),
+            BoxedReader::Zstd(z) => z.fill_buf(),
+
         }
     }
 
@@ -228,6 +304,11 @@ impl BufRead for BoxedReader {
             BoxedReader::File(f) => f.consume(amt),
             BoxedReader::Cursor(c) => c.consume(amt),
             BoxedReader::Remote(r) => r.consume(amt),
+            BoxedReader::Gzip(g) => g.consume(amt),
+            BoxedReader::Zstd(z) => z.consume(amt),
+
+
+
         }
     }
 }
@@ -238,6 +319,8 @@ impl Seek for BoxedReader {
             BoxedReader::File(f) => f.seek(pos),
             BoxedReader::Cursor(c) => c.seek(pos),
             BoxedReader::Remote(r) => r.seek(pos),
+            BoxedReader::Gzip(_) | BoxedReader::Zstd(_) => Err(std::io::Error::other("Cannot seek on compressed stream")),
+
         }
     }
 }
@@ -256,6 +339,8 @@ impl Length for BoxedReader {
                 }
                 tmp
             }
+            BoxedReader::Gzip(_) | BoxedReader::Zstd(_) => 0,
+
         }
     }
 }
@@ -279,6 +364,8 @@ impl ChunkReader for BoxedReader {
                 child_reader.seek(SeekFrom::Start(start)).map_err(|e| parquet::errors::ParquetError::External(Box::new(e)))?;
                 Ok(BoxedReaderChild::Remote(child_reader))
             }
+            BoxedReader::Gzip(_) | BoxedReader::Zstd(_) => Err(parquet::errors::ParquetError::General("Cannot create ChunkReader for compressed stream".into())),
+
         }
     }
 
@@ -305,6 +392,7 @@ impl ChunkReader for BoxedReader {
                 })?;
                 Ok(bytes)
             }
+            BoxedReader::Gzip(_) | BoxedReader::Zstd(_) => Err(parquet::errors::ParquetError::General("Cannot read bytes from compressed stream".into())),
         }
     }
 }
@@ -337,7 +425,12 @@ impl Read for BoxedReaderChild {
 pub enum BoxedWriter {
     File(std::io::BufWriter<File>),
     Remote(RemoteWriter),
+    Gzip(Box<GzEncoder<BoxedWriter>>),
+    Zstd(Box<ZstdEncoder<'static, BoxedWriter>>),
+    Closed,
 }
+
+
 
 pub struct RemoteWriter {
     store: Arc<dyn ObjectStore>,
@@ -414,6 +507,9 @@ impl Write for BoxedWriter {
         match self {
             BoxedWriter::File(f) => f.write(buf),
             BoxedWriter::Remote(r) => r.write(buf),
+            BoxedWriter::Gzip(g) => g.write(buf),
+            BoxedWriter::Zstd(z) => z.write(buf),
+            BoxedWriter::Closed => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Writer is closed")),
         }
     }
 
@@ -421,27 +517,41 @@ impl Write for BoxedWriter {
         match self {
             BoxedWriter::File(f) => f.flush(),
             BoxedWriter::Remote(r) => r.flush(),
+            BoxedWriter::Gzip(g) => g.flush(),
+            BoxedWriter::Zstd(z) => z.flush(),
+            BoxedWriter::Closed => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Writer is closed")),
         }
     }
 }
 
 impl BoxedWriter {
     pub fn close(&mut self) -> std::io::Result<()> {
-        match self {
-            BoxedWriter::File(f) => f.flush(),
-            BoxedWriter::Remote(r) => r.close(),
+        let prev = std::mem::replace(self, BoxedWriter::Closed);
+        match prev {
+            BoxedWriter::File(mut f) => f.flush(),
+            BoxedWriter::Remote(mut r) => r.close(),
+            BoxedWriter::Closed => Ok(()),
+            BoxedWriter::Gzip(g_box) => {
+                 let mut inner = g_box.finish()?;
+                 inner.close()
+            },
+            BoxedWriter::Zstd(z_box) => {
+                 let mut inner = z_box.finish()?;
+                 inner.close()
+            },
         }
     }
 }
+
 
 pub struct SharedWriter(pub Arc<std::sync::Mutex<BoxedWriter>>);
 
 impl Write for SharedWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().write(buf)
+        self.0.lock().map_err(|_| std::io::Error::other("Lock poisoned"))?.write(buf)
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        self.0.lock().unwrap().flush()
+        self.0.lock().map_err(|_| std::io::Error::other("Lock poisoned"))?.flush()
     }
 }
 
@@ -650,4 +760,60 @@ mod tests {
             assert_eq!(read_batch.num_rows(), 3);
         }).join().unwrap();
     }
+
+    #[test]
+    fn test_gzip_roundtrip() {
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_roundtrip.txt.gz");
+        let path_str = path.to_str().unwrap();
+
+        {
+            let mut writer = super::get_writer(path_str).unwrap();
+            writer.write_all(b"hello gzip world").unwrap();
+            writer.close().unwrap();
+        }
+
+        {
+            let mut reader = super::get_reader(path_str).unwrap();
+            let mut content = String::new();
+            reader.read_to_string(&mut content).unwrap();
+            assert_eq!(content, "hello gzip world");
+        }
+    }
+    #[test]
+    fn test_s3_compressed_roundtrip() {
+        use object_store::memory::InMemory;
+        use std::io::Write;
+        
+        let store = Arc::new(InMemory::new());
+        let path = Path::from("test_data.csv.gz");
+        
+        // 1. Write compressed data to "S3" (InMemory)
+        {
+            // Simulate get_writer logic manually because we can't inject store into get_writer
+            let remote_writer = RemoteWriter::new(store.clone(), path.clone());
+            let boxed_writer = BoxedWriter::Remote(remote_writer);
+            let mut writer = BoxedWriter::Gzip(Box::new(GzEncoder::new(boxed_writer, flate2::Compression::default())));
+            
+            writer.write_all(b"col1,col2\nval1,val2").unwrap();
+            writer.close().unwrap(); 
+        }
+
+        // 2. Read compressed data from "S3"
+        {
+            // Simulate get_reader logic
+            let remote_reader = RemoteReader::new(store.clone(), path.clone());
+            let boxed_reader = BoxedReader::Remote(remote_reader);
+            
+            // Replicate the wrapping done in get_reader
+            let r = super::SendBufReader(Box::new(std::io::BufReader::new(boxed_reader)));
+            let mut reader = BoxedReader::Gzip(Box::new(std::io::BufReader::new(super::GzDecoder::new(r))));
+            
+            let mut content = String::new();
+            reader.read_to_string(&mut content).unwrap();
+            assert_eq!(content, "col1,col2\nval1,val2");
+        }
+    }
 }
+

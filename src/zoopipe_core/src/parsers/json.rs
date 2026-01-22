@@ -1,13 +1,11 @@
 use pyo3::prelude::*;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::io::{BufRead, Seek, SeekFrom, Write};
 use std::sync::{Mutex, Arc};
 use serde_json::Value;
 use serde::Serialize;
-use object_store::path::Path as ObjectPath;
-use crate::io::{BoxedReader, BoxedWriter, CountingReader, RemoteReader, RemoteWriter, SmartReader};
-use crate::io::storage::StorageController;
+use crate::io::{BoxedReader, CountingReader, SmartReader};
 use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
+
 use crate::error::PipeError;
 use pyo3::types::{PyAnyMethods, PyDict, PyList};
 use crate::utils::interning::InternedKeys;
@@ -90,27 +88,23 @@ impl JSONReader {
     #[new]
     #[pyo3(signature = (path, start_byte=0, end_byte=None))]
     fn new(py: Python<'_>, path: String, start_byte: u64, end_byte: Option<u64>) -> PyResult<Self> {
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let boxed_reader = if path.starts_with("s3://") {
-            let mut rr = RemoteReader::new(controller.store(), ObjectPath::from(controller.path()));
+        
+        let boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err) {
+
             if start_byte > 0 {
-                rr.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
+                if path.ends_with(".gz") || path.ends_with(".zst") {
+                    return Err(PipeError::Other("Cannot use start_byte with compressed files".into()).into());
+                }
+                r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
                 // Skip partial line
                 let mut dummy = String::new();
-                rr.read_line(&mut dummy).map_err(wrap_py_err)?;
+                r.read_line(&mut dummy).map_err(wrap_py_err)?;
             }
-            BoxedReader::Remote(rr)
+            r
         } else {
-            let file = File::open(&path).map_err(wrap_py_err)?;
-            let mut br = BufReader::new(file);
-            if start_byte > 0 {
-                br.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
-                // Skip partial line
-                let mut dummy = String::new();
-                br.read_line(&mut dummy).map_err(wrap_py_err)?;
-            }
-            BoxedReader::File(br)
+             return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
         };
+
         
         let reader = SmartReader::new(
             &path,
@@ -248,13 +242,8 @@ impl JSONWriter {
         format: String,
         indent: Option<usize>,
     ) -> PyResult<Self> {
-        let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-        let mut boxed_writer = if path.starts_with("s3://") {
-            BoxedWriter::Remote(RemoteWriter::new(controller.store(), ObjectPath::from(controller.path())))
-        } else {
-            let file = crate::io::create_local_file(&path).map_err(wrap_py_err)?;
-            BoxedWriter::File(std::io::BufWriter::new(file))
-        };
+        let mut boxed_writer = crate::io::get_writer(&path).map_err(wrap_py_err)?;
+
 
         if format == "array" {
             boxed_writer.write_all(b"[").map_err(wrap_py_err)?;

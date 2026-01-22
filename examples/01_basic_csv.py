@@ -24,7 +24,7 @@ def main():
     pipe = Pipe(
         input_adapter=CSVInputAdapter("examples/sample_data/users_data.csv"),
         output_adapter=JSONOutputAdapter(
-            "examples/output_data/users_processed.jsonl", format="jsonl"
+            "examples/output_data/users_processed.zst", format="jsonl"
         ),
         schema_model=UserSchema,
         post_validation_hooks=[TimeStampHook()],

@@ -217,8 +217,8 @@ impl ArrowWriter {
             *inner_guard = Some(shared_writer);
         }
 
-        let writer = writer_guard.as_mut().expect("ArrowWriter not initialized");
-        let schema = schema_guard.as_ref().expect("ArrowWriter schema not initialized");
+        let writer = writer_guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("ArrowWriter failed to initialize"))?;
+        let schema = schema_guard.as_ref().ok_or_else(|| PyRuntimeError::new_err("ArrowWriter schema failed to initialize"))?;
         
         let batch = build_record_batch(py, schema, list)?;
         writer.write(&batch).map_err(wrap_py_err)?;
@@ -232,7 +232,7 @@ impl ArrowWriter {
         }
         let mut inner_guard = self.inner_writer.lock().map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(shared) = inner_guard.take() {
-            let mut writer: std::sync::MutexGuard<'_, crate::io::BoxedWriter> = shared.lock().unwrap();
+            let mut writer = shared.lock().map_err(|_| PyRuntimeError::new_err("Lock poisoned during close"))?;
             writer.close().map_err(wrap_py_err)?;
         }
         Ok(())
