@@ -1,6 +1,6 @@
 [package]
 name = "zoopipe_rust_core"
-version = "2026.1.20"
+version = "2026.1.22"
 edition = "2024"
 
 [lib]
@@ -29,7 +29,7 @@ object_store = { version = "0.13.1", features = ["aws", "gcp", "azure"] }
 url = "2.5.8"
 calamine = "0.32.0"
 rust_xlsxwriter = "0.92.3"
-rdkafka = { version = "0.38.0" }
+rdkafka = { version = "0.38.0", features = ["cmake-build"] }
 openssl = { version = "0.10", features = ["vendored"] }
 tokio-postgres = "0.7.16"
 itoa = "1.0.17"
