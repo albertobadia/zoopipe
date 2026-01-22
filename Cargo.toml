@@ -45,3 +45,10 @@ tokio-test = "0.4.4"
 [[bench]]
 name = "zoopipe_benchmarks"
 harness = false
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+strip = true
+panic = "abort"
