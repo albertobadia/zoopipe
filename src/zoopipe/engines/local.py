@@ -203,13 +203,3 @@ class MultiProcessEngine(BaseEngine):
             has_error=pp.has_error.value == 1,
             is_alive=pp.process.is_alive(),
         )
-
-
-def _init_multiprocessing() -> None:
-    try:
-        multiprocessing.set_start_method("fork", force=True)
-    except RuntimeError:
-        pass
-
-
-_init_multiprocessing()

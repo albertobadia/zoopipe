@@ -69,7 +69,7 @@ def main():
     )
     pipe_manager = PipeManager.parallelize_pipe(
         base_pipe,
-        workers=2,
+        workers=4,
         executor=MultiThreadExecutor(max_workers=2, batch_size=1000),
         engine=MultiProcessEngine(),  # Explicit engine (defaults to MultiProcessEngine)
     )
