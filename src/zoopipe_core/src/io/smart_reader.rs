@@ -7,9 +7,9 @@ pub enum SmartReaderIter<T> {
 }
 
 /// A hybrid I/O reader that optimizes for both local and remote sources.
-/// 
-/// SmartReader restores performance for local files by using synchronous I/O 
-/// (avoiding thread overhead) while utilizing background threads for S3 sources 
+///
+/// SmartReader restores performance for local files by using synchronous I/O
+/// (avoiding thread overhead) while utilizing background threads for S3 sources
 /// to prevent blocking the Python GIL during long-latency network requests.
 pub struct SmartReader<T> {
     iter: SmartReaderIter<T>,
@@ -24,7 +24,7 @@ impl<T: Send + 'static> SmartReader<T> {
     {
         if path.starts_with("s3://") {
             let (tx, rx) = crossbeam_channel::bounded(1000);
-            
+
             thread::spawn(move || {
                 let iter = parser(source);
                 for item in iter {
@@ -33,7 +33,7 @@ impl<T: Send + 'static> SmartReader<T> {
                     }
                 }
             });
-            
+
             SmartReader {
                 iter: SmartReaderIter::Threaded(rx),
             }

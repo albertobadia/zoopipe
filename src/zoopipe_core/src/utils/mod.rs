@@ -1,8 +1,8 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyBool, PyInt, PyFloat, PyString};
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString};
+use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 use serde_json::Value;
-use serde::ser::{Serialize, Serializer, SerializeSeq, SerializeMap};
 
 pub mod interning;
 
@@ -34,7 +34,8 @@ pub fn serde_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, Py
         }
         Value::String(s) => Ok(PyString::new(py, &s).as_any().clone()),
         Value::Array(arr) => {
-            let elements: Vec<_> = arr.into_iter()
+            let elements: Vec<_> = arr
+                .into_iter()
                 .map(|v| serde_to_py(py, v))
                 .collect::<PyResult<Vec<_>>>()?;
             let list = PyList::new(py, elements)?;
@@ -50,7 +51,6 @@ pub fn serde_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, Py
     }
 }
 
-
 pub struct PySerializable<'a>(pub Bound<'a, PyAny>);
 
 impl<'a> Serialize for PySerializable<'a> {
@@ -62,45 +62,45 @@ impl<'a> Serialize for PySerializable<'a> {
         if obj.is_none() {
             serializer.serialize_none()
         } else if let Ok(b) = obj.cast::<PyBool>() {
-             serializer.serialize_bool(b.is_true())
+            serializer.serialize_bool(b.is_true())
         } else if let Ok(i) = obj.cast::<PyInt>() {
-             if let Ok(val) = i.extract::<i64>() {
-                 serializer.serialize_i64(val)
-             } else {
-                 serializer.serialize_str(&i.to_string())
-             }
+            if let Ok(val) = i.extract::<i64>() {
+                serializer.serialize_i64(val)
+            } else {
+                serializer.serialize_str(&i.to_string())
+            }
         } else if let Ok(f) = obj.cast::<PyFloat>() {
-             if let Ok(val) = f.extract::<f64>() {
-                 serializer.serialize_f64(val)
-             } else {
-                 serializer.serialize_none()
-             }
+            if let Ok(val) = f.extract::<f64>() {
+                serializer.serialize_f64(val)
+            } else {
+                serializer.serialize_none()
+            }
         } else if let Ok(s) = obj.cast::<PyString>() {
-             if let Ok(val) = s.to_str() {
-                 serializer.serialize_str(val)
-             } else {
-                 serializer.serialize_str(&s.to_string())
-             }
+            if let Ok(val) = s.to_str() {
+                serializer.serialize_str(val)
+            } else {
+                serializer.serialize_str(&s.to_string())
+            }
         } else if let Ok(l) = obj.cast::<PyList>() {
-             let mut seq = serializer.serialize_seq(Some(l.len()))?;
-             for item in l.iter() {
-                 seq.serialize_element(&PySerializable(item))?;
-             }
-             seq.end()
+            let mut seq = serializer.serialize_seq(Some(l.len()))?;
+            for item in l.iter() {
+                seq.serialize_element(&PySerializable(item))?;
+            }
+            seq.end()
         } else if let Ok(d) = obj.cast::<PyDict>() {
-             let mut map = serializer.serialize_map(Some(d.len()))?;
-             for (k, v) in d.iter() {
-                 if let Ok(ks) = k.cast::<PyString>() {
-                     if let Ok(ks_val) = ks.to_str() {
-                         map.serialize_entry(ks_val, &PySerializable(v))?;
-                     } else {
-                         map.serialize_entry(&ks.to_string(), &PySerializable(v))?;
-                     }
-                 } else {
-                     map.serialize_entry(&k.to_string(), &PySerializable(v))?;
-                 }
-             }
-             map.end()
+            let mut map = serializer.serialize_map(Some(d.len()))?;
+            for (k, v) in d.iter() {
+                if let Ok(ks) = k.cast::<PyString>() {
+                    if let Ok(ks_val) = ks.to_str() {
+                        map.serialize_entry(ks_val, &PySerializable(v))?;
+                    } else {
+                        map.serialize_entry(&ks.to_string(), &PySerializable(v))?;
+                    }
+                } else {
+                    map.serialize_entry(&k.to_string(), &PySerializable(v))?;
+                }
+            }
+            map.end()
         } else if let Ok(s) = obj.extract::<&str>() {
             serializer.serialize_str(s)
         } else {

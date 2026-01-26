@@ -1,11 +1,11 @@
-use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use sqlx::{AnyPool, query};
 use std::sync::Mutex;
 
-use crate::io::get_runtime;
 use super::super::backend::SqlBackend;
+use crate::io::get_runtime;
 
 pub struct GenericInsertBackend {
     uri: String,
@@ -15,22 +15,29 @@ pub struct GenericInsertBackend {
 
 impl GenericInsertBackend {
     pub fn new(uri: String, batch_size: usize) -> Self {
-        Self { uri, batch_size, pool: Mutex::new(None) }
+        Self {
+            uri,
+            batch_size,
+            pool: Mutex::new(None),
+        }
     }
 
     fn get_pool(&self) -> PyResult<AnyPool> {
-        let mut guard = self.pool.lock()
+        let mut guard = self
+            .pool
+            .lock()
             .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
-        
+
         if let Some(pool) = guard.as_ref() {
             return Ok(pool.clone());
         }
-        
+
         let pool = get_runtime().block_on(async {
-            AnyPool::connect(&self.uri).await
+            AnyPool::connect(&self.uri)
+                .await
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to connect: {}", e)))
         })?;
-        
+
         *guard = Some(pool.clone());
         Ok(pool)
     }
@@ -44,14 +51,17 @@ impl SqlBackend for GenericInsertBackend {
         fields: &[String],
         table_name: &str,
     ) -> PyResult<()> {
-        let all_values: Vec<String> = records.iter().map(|record_py| {
-            let py_inner = record_py.bind(py);
-            let row_values = super::super::types::SQLValue::from_py_dict(py_inner, fields)?
-                .into_iter()
-                .map(|v| v.to_sql_literal())
-                .collect::<Vec<String>>();
-            Ok(format!("({})", row_values.join(", ")))
-        }).collect::<PyResult<Vec<String>>>()?;
+        let all_values: Vec<String> = records
+            .iter()
+            .map(|record_py| {
+                let py_inner = record_py.bind(py);
+                let row_values = super::super::types::SQLValue::from_py_dict(py_inner, fields)?
+                    .into_iter()
+                    .map(|v| v.to_sql_literal())
+                    .collect::<Vec<String>>();
+                Ok(format!("({})", row_values.join(", ")))
+            })
+            .collect::<PyResult<Vec<String>>>()?;
 
         let pool = self.get_pool()?;
         let table_name = table_name.to_string();
@@ -60,9 +70,10 @@ impl SqlBackend for GenericInsertBackend {
 
         let rt = get_runtime();
         rt.block_on(async {
-            let mut tx = pool.begin().await
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to start transaction: {}", e)))?;
-            
+            let mut tx = pool.begin().await.map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to start transaction: {}", e))
+            })?;
+
             for chunk in all_values.chunks(batch_size) {
                 let insert_sql = format!(
                     "INSERT INTO {} ({}) VALUES {}",
@@ -70,16 +81,18 @@ impl SqlBackend for GenericInsertBackend {
                     fields.join(", "),
                     chunk.join(", ")
                 );
-                query(&insert_sql).execute(&mut *tx).await
+                query(&insert_sql)
+                    .execute(&mut *tx)
+                    .await
                     .map_err(|e| PyRuntimeError::new_err(format!("Batch insert failed: {}", e)))?;
             }
 
-            tx.commit().await
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to commit transaction: {}", e)))?;
+            tx.commit().await.map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to commit transaction: {}", e))
+            })?;
             Ok::<(), PyErr>(())
         })?;
 
         Ok(())
     }
 }
-

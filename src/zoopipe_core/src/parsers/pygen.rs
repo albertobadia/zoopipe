@@ -1,13 +1,13 @@
+use crate::error::PipeError;
+use crossbeam_channel::{Receiver, Sender, bounded};
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList};
-use pyo3::exceptions::PyRuntimeError;
 use std::sync::Mutex;
-use crossbeam_channel::{bounded, Sender, Receiver};
-use crate::error::PipeError;
 
 /// Adapter that allows any Python iterable to be used as a source.
-/// 
-/// It bridges Python's iteration protocol with Rust's pipeline logic, 
+///
+/// It bridges Python's iteration protocol with Rust's pipeline logic,
 /// automatically handling envelope creation and metadata tracking.
 #[pyclass]
 pub struct PyGeneratorReader {
@@ -48,9 +48,13 @@ impl PyGeneratorReader {
         slf.next_internal(slf.py())
     }
 
-    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
         let batch = PyList::empty(py);
-        
+
         for _ in 0..batch_size {
             if let Some(item) = self.next_internal(py)? {
                 batch.append(item)?;
@@ -70,17 +74,18 @@ impl PyGeneratorReader {
 impl PyGeneratorReader {
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut iter_lock = self.iterator.lock().map_err(|_| PipeError::MutexLock)?;
-        
+
         if iter_lock.is_none() {
             let iter = self.iterable.bind(py).try_iter()?;
             *iter_lock = Some(iter.into());
         }
 
-        let iter_bound = iter_lock.as_ref()
+        let iter_bound = iter_lock
+            .as_ref()
             .expect("Iterator should be initialized after is_none() check")
             .bind(py);
         let iterator = iter_bound.cast::<pyo3::types::PyIterator>()?;
-        
+
         match iterator.clone().next() {
             Some(item_res) => {
                 let raw_data = item_res?;
@@ -89,7 +94,7 @@ impl PyGeneratorReader {
                 *pos += 1;
 
                 let envelope = PyDict::new(py);
-                
+
                 let id = if self.generate_ids {
                     crate::utils::generate_entry_id(py)?
                 } else {
@@ -111,8 +116,8 @@ impl PyGeneratorReader {
 }
 
 /// flexible output adapter that acts as a synchronized bridge back to Python.
-/// 
-/// It utilizes a bounded channel to allow the pipeline to push processed 
+///
+/// It utilizes a bounded channel to allow the pipeline to push processed
 /// results into a Python-accessible iterator, enabling custom post-processing.
 #[pyclass]
 pub struct PyGeneratorWriter {
@@ -141,7 +146,8 @@ impl PyGeneratorWriter {
         if let Some(s) = sender {
             let val = data.unbind();
             py.detach(|| {
-                s.send(val).map_err(|_| PyRuntimeError::new_err("Writer channel is closed"))
+                s.send(val)
+                    .map_err(|_| PyRuntimeError::new_err("Writer channel is closed"))
             })
         } else {
             Err(PyRuntimeError::new_err("Writer is closed"))
@@ -173,10 +179,8 @@ impl PyGeneratorWriter {
     fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
         let receiver = slf.receiver.clone();
-        
-        let res = py.detach(|| {
-            receiver.recv()
-        });
+
+        let res = py.detach(|| receiver.recv());
 
         match res {
             Ok(item) => Ok(Some(item.into_bound(py))),

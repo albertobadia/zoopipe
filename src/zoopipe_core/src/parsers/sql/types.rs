@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use pyo3::BoundObject;
+use pyo3::prelude::*;
 use sqlx::TypeInfo;
 
 #[derive(Clone, Debug)]
@@ -25,26 +25,32 @@ impl std::fmt::Display for SQLValue {
 
 impl SQLValue {
     pub fn from_column(row: &sqlx::any::AnyRow, i: usize) -> Self {
-        use sqlx::{Row, Column};
+        use sqlx::{Column, Row};
         let type_name = row.column(i).type_info().name().to_lowercase();
-        
+
         // Normalize common type names for basic types across different backends
         match type_name.as_str() {
-            "text" | "varchar" | "char" | "string" | "nvarchar" => {
-                row.try_get::<String, _>(i).map(SQLValue::String).unwrap_or(SQLValue::Null)
-            }
-            "int" | "integer" | "bigint" | "smallint" | "int4" | "int8" | "mediumint" | "tinyint" => {
-                row.try_get::<i64, _>(i).map(SQLValue::Int).unwrap_or(SQLValue::Null)
-            }
-            "float" | "double" | "real" | "float4" | "float8" | "numeric" | "decimal" => {
-                row.try_get::<f64, _>(i).map(SQLValue::Float).unwrap_or(SQLValue::Null)
-            }
-            "bool" | "boolean" => {
-                row.try_get::<bool, _>(i).map(SQLValue::Bool).unwrap_or(SQLValue::Null)
-            }
+            "text" | "varchar" | "char" | "string" | "nvarchar" => row
+                .try_get::<String, _>(i)
+                .map(SQLValue::String)
+                .unwrap_or(SQLValue::Null),
+            "int" | "integer" | "bigint" | "smallint" | "int4" | "int8" | "mediumint"
+            | "tinyint" => row
+                .try_get::<i64, _>(i)
+                .map(SQLValue::Int)
+                .unwrap_or(SQLValue::Null),
+            "float" | "double" | "real" | "float4" | "float8" | "numeric" | "decimal" => row
+                .try_get::<f64, _>(i)
+                .map(SQLValue::Float)
+                .unwrap_or(SQLValue::Null),
+            "bool" | "boolean" => row
+                .try_get::<bool, _>(i)
+                .map(SQLValue::Bool)
+                .unwrap_or(SQLValue::Null),
             _ => {
                 // Fallback: try all supported types if name is unrecognized
-                row.try_get::<String, _>(i).map(SQLValue::String)
+                row.try_get::<String, _>(i)
+                    .map(SQLValue::String)
                     .or_else(|_| row.try_get::<i64, _>(i).map(SQLValue::Int))
                     .or_else(|_| row.try_get::<f64, _>(i).map(SQLValue::Float))
                     .or_else(|_| row.try_get::<bool, _>(i).map(SQLValue::Bool))
@@ -74,10 +80,16 @@ impl SQLValue {
         }
     }
 
-    pub fn from_py_dict(dict: &Bound<'_, pyo3::types::PyDict>, fields: &[String]) -> PyResult<Vec<Self>> {
-        fields.iter()
+    pub fn from_py_dict(
+        dict: &Bound<'_, pyo3::types::PyDict>,
+        fields: &[String],
+    ) -> PyResult<Vec<Self>> {
+        fields
+            .iter()
             .map(|field| {
-                let val = dict.get_item(field)?.unwrap_or_else(|| dict.py().None().into_bound(dict.py()));
+                let val = dict
+                    .get_item(field)?
+                    .unwrap_or_else(|| dict.py().None().into_bound(dict.py()));
                 Self::from_py(val)
             })
             .collect()
@@ -119,7 +131,7 @@ pub enum SQLData {
 
 impl SQLData {
     pub fn metadata_from_row(row: &sqlx::any::AnyRow) -> Self {
-        use sqlx::{Row, Column};
+        use sqlx::{Column, Row};
         let cols = row.columns().iter().map(|c| c.name().to_string()).collect();
         SQLData::Metadata(cols)
     }

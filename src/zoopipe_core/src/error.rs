@@ -1,33 +1,33 @@
-use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PipeError {
     #[error("CSV parsing error: {0}")]
     CsvParse(#[from] csv::Error),
-    
+
     #[error("JSON parsing error: {0}")]
     JsonParse(#[from] serde_json::Error),
-    
+
     #[error("SQL error: {0}")]
     Sql(#[from] sqlx::Error),
-    
+
     #[error("DuckDB error: {0}")]
     DuckDb(#[from] duckdb::Error),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Field conversion error: {field}")]
     FieldConversion { field: String },
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
-    
+
     #[error("Mutex lock failed")]
     MutexLock,
-    
+
     #[error("Error: {0}")]
     Other(String),
 }
@@ -55,7 +55,10 @@ mod tests {
     #[test]
     fn test_invalid_config_error() {
         let error = PipeError::InvalidConfig("missing batch_size".to_string());
-        assert_eq!(error.to_string(), "Invalid configuration: missing batch_size");
+        assert_eq!(
+            error.to_string(),
+            "Invalid configuration: missing batch_size"
+        );
     }
 
     #[test]
@@ -129,4 +132,3 @@ mod tests {
         }
     }
 }
-

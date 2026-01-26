@@ -1,18 +1,18 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyString, PyBytes};
-use pyo3::exceptions::PyRuntimeError;
-use std::sync::Mutex;
-use url::Url;
-use std::time::Duration;
 use crate::error::PipeError;
-use crate::utils::interning::InternedKeys;
 use crate::io::get_runtime;
+use crate::utils::interning::InternedKeys;
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyDict, PyString};
+use std::sync::Mutex;
+use std::time::Duration;
+use url::Url;
 
+use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
 use rdkafka::message::Message;
-use futures_util::StreamExt;
+use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
 
 #[derive(Debug)]
 enum KafkaData {
@@ -34,32 +34,46 @@ pub struct KafkaReader {
 impl KafkaReader {
     #[new]
     #[pyo3(signature = (uri, group_id=None, generate_ids=true))]
-    fn new(py: Python<'_>, uri: String, group_id: Option<String>, generate_ids: bool) -> PyResult<Self> {
-        let parsed_url = Url::parse(&uri).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid Kafka URI: {}", e)))?;
-        
+    fn new(
+        py: Python<'_>,
+        uri: String,
+        group_id: Option<String>,
+        generate_ids: bool,
+    ) -> PyResult<Self> {
+        let parsed_url = Url::parse(&uri).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid Kafka URI: {}", e))
+        })?;
+
         if parsed_url.scheme() != "kafka" {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("URI scheme must be 'kafka'"));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "URI scheme must be 'kafka'",
+            ));
         }
 
-        let brokers = parsed_url.host_str()
+        let brokers = parsed_url
+            .host_str()
             .map(|h| format!("{}:{}", h, parsed_url.port().unwrap_or(9092)))
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No brokers specified in URI"))?;
+            .ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>("No brokers specified in URI")
+            })?;
 
         let topic = parsed_url.path().trim_start_matches('/').to_string();
         if topic.is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("No topic specified in URI path"));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "No topic specified in URI path",
+            ));
         }
 
         let mut config = ClientConfig::new();
         config.set("bootstrap.servers", &brokers);
-        
+
         if let Some(gid) = group_id {
             config.set("group.id", &gid);
             config.set("enable.auto.commit", "true");
             config.set("auto.offset.reset", "earliest");
         } else {
             // If no group is provided, we still need one for rdkafka StreamConsumer usually
-            // or we could use BaseConsumer. For simplicity in a stream-oriented pipe, 
+            // or we could use BaseConsumer. For simplicity in a stream-oriented pipe,
             // generate a random group if none provided.
             config.set("group.id", format!("zoopipe-{}", uuid::Uuid::new_v4()));
             config.set("auto.offset.reset", "earliest");
@@ -67,10 +81,14 @@ impl KafkaReader {
 
         let consumer: StreamConsumer = {
             let _guard = get_runtime().enter();
-            config.create().map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+            config
+                .create()
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
         };
-        consumer.subscribe(&[&topic]).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        
+        consumer
+            .subscribe(&[&topic])
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
         let (tx, rx) = crossbeam_channel::bounded(1000);
 
         std::thread::spawn(move || {
@@ -115,15 +133,13 @@ impl KafkaReader {
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
         let receiver = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
-        
-        let result = py.detach(|| {
-            receiver.recv()
-        });
+
+        let result = py.detach(|| receiver.recv());
 
         match result {
             Ok(KafkaData::Message(value_bytes, key_bytes)) => {
                 slf.create_envelope(py, value_bytes, key_bytes)
-            },
+            }
             Ok(KafkaData::Error(e)) => Err(PyRuntimeError::new_err(e)),
             Err(_) => Ok(None),
         }
@@ -131,7 +147,12 @@ impl KafkaReader {
 }
 
 impl KafkaReader {
-    fn create_envelope<'py>(&self, py: Python<'py>, value_bytes: Vec<u8>, key_bytes: Option<Vec<u8>>) -> PyResult<Option<Bound<'py, PyAny>>> {
+    fn create_envelope<'py>(
+        &self,
+        py: Python<'py>,
+        value_bytes: Vec<u8>,
+        key_bytes: Option<Vec<u8>>,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
         let current_pos = *pos;
         *pos += 1;
@@ -139,7 +160,7 @@ impl KafkaReader {
         let raw_data = PyDict::new(py);
         let value = PyBytes::new(py, &value_bytes);
         raw_data.set_item("value", value)?;
-        
+
         if let Some(key) = key_bytes {
             raw_data.set_item("key", PyBytes::new(py, &key))?;
         }
@@ -174,19 +195,28 @@ impl KafkaWriter {
     #[new]
     #[pyo3(signature = (uri, acks=1, timeout=30))]
     fn new(uri: String, acks: i16, timeout: u64) -> PyResult<Self> {
-        let parsed_url = Url::parse(&uri).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid Kafka URI: {}", e)))?;
-        
+        let parsed_url = Url::parse(&uri).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid Kafka URI: {}", e))
+        })?;
+
         if parsed_url.scheme() != "kafka" {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("URI scheme must be 'kafka'"));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "URI scheme must be 'kafka'",
+            ));
         }
 
-        let brokers = parsed_url.host_str()
+        let brokers = parsed_url
+            .host_str()
             .map(|h| format!("{}:{}", h, parsed_url.port().unwrap_or(9092)))
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No brokers specified in URI"))?;
+            .ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>("No brokers specified in URI")
+            })?;
 
         let topic = parsed_url.path().trim_start_matches('/').to_string();
         if topic.is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("No topic specified in URI path"));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "No topic specified in URI path",
+            ));
         }
 
         let acks_str = match acks {
@@ -206,10 +236,7 @@ impl KafkaWriter {
                 .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
         };
 
-        Ok(KafkaWriter {
-            producer,
-            topic,
-        })
+        Ok(KafkaWriter { producer, topic })
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
@@ -219,12 +246,13 @@ impl KafkaWriter {
 
         py.detach(|| {
             get_runtime().block_on(async move {
-                producer.send(
-                    FutureRecord::<(), [u8]>::to(&topic)
-                        .payload(&bytes),
-                    Duration::from_secs(5)
-                ).await
-                .map_err(|(e, _)| PyRuntimeError::new_err(e.to_string()))
+                producer
+                    .send(
+                        FutureRecord::<(), [u8]>::to(&topic).payload(&bytes),
+                        Duration::from_secs(5),
+                    )
+                    .await
+                    .map_err(|(e, _)| PyRuntimeError::new_err(e.to_string()))
             })
         })?;
 
@@ -242,11 +270,12 @@ impl KafkaWriter {
             let producer = self.producer.clone();
 
             futures.push(async move {
-                producer.send(
-                    FutureRecord::<(), [u8]>::to(&topic)
-                        .payload(&bytes),
-                    Duration::from_secs(5)
-                ).await
+                producer
+                    .send(
+                        FutureRecord::<(), [u8]>::to(&topic).payload(&bytes),
+                        Duration::from_secs(5),
+                    )
+                    .await
             });
         }
 
@@ -267,7 +296,8 @@ impl KafkaWriter {
 
     pub fn flush(&self) -> PyResult<()> {
         let _guard = get_runtime().enter();
-        self.producer.flush(Duration::from_secs(10))
+        self.producer
+            .flush(Duration::from_secs(10))
             .map_err(|e| PyRuntimeError::new_err(format!("Kafka flush error: {}", e)))?;
         Ok(())
     }

@@ -1,12 +1,12 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
-use pyo3::types::PyDict;
 use futures_util::SinkExt;
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use std::sync::{Arc, Mutex};
 use tokio_postgres::Client;
 
-use crate::io::get_runtime;
 use super::super::backend::SqlBackend;
+use crate::io::get_runtime;
 
 pub struct PostgresCopyBackend {
     uri: String,
@@ -15,20 +15,28 @@ pub struct PostgresCopyBackend {
 
 impl PostgresCopyBackend {
     pub fn new(uri: String) -> Self {
-        Self { uri, client: Mutex::new(None) }
+        Self {
+            uri,
+            client: Mutex::new(None),
+        }
     }
 
     fn get_client(&self) -> PyResult<Arc<Client>> {
-        let mut guard = self.client.lock()
+        let mut guard = self
+            .client
+            .lock()
             .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
-        
+
         if let Some(client) = guard.as_ref() {
             return Ok(client.clone());
         }
-        
+
         let client = get_runtime().block_on(async {
-            let (client, connection) = tokio_postgres::connect(&self.uri, tokio_postgres::NoTls).await
-                .map_err(|e| PyRuntimeError::new_err(format!("PostgreSQL connection failed: {}", e)))?;
+            let (client, connection) = tokio_postgres::connect(&self.uri, tokio_postgres::NoTls)
+                .await
+                .map_err(|e| {
+                    PyRuntimeError::new_err(format!("PostgreSQL connection failed: {}", e))
+                })?;
 
             tokio::spawn(async move {
                 if let Err(e) = connection.await {
@@ -38,7 +46,7 @@ impl PostgresCopyBackend {
 
             Ok::<_, PyErr>(Arc::new(client))
         })?;
-        
+
         *guard = Some(client.clone());
         Ok(client)
     }
@@ -68,11 +76,14 @@ impl SqlBackend for PostgresCopyBackend {
                     _ => v.to_string(),
                 })
                 .collect::<Vec<String>>();
-                
-            wtr.write_record(&row).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+            wtr.write_record(&row)
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         }
 
-        let csv_data = wtr.into_inner().map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        let csv_data = wtr
+            .into_inner()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         let client = self.get_client()?;
         let copy_query = format!(
             "COPY {} ({}) FROM STDIN WITH (FORMAT csv, NULL '')",
@@ -81,18 +92,23 @@ impl SqlBackend for PostgresCopyBackend {
         );
 
         get_runtime().block_on(async {
-            let sink = client.copy_in(&copy_query).await
+            let sink = client
+                .copy_in(&copy_query)
+                .await
                 .map_err(|e| PyRuntimeError::new_err(format!("COPY init failed: {}", e)))?;
 
             let mut writer = std::pin::pin!(sink);
-            writer.send(bytes::Bytes::from(csv_data)).await
+            writer
+                .send(bytes::Bytes::from(csv_data))
+                .await
                 .map_err(|e| PyRuntimeError::new_err(format!("COPY send failed: {}", e)))?;
-            
-            writer.close().await
+
+            writer
+                .close()
+                .await
                 .map_err(|e| PyRuntimeError::new_err(format!("COPY close failed: {}", e)))?;
 
             Ok(())
         })
     }
 }
-

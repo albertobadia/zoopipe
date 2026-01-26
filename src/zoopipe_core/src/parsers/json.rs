@@ -1,14 +1,14 @@
-use pyo3::prelude::*;
-use std::io::{BufRead, Seek, SeekFrom, Write};
-use std::sync::{Mutex, Arc};
-use serde_json::Value;
-use serde::Serialize;
 use crate::io::{BoxedReader, CountingReader, SmartReader};
-use crate::utils::{serde_to_py, wrap_py_err, PySerializable};
+use crate::utils::{PySerializable, serde_to_py, wrap_py_err};
+use pyo3::prelude::*;
+use serde::Serialize;
+use serde_json::Value;
+use std::io::{BufRead, Seek, SeekFrom, Write};
+use std::sync::{Arc, Mutex};
 
 use crate::error::PipeError;
-use pyo3::types::{PyAnyMethods, PyDict, PyList};
 use crate::utils::interning::InternedKeys;
+use pyo3::types::{PyAnyMethods, PyDict, PyList};
 
 struct JSONReaderState {
     reader: SmartReader<Value>,
@@ -27,7 +27,9 @@ impl<I: Iterator<Item = Result<Value, String>>> Iterator for BoundedJsonIter<I> 
     type Item = Result<Value, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(end) = self.end_byte && self.count.load(std::sync::atomic::Ordering::Relaxed) >= end {
+        if let Some(end) = self.end_byte
+            && self.count.load(std::sync::atomic::Ordering::Relaxed) >= end
+        {
             return None;
         }
         self.iter.next()
@@ -56,7 +58,7 @@ impl JSONReaderState {
                         self.array_iter = Some(ai);
                         return Some(Ok((val, current_pos)));
                     } else {
-                        return None; 
+                        return None;
                     }
                 }
                 let current_pos = self.position;
@@ -73,7 +75,7 @@ impl JSONReaderState {
 }
 
 /// Fast JSON reader that handles both single objects and arrays of objects.
-/// 
+///
 /// It streams data efficiently using a background thread and supports
 /// complex nested structures by bridging Serde with PyO3.
 #[pyclass]
@@ -88,12 +90,13 @@ impl JSONReader {
     #[new]
     #[pyo3(signature = (path, start_byte=0, end_byte=None))]
     fn new(py: Python<'_>, path: String, start_byte: u64, end_byte: Option<u64>) -> PyResult<Self> {
-        
         let boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err) {
-
             if start_byte > 0 {
                 if path.ends_with(".gz") || path.ends_with(".zst") {
-                    return Err(PipeError::Other("Cannot use start_byte with compressed files".into()).into());
+                    return Err(PipeError::Other(
+                        "Cannot use start_byte with compressed files".into(),
+                    )
+                    .into());
                 }
                 r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
                 // Skip partial line
@@ -102,28 +105,23 @@ impl JSONReader {
             }
             r
         } else {
-             return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
+            return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
         };
 
-        
-        let reader = SmartReader::new(
-            &path,
-            boxed_reader,
-            move |r| {
-                let counting_reader = CountingReader::new(r, start_byte);
-                let count_handle = counting_reader.get_count_handle();
-                let iter = serde_json::Deserializer::from_reader(counting_reader)
-                    .into_iter::<Value>()
-                    .map(|res| res.map_err(|e| format!("{}", e)));
-                
-                BoundedJsonIter {
-                    iter,
-                    count: count_handle,
-                    end_byte,
-                }
+        let reader = SmartReader::new(&path, boxed_reader, move |r| {
+            let counting_reader = CountingReader::new(r, start_byte);
+            let count_handle = counting_reader.get_count_handle();
+            let iter = serde_json::Deserializer::from_reader(counting_reader)
+                .into_iter::<Value>()
+                .map(|res| res.map_err(|e| format!("{}", e)));
+
+            BoundedJsonIter {
+                iter,
+                count: count_handle,
+                end_byte,
             }
-        );
-        
+        });
+
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
@@ -142,15 +140,13 @@ impl JSONReader {
     #[staticmethod]
     fn from_bytes(py: Python<'_>, data: Vec<u8>) -> PyResult<Self> {
         let boxed_reader = BoxedReader::Cursor(std::io::Cursor::new(data));
-        
-        let reader = SmartReader::new(
-            "",
-            boxed_reader,
-            |r| serde_json::Deserializer::from_reader(r)
+
+        let reader = SmartReader::new("", boxed_reader, |r| {
+            serde_json::Deserializer::from_reader(r)
                 .into_iter::<Value>()
                 .map(|res| res.map_err(|e| format!("{}", e)))
-        );
-        
+        });
+
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
@@ -175,10 +171,14 @@ impl JSONReader {
         slf.next_internal(slf.py(), &mut state)
     }
 
-    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         let batch = PyList::empty(py);
-        
+
         for _ in 0..batch_size {
             if let Some(item) = self.next_internal(py, &mut state)? {
                 batch.append(item)?;
@@ -196,19 +196,24 @@ impl JSONReader {
 }
 
 impl JSONReader {
-    fn next_internal<'py>(&self, py: Python<'py>, state: &mut JSONReaderState) -> PyResult<Option<Bound<'py, PyAny>>> {
+    fn next_internal<'py>(
+        &self,
+        py: Python<'py>,
+        state: &mut JSONReaderState,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
         match state.next_value() {
-            Some(Ok((value, pos))) => {
-                 Ok(Some(self.wrap_in_envelope(py, value, pos)?))
-            },
-            Some(Err(e)) => {
-                 Err(PipeError::Other(e).into())
-            },
-            None => Ok(None)
+            Some(Ok((value, pos))) => Ok(Some(self.wrap_in_envelope(py, value, pos)?)),
+            Some(Err(e)) => Err(PipeError::Other(e).into()),
+            None => Ok(None),
         }
     }
 
-    fn wrap_in_envelope<'py>(&self, py: Python<'py>, value: Value, position: usize) -> PyResult<Bound<'py, PyAny>> {
+    fn wrap_in_envelope<'py>(
+        &self,
+        py: Python<'py>,
+        value: Value,
+        position: usize,
+    ) -> PyResult<Bound<'py, PyAny>> {
         let envelope = PyDict::new(py);
         envelope.set_item(self.keys.get_id(py), crate::utils::generate_entry_id(py)?)?;
         envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
@@ -221,8 +226,8 @@ impl JSONReader {
 }
 
 /// flexible JSON writer that supports standard arrays and JSONLines output.
-/// 
-/// It provides high-performance serialization of Python objects directly 
+///
+/// It provides high-performance serialization of Python objects directly
 /// into JSON format, with support for pretty-printing and chunked I/O.
 #[pyclass]
 pub struct JSONWriter {
@@ -236,14 +241,8 @@ pub struct JSONWriter {
 impl JSONWriter {
     #[new]
     #[pyo3(signature = (path, format="array".to_string(), indent=None))]
-    fn new(
-        _py: Python<'_>,
-        path: String,
-        format: String,
-        indent: Option<usize>,
-    ) -> PyResult<Self> {
+    fn new(_py: Python<'_>, path: String, format: String, indent: Option<usize>) -> PyResult<Self> {
         let mut boxed_writer = crate::io::get_writer(&path).map_err(wrap_py_err)?;
-
 
         if format == "array" {
             boxed_writer.write_all(b"[").map_err(wrap_py_err)?;
@@ -262,15 +261,21 @@ impl JSONWriter {
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut is_first = self.is_first_item.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut is_first = self
+            .is_first_item
+            .lock()
+            .map_err(|_| PipeError::MutexLock)?;
 
         self.write_internal(py, data, &mut writer, &mut is_first)
     }
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut is_first = self.is_first_item.lock().map_err(|_| PipeError::MutexLock)?;
-        
+        let mut is_first = self
+            .is_first_item
+            .lock()
+            .map_err(|_| PipeError::MutexLock)?;
+
         let iterator = entries.try_iter()?;
         for entry in iterator {
             self.write_internal(py, entry?, &mut writer, &mut is_first)?;
@@ -326,7 +331,7 @@ impl JSONWriter {
         if self.format == "jsonl" {
             writer.write_all(b"\n").map_err(wrap_py_err)?;
         }
-        
+
         *is_first = false;
         Ok(())
     }
@@ -335,18 +340,16 @@ impl JSONWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
     use serde_json::json;
+    use std::io::Cursor;
 
     fn create_state(data: Vec<u8>) -> JSONReaderState {
         let boxed_reader = BoxedReader::Cursor(Cursor::new(data));
-        let reader = SmartReader::new(
-            "",
-            boxed_reader,
-            |r| serde_json::Deserializer::from_reader(r)
+        let reader = SmartReader::new("", boxed_reader, |r| {
+            serde_json::Deserializer::from_reader(r)
                 .into_iter::<Value>()
                 .map(|res| res.map_err(|e| format!("{}", e)))
-        );
+        });
         JSONReaderState {
             reader,
             array_iter: None,
