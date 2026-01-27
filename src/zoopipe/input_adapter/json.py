@@ -2,6 +2,7 @@ import pathlib
 import typing
 
 from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.utils.path import calculate_byte_ranges
 from zoopipe.zoopipe_rust_core import JSONReader, get_file_size
 
 
@@ -42,24 +43,16 @@ class JSONInputAdapter(BaseInputAdapter):
         """
         Split the JSON input into `workers` byte-range shards.
         """
-
         file_size = get_file_size(self.source_path)
-
-        chunk_size = file_size // workers
-        shards = []
-        for i in range(workers):
-            start = i * chunk_size
-            # Last worker takes rest of file
-            end = (i + 1) * chunk_size if i < workers - 1 else None
-
-            shards.append(
-                self.__class__(
-                    source=self.source_path,
-                    start_byte=start,
-                    end_byte=end,
-                )
+        ranges = calculate_byte_ranges(file_size, workers)
+        return [
+            self.__class__(
+                source=self.source_path,
+                start_byte=start,
+                end_byte=end,
             )
-        return shards
+            for start, end in ranges
+        ]
 
     def get_native_reader(self) -> JSONReader:
         return JSONReader(

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import mmap
 import os
 import struct
@@ -21,62 +19,116 @@ STATS_STRUCT = struct.Struct("qqqqii")
 STATS_SIZE = STATS_STRUCT.size
 
 
+class MmapStats:
+    """Helper to manage stats via mmap for zoosync engine."""
+
+    def __init__(self, filepath: str, mode: str = "r+b"):
+        self.filepath = filepath
+        self.mode = mode
+        self._file = None
+        self._mm = None
+
+    def __enter__(self):
+        self._file = open(self.filepath, self.mode)
+        self._mm = mmap.mmap(
+            self._file.fileno(),
+            length=STATS_SIZE,
+            access=mmap.ACCESS_WRITE
+            if "w" in self.mode or "+" in self.mode
+            else mmap.ACCESS_READ,
+        )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._mm:
+            self._mm.close()
+        if self._file:
+            self._file.close()
+
+    def write(
+        self,
+        processed: int,
+        success: int,
+        error: int,
+        ram: int,
+        finished: bool,
+        has_error: bool,
+    ):
+        self._mm.seek(0)
+        self._mm.write(
+            STATS_STRUCT.pack(
+                processed,
+                success,
+                error,
+                ram,
+                1 if finished else 0,
+                1 if has_error else 0,
+            )
+        )
+
+    @classmethod
+    def read_file(cls, filepath: str) -> tuple[int, int, int, int, bool, bool]:
+        if not os.path.exists(filepath):
+            return 0, 0, 0, 0, False, True
+        try:
+            with open(filepath, "rb") as f:
+                with mmap.mmap(
+                    f.fileno(), length=STATS_SIZE, access=mmap.ACCESS_READ
+                ) as mm:
+                    data = STATS_STRUCT.unpack(mm.read(STATS_SIZE))
+                    return (
+                        data[0],
+                        data[1],
+                        data[2],
+                        data[3],
+                        bool(data[4]),
+                        bool(data[5]),
+                    )
+        except (ValueError, OSError):
+            return 0, 0, 0, 0, False, False
+
+
 def _run_pipe_zoosync(
-    pipe: Pipe,
+    pipe: "Pipe",
     stats_filepath: str,
 ) -> None:
-    # Open the mmap file for updating
-    with open(stats_filepath, "r+b") as f:
-        # mmap the file
-        with mmap.mmap(f.fileno(), length=STATS_SIZE, access=mmap.ACCESS_WRITE) as mm:
-            try:
-                pipe.start(wait=False)
-
-                while not pipe.report.is_finished:
-                    # Update stats
-                    mm.seek(0)
-                    mm.write(
-                        STATS_STRUCT.pack(
-                            pipe.report.total_processed,
-                            pipe.report.success_count,
-                            pipe.report.error_count,
-                            pipe.report.ram_bytes,
-                            0,  # is_finished = False
-                            0,  # has_error = False (so far)
-                        )
-                    )
-                    pipe.report.wait(timeout=1)
-
-                # Final update
-                mm.seek(0)
-                mm.write(
-                    STATS_STRUCT.pack(
-                        pipe.report.total_processed,
-                        pipe.report.success_count,
-                        pipe.report.error_count,
-                        pipe.report.ram_bytes,
-                        1,  # is_finished = True
-                        0,  # has_error = False
-                    )
+    try:
+        pipe.start(wait=False)
+        with MmapStats(stats_filepath) as stats:
+            while not pipe.report.is_finished:
+                stats.write(
+                    pipe.report.total_processed,
+                    pipe.report.success_count,
+                    pipe.report.error_count,
+                    pipe.report.ram_bytes,
+                    False,
+                    False,
                 )
-            except Exception:
-                # Error state
-                # We try to preserve stats if possible, but mark error and finished
-                try:
-                    mm.seek(0)
-                    mm.write(
-                        STATS_STRUCT.pack(
-                            pipe.report.total_processed,
-                            pipe.report.success_count,
-                            pipe.report.error_count,
-                            pipe.report.ram_bytes,
-                            1,  # is_finished = True
-                            1,  # has_error = True
-                        )
-                    )
-                except Exception:
-                    # If we can't write, we can't do much
-                    pass
+                pipe.report.wait(timeout=1)
+
+            # Final update
+            stats.write(
+                pipe.report.total_processed,
+                pipe.report.success_count,
+                pipe.report.error_count,
+                pipe.report.ram_bytes,
+                True,
+                False,
+            )
+    except Exception:
+        # Error state
+        try:
+            with MmapStats(stats_filepath) as stats:
+                stats.write(
+                    pipe.report.total_processed,
+                    pipe.report.success_count,
+                    pipe.report.error_count,
+                    pipe.report.ram_bytes,
+                    True,
+                    True,
+                )
+        except Exception:
+            pass
 
 
 @dataclass
@@ -89,7 +141,7 @@ class ZoosyncPipeHandle:
 class ZoosyncPoolEngine(BaseEngine):
     """
     Engine that executes pipes using a zoosync process pool.
-    Uses file-backed mmap for status reporting to avoid pickling issues.
+    Uses shared memory for status reporting.
     """
 
     def __init__(self, n_workers: int | None = None):
@@ -100,7 +152,7 @@ class ZoosyncPoolEngine(BaseEngine):
         self._cached_report: PipeReport | None = None
         self._temp_dir = None
 
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("Engine is already running")
 
@@ -143,29 +195,6 @@ class ZoosyncPoolEngine(BaseEngine):
                 )
             )
 
-    def _read_stats(self, filepath: str) -> tuple[int, int, int, int, bool, bool]:
-        if not os.path.exists(filepath):
-            return 0, 0, 0, 0, False, True  # Default to error if missing
-
-        try:
-            with open(filepath, "r+b") as f:
-                with mmap.mmap(
-                    f.fileno(), length=STATS_SIZE, access=mmap.ACCESS_READ
-                ) as mm:
-                    data = STATS_STRUCT.unpack(mm.read(STATS_SIZE))
-                    # Unpack: processed, success, error, ram, finished, has_error
-                    return (
-                        data[0],
-                        data[1],
-                        data[2],
-                        data[3],
-                        bool(data[4]),
-                        bool(data[5]),
-                    )
-        except (ValueError, OSError):
-            # Race conditions during creation/deletion
-            return 0, 0, 0, 0, False, False
-
     def wait(self, timeout: float | None = None) -> bool:
         if not self._pool:
             return True
@@ -194,7 +223,7 @@ class ZoosyncPoolEngine(BaseEngine):
 
         # Check if any handle is not finished
         for h in self._handles:
-            _, _, _, _, is_finished, _ = self._read_stats(h.stats_filepath)
+            _, _, _, _, is_finished, _ = MmapStats.read_file(h.stats_filepath)
             if not is_finished:
                 return True
         return False
@@ -211,7 +240,7 @@ class ZoosyncPoolEngine(BaseEngine):
         any_error = False
 
         for h in self._handles:
-            proc, succ, err, ram, fin, has_err = self._read_stats(h.stats_filepath)
+            proc, succ, err, ram, fin, has_err = MmapStats.read_file(h.stats_filepath)
             report.total_processed += proc
             report.success_count += succ
             report.error_count += err
@@ -240,7 +269,7 @@ class ZoosyncPoolEngine(BaseEngine):
         if not self._handles:
             raise RuntimeError("Engine has not been started")
         handle = self._handles[index]
-        proc, succ, err, ram, fin, has_err = self._read_stats(handle.stats_filepath)
+        proc, succ, err, ram, fin, has_err = MmapStats.read_file(handle.stats_filepath)
 
         status = PipeStatus.RUNNING
         if fin:

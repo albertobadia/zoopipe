@@ -2,6 +2,7 @@ import pathlib
 import typing
 
 from zoopipe.output_adapter.base import BaseOutputAdapter
+from zoopipe.utils.path import shard_file_path
 from zoopipe.zoopipe_rust_core import ParquetWriter
 
 
@@ -30,17 +31,8 @@ class ParquetOutputAdapter(BaseOutputAdapter):
         Split the output adapter into `workers` partitions.
         Generates filenames like `filename_part_1.parquet`.
         """
-        path = pathlib.Path(self.path)
-        stem = path.stem
-        suffix = path.suffix
-        parent = path.parent
-
-        shards = []
-        for i in range(workers):
-            part_name = f"{stem}_part_{i + 1}{suffix}"
-            part_path = parent / part_name
-            shards.append(self.__class__(path=str(part_path)))
-        return shards
+        shard_paths = shard_file_path(self.path, workers)
+        return [self.__class__(path=p) for p in shard_paths]
 
     def get_native_writer(self) -> ParquetWriter:
         return ParquetWriter(self.path)

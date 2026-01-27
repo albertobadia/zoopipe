@@ -86,14 +86,7 @@ class PipeManager:
     @property
     def pipe_reports(self) -> list[PipeReport]:
         """Get reports for all managed pipes."""
-        if hasattr(self.engine, "pipe_reports"):
-            return self.engine.pipe_reports
-        # Fallback if the engine doesn't have the property but has the method
-        if hasattr(self.engine, "get_pipe_report"):
-            return [self.engine.get_pipe_report(i) for i in range(self.pipe_count)]
-        raise AttributeError(
-            f"Engine {self.engine.__class__.__name__} does not support per-pipe reports"
-        )
+        return self.engine.pipe_reports
 
     def get_pipe_report(self, index: int) -> PipeReport:
         """
@@ -102,11 +95,9 @@ class PipeManager:
         Args:
             index: The index of the pipe in the original list.
         """
-        if hasattr(self.engine, "get_pipe_report"):
-            return self.engine.get_pipe_report(index)
-        raise AttributeError(
-            f"Engine {self.engine.__class__.__name__} does not support per-pipe reports"
-        )
+        if not hasattr(self.engine, "get_pipe_report"):
+            raise AttributeError("Engine does not support per-pipe reports")
+        return self.engine.get_pipe_report(index)
 
     def __enter__(self) -> PipeManager:
         self.start()

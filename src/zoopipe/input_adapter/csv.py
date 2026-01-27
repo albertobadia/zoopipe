@@ -3,6 +3,7 @@ import pathlib
 import typing
 
 from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.utils.path import calculate_byte_ranges
 from zoopipe.zoopipe_rust_core import CSVReader, get_file_size
 
 
@@ -54,17 +55,13 @@ class CSVInputAdapter(BaseInputAdapter):
         """
         Split the CSV input into `workers` byte-range shards.
         """
-
         file_size = get_file_size(self.source_path)
-
-        chunk_size = file_size // workers
+        ranges = calculate_byte_ranges(file_size, workers)
 
         # Ensure we have fieldnames if not explicitly provided
-        # This is CRITICAL for partial reads (start_byte > 0)
         final_fieldnames = self.fieldnames
         if final_fieldnames is None:
             if self.source_path.startswith("s3://"):
-                # Use Rust reader to discover headers from S3
                 final_fieldnames = self.get_native_reader().headers
             else:
                 with open(self.source_path, "r") as f:
@@ -76,26 +73,20 @@ class CSVInputAdapter(BaseInputAdapter):
                     except StopIteration:
                         final_fieldnames = []
 
-        shards = []
-        for i in range(workers):
-            start = i * chunk_size
-            # Last worker takes rest of file
-            end = (i + 1) * chunk_size if i < workers - 1 else None
-
-            shards.append(
-                self.__class__(
-                    source=self.source_path,
-                    delimiter=self.delimiter,
-                    quotechar=self.quotechar,
-                    skip_rows=self.skip_rows,
-                    fieldnames=final_fieldnames,
-                    generate_ids=self.generate_ids,
-                    limit=self.limit,
-                    start_byte=start,
-                    end_byte=end,
-                )
+        return [
+            self.__class__(
+                source=self.source_path,
+                delimiter=self.delimiter,
+                quotechar=self.quotechar,
+                skip_rows=self.skip_rows,
+                fieldnames=final_fieldnames,
+                generate_ids=self.generate_ids,
+                limit=self.limit,
+                start_byte=start,
+                end_byte=end,
             )
-        return shards
+            for start, end in ranges
+        ]
 
     def get_native_reader(self) -> CSVReader:
         # Pass start_byte and end_byte
