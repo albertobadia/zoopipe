@@ -55,7 +55,7 @@ class EntryTypedDict(typing.TypedDict):
     metadata: dict[str, typing.Any]
 
 
-class FlowStatus(enum.Enum):
+class PipeStatus(enum.Enum):
     """
     Lifecycle status of a Pipe or PipeManager execution.
 
@@ -73,26 +73,42 @@ class FlowStatus(enum.Enum):
     ABORTED = "aborted"
 
 
-class FlowReport:
+class PipeReport:
     """
     Live progress tracker and final summary for a pipeline execution.
 
-    FlowReport provides real-time access to processing metrics,
+    PipeReport provides real-time access to processing metrics,
     memory usage, and execution status. It is automatically updated
     by the Rust core during execution.
     """
 
-    def __init__(self) -> None:
-        """Initialize an empty FlowReport."""
-        self.status = FlowStatus.PENDING
-        self.total_processed = 0
-        self.success_count = 0
-        self.error_count = 0
-        self.ram_bytes = 0
-        self.exception: Exception | None = None
-        self.start_time: datetime | None = None
-        self.end_time: datetime | None = None
+    def __init__(
+        self,
+        pipe_index: int = 0,
+        status: PipeStatus = PipeStatus.PENDING,
+        total_processed: int = 0,
+        success_count: int = 0,
+        error_count: int = 0,
+        ram_bytes: int = 0,
+        exception: Exception | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> None:
+        """Initialize an empty PipeReport."""
+        self.pipe_index = pipe_index
+        self.status = status
+        self.total_processed = total_processed
+        self.success_count = success_count
+        self.error_count = error_count
+        self.ram_bytes = ram_bytes
+        self.exception = exception
+        self.start_time = start_time
+        self.end_time = end_time
         self._finished_event = threading.Event()
+
+        # Set the finished event if the pipe is already completed, failed, or aborted
+        if self.status in (PipeStatus.COMPLETED, PipeStatus.FAILED, PipeStatus.ABORTED):
+            self._finished_event.set()
 
     @property
     def duration(self) -> float:
@@ -116,6 +132,16 @@ class FlowReport:
         """Check if the pipeline has finished."""
         return self._finished_event.is_set()
 
+    @property
+    def has_error(self) -> bool:
+        """Check if the pipeline has an error."""
+        return self.exception is not None
+
+    @property
+    def is_alive(self) -> bool:
+        """Check if the pipeline is still running."""
+        return not self._finished_event.is_set()
+
     def wait(self, timeout: float | None = None) -> bool:
         """
         Wait for the pipeline to finish.
@@ -127,30 +153,30 @@ class FlowReport:
         """
         return self._finished_event.wait(timeout)
 
-    def _mark_running(self) -> None:
-        self.status = FlowStatus.RUNNING
-        self.start_time = datetime.now()
-
-    def _mark_completed(self) -> None:
-        self.status = FlowStatus.COMPLETED
+    def abort(self) -> None:
+        """Abort the pipeline execution."""
+        self.status = PipeStatus.ABORTED
         self.end_time = datetime.now()
         self._finished_event.set()
 
-    def abort(self) -> None:
-        """Abort the pipeline execution."""
-        self.status = FlowStatus.ABORTED
+    def _mark_running(self) -> None:
+        self.status = PipeStatus.RUNNING
+        self.start_time = datetime.now()
+
+    def _mark_completed(self) -> None:
+        self.status = PipeStatus.COMPLETED
         self.end_time = datetime.now()
         self._finished_event.set()
 
     def _mark_failed(self, exception: Exception) -> None:
-        self.status = FlowStatus.FAILED
+        self.status = PipeStatus.FAILED
         self.exception = exception
         self.end_time = datetime.now()
         self._finished_event.set()
 
     def __repr__(self) -> str:
         return (
-            f"<FlowReport status={self.status.value} "
+            f"<PipeReport status={self.status.value} "
             f"processed={self.total_processed} "
             f"success={self.success_count} "
             f"error={self.error_count} "
@@ -169,5 +195,5 @@ class FlowReport:
         """Restore the report state and reconstruct the event lock."""
         self.__dict__.update(state)
         self._finished_event = threading.Event()
-        if self.status in (FlowStatus.COMPLETED, FlowStatus.FAILED, FlowStatus.ABORTED):
+        if self.status in (PipeStatus.COMPLETED, PipeStatus.FAILED, PipeStatus.ABORTED):
             self._finished_event.set()

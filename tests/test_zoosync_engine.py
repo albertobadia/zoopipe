@@ -6,7 +6,7 @@ from zoopipe import (
     Pipe,
 )
 from zoopipe.engines.zoosync import ZoosyncPoolEngine
-from zoopipe.report import FlowStatus
+from zoopipe.report import PipeStatus
 
 
 class UserSchema(BaseModel):
@@ -32,7 +32,7 @@ def test_zoosync_engine_basic_flow(tmp_path):
     assert engine.is_running
     engine.wait(timeout=10.0)
 
-    assert engine.report.status in (FlowStatus.COMPLETED, FlowStatus.FAILED)
+    assert engine.report.status in (PipeStatus.COMPLETED, PipeStatus.FAILED)
     assert engine.report.total_processed == 2
 
     engine.shutdown()

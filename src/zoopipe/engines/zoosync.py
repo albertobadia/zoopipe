@@ -10,8 +10,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from zoopipe.engines.base import BaseEngine
-from zoopipe.engines.local import PipeReport
-from zoopipe.report import FlowReport, FlowStatus
+from zoopipe.report import PipeReport, PipeStatus
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -98,7 +97,7 @@ class ZoosyncPoolEngine(BaseEngine):
         self._pool = None
         self._handles: list[ZoosyncPipeHandle] = []
         self._start_time: datetime | None = None
-        self._cached_report: FlowReport | None = None
+        self._cached_report: PipeReport | None = None
         self._temp_dir = None
 
     def start(self, pipes: list[Pipe]) -> None:
@@ -201,11 +200,11 @@ class ZoosyncPoolEngine(BaseEngine):
         return False
 
     @property
-    def report(self) -> FlowReport:
+    def report(self) -> PipeReport:
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
 
-        report = FlowReport()
+        report = PipeReport()
         report.start_time = self._start_time
 
         all_finished = True
@@ -224,12 +223,12 @@ class ZoosyncPoolEngine(BaseEngine):
                 any_error = True
 
         if all_finished and self._handles:
-            report.status = FlowStatus.FAILED if any_error else FlowStatus.COMPLETED
+            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
             report.end_time = datetime.now()
             report._finished_event.set()
             self._cached_report = report
         else:
-            report.status = FlowStatus.RUNNING
+            report.status = PipeStatus.RUNNING
 
         return report
 
@@ -243,13 +242,15 @@ class ZoosyncPoolEngine(BaseEngine):
         handle = self._handles[index]
         proc, succ, err, ram, fin, has_err = self._read_stats(handle.stats_filepath)
 
+        status = PipeStatus.RUNNING
+        if fin:
+            status = PipeStatus.FAILED if has_err else PipeStatus.COMPLETED
+
         return PipeReport(
             pipe_index=index,
+            status=status,
             total_processed=proc,
             success_count=succ,
             error_count=err,
             ram_bytes=ram,
-            is_finished=fin,
-            has_error=has_err,
-            is_alive=not fin,
         )

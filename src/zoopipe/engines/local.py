@@ -8,7 +8,7 @@ from multiprocessing.sharedctypes import Synchronized
 from typing import TYPE_CHECKING
 
 from zoopipe.engines.base import BaseEngine
-from zoopipe.report import FlowReport, FlowStatus
+from zoopipe.report import PipeReport, PipeStatus
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -28,22 +28,6 @@ class PipeProcess:
     is_finished: Synchronized[c_int]
     has_error: Synchronized[c_int]
     pipe_index: int = 0
-
-
-@dataclass
-class PipeReport:
-    """
-    Snapshot of the current status of a single managed pipe.
-    """
-
-    pipe_index: int
-    total_processed: int = 0
-    success_count: int = 0
-    error_count: int = 0
-    ram_bytes: int = 0
-    is_finished: bool = False
-    has_error: bool = False
-    is_alive: bool = True
 
 
 def _run_pipe(
@@ -83,7 +67,7 @@ class MultiProcessEngine(BaseEngine):
     def __init__(self):
         self._pipe_processes: list[PipeProcess] = []
         self._start_time: datetime | None = None
-        self._cached_report: FlowReport | None = None
+        self._cached_report: PipeReport | None = None
 
     def start(self, pipes: list[Pipe]) -> None:
         if self.is_running:
@@ -158,11 +142,11 @@ class MultiProcessEngine(BaseEngine):
         )
 
     @property
-    def report(self) -> FlowReport:
+    def report(self) -> PipeReport:
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
 
-        report = FlowReport()
+        report = PipeReport()
         report.start_time = self._start_time
 
         for pp in self._pipe_processes:
@@ -175,12 +159,12 @@ class MultiProcessEngine(BaseEngine):
         any_error = any(pp.has_error.value == 1 for pp in self._pipe_processes)
 
         if all_finished:
-            report.status = FlowStatus.FAILED if any_error else FlowStatus.COMPLETED
+            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
             report.end_time = datetime.now()
             report._finished_event.set()
             self._cached_report = report
         else:
-            report.status = FlowStatus.RUNNING
+            report.status = PipeStatus.RUNNING
 
         return report
 
@@ -193,13 +177,17 @@ class MultiProcessEngine(BaseEngine):
         if not self._pipe_processes:
             raise RuntimeError("Engine has not been started")
         pp = self._pipe_processes[index]
+        status = PipeStatus.RUNNING
+        if pp.is_finished.value == 1:
+            status = (
+                PipeStatus.FAILED if pp.has_error.value == 1 else PipeStatus.COMPLETED
+            )
+
         return PipeReport(
             pipe_index=index,
+            status=status,
             total_processed=pp.total_processed.value,
             success_count=pp.success_count.value,
             error_count=pp.error_count.value,
             ram_bytes=pp.ram_bytes.value,
-            is_finished=pp.is_finished.value == 1,
-            has_error=pp.has_error.value == 1,
-            is_alive=pp.process.is_alive(),
         )

@@ -198,9 +198,9 @@ Returns `True` if the engine reports that execution is still active.
 
 Returns a list of `PipeReport` objects, one for each pipe.
 
-##### `report -> FlowReport`
+##### `report -> PipeReport`
 
-Returns an aggregated `FlowReport` combining metrics from all pipes.
+Returns an aggregated `PipeReport` combining metrics from all pipes.
 
 ### PipeReport
 

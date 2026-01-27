@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from zoopipe.report import FlowReport
+from zoopipe.report import PipeReport
 
 
 def test_items_per_second():
-    report = FlowReport()
+    report = PipeReport()
     report._mark_running()
 
     report.start_time = datetime.now() - timedelta(seconds=0.1)
@@ -20,7 +20,7 @@ def test_items_per_second():
 
 
 def test_items_per_second_zero_duration():
-    report = FlowReport()
+    report = PipeReport()
     report._mark_running()
     report.total_processed = 10
     report.end_time = report.start_time
@@ -29,5 +29,5 @@ def test_items_per_second_zero_duration():
 
 
 def test_items_per_second_not_started():
-    report = FlowReport()
+    report = PipeReport()
     assert report.items_per_second == 0.0

@@ -11,7 +11,7 @@ from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 if TYPE_CHECKING:
     from zoopipe.engines.base import BaseEngine
     from zoopipe.pipe import Pipe
-    from zoopipe.report import FlowReport
+    from zoopipe.report import PipeReport
 
 
 class PipeManager:
@@ -73,7 +73,7 @@ class PipeManager:
         self.engine.shutdown(timeout)
 
     @property
-    def report(self) -> FlowReport:
+    def report(self) -> PipeReport:
         """Get an aggregated report of all running pipes."""
         return self.engine.report
 
