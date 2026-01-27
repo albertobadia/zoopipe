@@ -52,6 +52,7 @@ def main():
     print("\nFinished!")
     print(f"Final Report: {manager.report}")
 
+    manager.merge()
     manager.shutdown()
 
 

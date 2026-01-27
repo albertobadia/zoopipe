@@ -34,7 +34,6 @@ class PipeManager:
         self.pipes = pipes
         self.engine = engine or MultiProcessEngine()
         self._merge_info: dict[str, Any] = {}
-        self.should_merge = False
 
     @property
     def is_running(self) -> bool:
@@ -77,18 +76,12 @@ class PipeManager:
         """Get an aggregated report of all running pipes."""
         return self.engine.report
 
-    def get_pipe_report(self, index: int) -> PipeReport:
-        """
-        Get the current report for a specific pipe.
-
-        Args:
-            index: The index of the pipe in the original list.
-        """
-        if hasattr(self.engine, "get_pipe_report"):
-            return self.engine.get_pipe_report(index)
-        raise AttributeError(
-            f"Engine {self.engine.__class__.__name__} does not support per-pipe reports"
-        )
+    @property
+    def should_merge(self) -> bool:
+        if not self._merge_info.get("target"):
+            return False
+        sources = [s for s in self._merge_info.get("sources", []) if s]
+        return len(sources) > 1
 
     @property
     def pipe_reports(self) -> list[PipeReport]:
@@ -98,6 +91,19 @@ class PipeManager:
         # Fallback if the engine doesn't have the property but has the method
         if hasattr(self.engine, "get_pipe_report"):
             return [self.engine.get_pipe_report(i) for i in range(self.pipe_count)]
+        raise AttributeError(
+            f"Engine {self.engine.__class__.__name__} does not support per-pipe reports"
+        )
+
+    def get_pipe_report(self, index: int) -> PipeReport:
+        """
+        Get the current report for a specific pipe.
+
+        Args:
+            index: The index of the pipe in the original list.
+        """
+        if hasattr(self.engine, "get_pipe_report"):
+            return self.engine.get_pipe_report(index)
         raise AttributeError(
             f"Engine {self.engine.__class__.__name__} does not support per-pipe reports"
         )
@@ -115,7 +121,6 @@ class PipeManager:
         cls,
         pipe: Pipe,
         workers: int,
-        should_merge: bool = False,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
         engine: BaseEngine | None = None,
     ) -> PipeManager:
@@ -129,7 +134,6 @@ class PipeManager:
         Args:
             pipe: The source pipe to parallelize.
             workers: Number of shards to use.
-            should_merge: Whether to merge the output shards automatically.
             executor: Internal batch executor for each shard.
             engine: Optional execution engine.
 
@@ -164,18 +168,17 @@ class PipeManager:
             pipes.append(sharded_pipe)
 
         manager = cls(pipes, engine=engine)
-        manager.should_merge = should_merge
         manager._merge_info = {
             "target": getattr(pipe.output_adapter, "output_path", None),
             "sources": [getattr(shard, "output_path", None) for shard in output_shards],
         }
         return manager
 
-    def merge(self) -> None:
+    def merge(self, remove_parts: bool = True) -> None:
         """
         Merge the output files from all pipes into the final destination.
         """
-        if not self._should_merge():
+        if not self.should_merge:
             return
 
         target = self._merge_info["target"]
@@ -186,11 +189,9 @@ class PipeManager:
                 with open(src_path, "rb") as src:
                     self._append_file(dest, src)
 
-    def _should_merge(self) -> bool:
-        if not self.should_merge or not self._merge_info.get("target"):
-            return False
-        sources = [s for s in self._merge_info.get("sources", []) if s]
-        return len(sources) > 1
+        if remove_parts:
+            for src_path in sources:
+                os.remove(src_path)
 
     def _append_file(self, dest, src) -> None:
         """Append file content using zero-copy where available."""
