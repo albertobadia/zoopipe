@@ -1,16 +1,29 @@
 import logging
 import threading
+import time
+from typing import Callable
 
 from pydantic import TypeAdapter, ValidationError
 
 from zoopipe.hooks.base import BaseHook, HookStore
-from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
-from zoopipe.report import EntryStatus, PipeReport, get_logger
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.output_adapter.base import BaseOutputAdapter
+from zoopipe.report import PipeReport, get_logger
+from zoopipe.structs import EntryStatus
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
     SingleThreadExecutor,
 )
+
+
+def _default_progress_reporter(report: "PipeReport") -> None:
+    print(
+        f"Processed: {report.total_processed} | "
+        f"Speed: {report.items_per_second:.2f} items/s | "
+        f"RAM: {report.ram_bytes / 1024 / 1024:.2f} MB",
+        end="\r",
+    )
 
 
 class Pipe:
@@ -26,9 +39,9 @@ class Pipe:
 
     def __init__(
         self,
-        input_adapter: InputAdapterProtocol | None = None,
-        output_adapter: OutputAdapterProtocol | None = None,
-        error_output_adapter: OutputAdapterProtocol | None = None,
+        input_adapter: BaseInputAdapter | None = None,
+        output_adapter: BaseOutputAdapter | None = None,
+        error_output_adapter: BaseOutputAdapter | None = None,
         schema_model: type | None = None,
         pre_validation_hooks: list[BaseHook] | None = None,
         post_validation_hooks: list[BaseHook] | None = None,
@@ -119,6 +132,52 @@ class Pipe:
     def report(self) -> PipeReport:
         """Get the current progress report of the pipeline."""
         return self._report
+
+    def run(
+        self,
+        wait: bool = True,
+        timeout: float | None = None,
+        on_report_update: Callable[["PipeReport"], None]
+        | None = _default_progress_reporter,
+    ) -> bool:
+        """
+        Start execution and optionally wait for completion.
+
+        Args:
+            wait: If True, blocks until finished.
+            timeout: Max time to wait.
+            on_report_update: Callback for progress updates.
+        """
+        try:
+            self.start()
+            if not wait:
+                return True
+
+            if on_report_update is None:
+                return self.wait(timeout)
+
+            start_time = time.time()
+            finished = False
+            while not finished:
+                on_report_update(self.report)
+
+                # Calculate remaining time if timeout is set
+                wait_time = 0.5
+                if timeout:
+                    remaining = timeout - (time.time() - start_time)
+                    if remaining <= 0:
+                        break
+                    wait_time = min(0.5, remaining)
+
+                finished = self.wait(timeout=wait_time)
+
+            # Final update
+            on_report_update(self.report)
+            print("")  # Newline
+            return finished
+        except Exception as e:
+            self.logger.error(f"Pipe run failed: {e}")
+            raise
 
     def start(self, wait: bool = False) -> None:
         """

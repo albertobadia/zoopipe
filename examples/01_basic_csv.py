@@ -1,5 +1,4 @@
 import datetime
-import time
 
 from pydantic import BaseModel, ConfigDict
 
@@ -31,15 +30,7 @@ def main():
         report_update_interval=10,
     )
 
-    pipe.start()
-
-    while not pipe.report.is_finished:
-        print(
-            f"Processed: {pipe.report.total_processed} | "
-            f"Speed: {pipe.report.items_per_second:.2f} rows/s | "
-            f"Ram Usage: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB"
-        )
-        time.sleep(0.5)
+    pipe.run()
 
     print("\nPipeline Finished!")
     print(pipe.report)

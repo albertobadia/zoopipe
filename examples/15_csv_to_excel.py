@@ -33,8 +33,7 @@ def main():
         schema_model=UserSchema,
     )
 
-    pipe1.start()
-    pipe1.wait()
+    pipe1.run()
 
     print(f"Converted {pipe1.report.success_count} records to Excel")
 
@@ -51,8 +50,7 @@ def main():
         schema_model=UserSchema,
     )
 
-    pipe2.start()
-    pipe2.wait()
+    pipe2.run()
 
     print(f"Converted {pipe2.report.success_count} records to JSONL")
     print("\nPipeline Finished!")

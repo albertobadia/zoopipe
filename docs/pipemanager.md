@@ -75,10 +75,16 @@ manager = PipeManager(
     ]
 )
 
-manager.start()
-manager.wait()
+### Running a Pipeline
+
+The simplest way to execute a managed pipeline is using the `run()` method, which handles the entire lifecycle:
+
+```python
+# Start, wait, and coordinate (including merging if applicable)
+manager.run(wait=True, merge=True)
 
 print(f"Total processed: {manager.report.total_processed}")
+```
 ```
 
 ## Monitoring Progress
@@ -106,13 +112,13 @@ print(manager.report)
 
 ## Context Manager Support
 
-PipeManager can be used as a context manager for automatic resource cleanup:
+PipeManager can be used as a context manager for automatic start and cleanup:
 
 ```python
 with PipeManager(pipes=[pipe1, pipe2, pipe3]) as manager:
-    while not manager.report.is_finished:
-        print(f"Progress: {manager.report.total_processed}")
-        time.sleep(1)
+    # Manager starts automatically in __enter__
+    manager.wait()
+    print(f"Progress: {manager.report.total_processed}")
 ```
 
 ## API Reference
@@ -136,7 +142,7 @@ Parameters:
 def parallelize_pipe(
     pipe: Pipe,
     workers: int,
-    should_merge: bool = False,
+    merge: bool = True,
     executor: BatchExecutor | None = None,
     engine: BaseEngine | None = None
 ) -> PipeManager
@@ -146,8 +152,22 @@ Creates a managed parallel pipeline by sharding the adapters of the source `pipe
 
 Parameters:
 - `workers`: Number of parallel shards.
+- `merge`: If `True`, automatically injects a `FileMergeCoordinator` for file-based outputs.
 - `executor`: The Rust executor (Single/MultiThread) to use *within* each worker.
 - `engine`: The engine to handle the worker distribution.
+
+##### `run(...) -> bool`
+
+The recommended way to execute the pipeline. It orchestrates the full lifecycle including pre-start and post-finish coordination hooks.
+
+```python
+run(wait: bool = True, merge: bool = True, timeout: float | None = None) -> bool
+```
+
+Parameters:
+- `wait`: Whether to wait for execution to finish.
+- `merge`: Legacy compatibility flag (still used to trigger `on_finish` hooks).
+- `timeout`: Maximum time to wait if `wait=True`.
 
 ##### `start() -> None`
 

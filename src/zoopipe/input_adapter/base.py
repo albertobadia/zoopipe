@@ -1,6 +1,8 @@
 import abc
 import typing
 
+from zoopipe.coordinators import BaseCoordinator, DefaultShardingCoordinator
+
 
 class BaseInputAdapter(abc.ABC):
     """
@@ -37,12 +39,12 @@ class BaseInputAdapter(abc.ABC):
     def split(self, workers: int) -> typing.List["BaseInputAdapter"]:
         """
         Split the input adapter into `workers` shards for parallel processing.
-
-        Args:
-            workers: Number of partitions to create.
-
-        Returns:
-            A list of input adapters, each responsible for a subset of the data.
-            Default implementation returns [self] (no splitting).
         """
         return [self]
+
+    def get_coordinator(self) -> "BaseCoordinator":
+        """
+        Return the coordinator for this adapter.
+        Default is the sharding coordinator that uses split().
+        """
+        return DefaultShardingCoordinator()

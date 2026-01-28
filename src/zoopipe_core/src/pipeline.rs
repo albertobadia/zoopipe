@@ -190,7 +190,7 @@ impl NativePipe {
         report_update_interval: usize,
         executor: PipeExecutor,
     ) -> PyResult<Self> {
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let entry_status = models.getattr("EntryStatus")?;
         let status_failed = entry_status.getattr("FAILED")?.unbind();
         let status_validated = entry_status.getattr("VALIDATED")?.unbind();

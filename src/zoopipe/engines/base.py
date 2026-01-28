@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from zoopipe.report import PipeReport, PipeStatus
+from zoopipe.report import PipeReport
+from zoopipe.structs import PipeStatus, WorkerResult
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -102,3 +103,10 @@ class BaseEngine(ABC):
         if 0 <= pipe_index < len(reports):
             return reports[pipe_index]
         raise IndexError(f"Pipe index {pipe_index} out of range")
+
+    def get_results(self) -> list[WorkerResult]:
+        """
+        Collect results from all workers.
+        Returns a list of WorkerResult objects.
+        """
+        return []

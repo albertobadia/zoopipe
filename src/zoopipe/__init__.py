@@ -1,5 +1,5 @@
 from zoopipe.engines import BaseEngine, MultiProcessEngine
-from zoopipe.hooks.base import BaseHook, HookStore
+from zoopipe.hooks.base import BaseHook
 from zoopipe.hooks.sql import SQLExpansionHook
 from zoopipe.input_adapter.arrow import ArrowInputAdapter
 from zoopipe.input_adapter.csv import CSVInputAdapter
@@ -19,13 +19,12 @@ from zoopipe.output_adapter.parquet import ParquetOutputAdapter
 from zoopipe.output_adapter.pygen import PyGeneratorOutputAdapter
 from zoopipe.output_adapter.sql import SQLOutputAdapter
 from zoopipe.pipe import Pipe
-from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
-from zoopipe.report import (
+from zoopipe.report import PipeReport, get_logger
+from zoopipe.structs import (
     EntryStatus,
     EntryTypedDict,
-    PipeReport,
+    HookStore,
     PipeStatus,
-    get_logger,
 )
 from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 
@@ -44,8 +43,7 @@ __all__ = [
     "SingleThreadExecutor",
     "MultiThreadExecutor",
     "SQLExpansionHook",
-    "InputAdapterProtocol",
-    "OutputAdapterProtocol",
+    "SQLExpansionHook",
     # Input Adapters
     "ArrowInputAdapter",
     "CSVInputAdapter",

@@ -1,6 +1,8 @@
 import abc
 import typing
 
+from zoopipe.coordinators import BaseCoordinator, DefaultShardingCoordinator
+
 
 class BaseOutputAdapter(abc.ABC):
     """
@@ -39,3 +41,10 @@ class BaseOutputAdapter(abc.ABC):
         Split the output adapter into `workers` partitions for parallel writing.
         """
         return [self]
+
+    def get_coordinator(self) -> "BaseCoordinator":
+        """
+        Return the coordinator for this adapter.
+        Default is the sharding coordinator that uses split().
+        """
+        return DefaultShardingCoordinator()

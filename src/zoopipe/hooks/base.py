@@ -1,9 +1,4 @@
-import typing
-
-from zoopipe.report import EntryTypedDict
-
-#: Type alias for the shared state between hooks.
-HookStore = dict[str, typing.Any]
+from zoopipe.structs import EntryTypedDict, HookStore
 
 
 class HookPriority:

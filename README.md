@@ -102,11 +102,11 @@ pipe = Pipe(
     schema_model=UserSchema,
 )
 
-pipe.start()
-pipe.wait()
-
+# Run the pipe (streaming processing)
+pipe.run()
 
 print(f"Finished! Processed {pipe.report.total_processed} items.")
+```
 ```
 
 Automatically split large files or manage multiple independent workflows:
@@ -119,13 +119,16 @@ pipe = Pipe(...)
 
 # Automatically parallelize across 4 workers
 # MultiProcessEngine() for local, RayEngine() or DaskEngine() for clusters
+# Automatically parallelize across 4 workers
 manager = PipeManager.parallelize_pipe(
     pipe, 
     workers=4, 
     engine=MultiProcessEngine() 
 )
-manager.start()
-manager.wait()
+
+# Start, wait, and coordinate (e.g. merge files) automatically
+manager.run()
+```
 ```
 
 ---

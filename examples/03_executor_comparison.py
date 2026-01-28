@@ -1,5 +1,3 @@
-import time
-
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import (
@@ -41,15 +39,7 @@ def run_with_executor(executor):
         executor=executor,
     )
 
-    pipe.start()
-    while not pipe.report.is_finished:
-        print("\n📊 Results:")
-        print(f"  Total processed: {pipe.report.total_processed:,}")
-        print(f"  ✅ Success: {pipe.report.success_count:,}")
-        print(f"  ❌ Errors: {pipe.report.error_count:,}")
-        print(f"  ⚡ Speed: {pipe.report.items_per_second:,.0f} items/sec")
-        print(f"  🐢 RAM Usage: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB")
-        time.sleep(0.5)
+    pipe.run()
 
 
 if __name__ == "__main__":

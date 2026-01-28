@@ -1,9 +1,9 @@
-import enum
 import logging
 import sys
 import threading
-import typing
 from datetime import datetime
+
+from zoopipe.structs import PipeStatus
 
 
 def get_logger(name: str = "zoopipe") -> logging.Logger:
@@ -22,55 +22,6 @@ def get_logger(name: str = "zoopipe") -> logging.Logger:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
     return logger
-
-
-class EntryStatus(enum.Enum):
-    """
-    Status of an individual data entry in the pipeline lifecycle.
-
-    - PENDING: Initial state after ingestion.
-    - VALIDATED: Successfully passed schema validation.
-    - FAILED: Encountered validation errors or processing issues.
-    """
-
-    PENDING = "pending"
-    VALIDATED = "validated"
-    FAILED = "failed"
-
-
-class EntryTypedDict(typing.TypedDict):
-    """
-    Structure of the record envelope as it flows through the pipeline.
-
-    The envelope contains not only the actual business data but also
-    operational metadata, unique identification, and error tracking.
-    """
-
-    id: typing.Any
-    position: int | None
-    status: EntryStatus
-    raw_data: dict[str, typing.Any]
-    validated_data: dict[str, typing.Any] | None
-    errors: list[dict[str, typing.Any]]
-    metadata: dict[str, typing.Any]
-
-
-class PipeStatus(enum.Enum):
-    """
-    Lifecycle status of a Pipe or PipeManager execution.
-
-    - PENDING: Execution hasn't started yet.
-    - RUNNING: Actively processing batches.
-    - COMPLETED: Finished successfully (all source data consumed).
-    - FAILED: Partially finished due to an unhandled exception.
-    - ABORTED: Stopped manually by the user.
-    """
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    ABORTED = "aborted"
 
 
 class PipeReport:

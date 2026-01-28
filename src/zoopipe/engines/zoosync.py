@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, Any
 from zoosync import ZooPool
 
 from zoopipe.engines.base import BaseEngine
-from zoopipe.report import PipeReport, PipeStatus
+from zoopipe.report import PipeReport
+from zoopipe.structs import PipeStatus, WorkerResult
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -93,7 +94,14 @@ class MmapStats:
 def _run_pipe_zoosync(
     pipe: "Pipe",
     stats_filepath: str,
-) -> None:
+) -> dict[str, Any]:
+    result_data = {
+        "success": False,
+        "output_path": None,
+        "metrics": {},
+        "error": None,
+    }
+
     try:
         pipe.start(wait=False)
         with MmapStats(stats_filepath) as stats:
@@ -115,10 +123,22 @@ def _run_pipe_zoosync(
                 pipe.report.error_count,
                 pipe.report.ram_bytes,
                 True,
-                False,
+                pipe.report.has_error,
             )
-    except Exception:
+
+        result_data["success"] = not pipe.report.has_error
+        result_data["output_path"] = getattr(pipe.output_adapter, "output_path", None)
+        result_data["metrics"] = {
+            "total": pipe.report.total_processed,
+            "success": pipe.report.success_count,
+            "error": pipe.report.error_count,
+        }
+        if pipe.report.exception:
+            result_data["error"] = str(pipe.report.exception)
+
+    except Exception as e:
         # Error state
+        result_data["error"] = str(e)
         try:
             with MmapStats(stats_filepath) as stats:
                 stats.write(
@@ -131,6 +151,8 @@ def _run_pipe_zoosync(
                 )
         except Exception:
             pass
+
+    return result_data
 
 
 @dataclass
@@ -209,6 +231,31 @@ class ZoosyncPoolEngine(BaseEngine):
         if self._temp_dir:
             self._temp_dir.cleanup()
             self._temp_dir = None
+
+    def get_results(self) -> list[WorkerResult]:
+        results = []
+        for i, handle in enumerate(self._handles):
+            try:
+                # Assuming ZooPool future has a result() method that waits/returns
+                res_dict = handle.future.result()
+                results.append(
+                    WorkerResult(
+                        worker_id=i,
+                        success=res_dict.get("success", False),
+                        output_path=res_dict.get("output_path"),
+                        metrics=res_dict.get("metrics", {}),
+                        error=res_dict.get("error"),
+                    )
+                )
+            except Exception as e:
+                results.append(
+                    WorkerResult(
+                        worker_id=i,
+                        success=False,
+                        error=str(e),
+                    )
+                )
+        return results
 
     @property
     def is_running(self) -> bool:

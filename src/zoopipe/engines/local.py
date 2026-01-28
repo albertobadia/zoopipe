@@ -8,7 +8,8 @@ from multiprocessing.sharedctypes import Synchronized
 from typing import TYPE_CHECKING
 
 from zoopipe.engines.base import BaseEngine
-from zoopipe.report import PipeReport, PipeStatus
+from zoopipe.report import PipeReport
+from zoopipe.structs import PipeStatus, WorkerResult
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -38,23 +39,37 @@ def _run_pipe(
     ram_bytes: Synchronized[c_longlong],
     is_finished: Synchronized[c_int],
     has_error: Synchronized[c_int],
+    pipe_index: int,
+    results_dict: dict[int, any],
 ) -> None:
     try:
-        pipe.start(wait=False)
+        pipe.start(wait=True)
 
-        while not pipe.report.is_finished:
-            total_processed.value = pipe.report.total_processed
-            success_count.value = pipe.report.success_count
-            error_count.value = pipe.report.error_count
-            ram_bytes.value = pipe.report.ram_bytes
-            pipe.report.wait(timeout=1)
-
+        # Update final stats
         total_processed.value = pipe.report.total_processed
         success_count.value = pipe.report.success_count
         error_count.value = pipe.report.error_count
         ram_bytes.value = pipe.report.ram_bytes
-    except Exception:
+
+        # Store result metadata
+        results_dict[pipe_index] = {
+            "success": not pipe.report.has_error,
+            "output_path": getattr(pipe.output_adapter, "output_path", None),
+            "metrics": {
+                "total": pipe.report.total_processed,
+                "success": pipe.report.success_count,
+                "error": pipe.report.error_count,
+            },
+            "error": None,
+        }
+    except Exception as e:
         has_error.value = 1
+        results_dict[pipe_index] = {
+            "success": False,
+            "output_path": getattr(pipe.output_adapter, "output_path", None),
+            "metrics": {},
+            "error": str(e),
+        }
     finally:
         is_finished.value = 1
 
@@ -67,6 +82,8 @@ class MultiProcessEngine(BaseEngine):
     def __init__(self):
         super().__init__()
         self._pipe_processes: list[PipeProcess] = []
+        self._manager = multiprocessing.Manager()
+        self._results_dict = self._manager.dict()
 
     def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
@@ -102,6 +119,8 @@ class MultiProcessEngine(BaseEngine):
                     ram_bytes,
                     is_finished,
                     has_error,
+                    i,
+                    self._results_dict,
                 ),
             )
             process.start()
@@ -133,6 +152,22 @@ class MultiProcessEngine(BaseEngine):
             if pp.process.is_alive():
                 pp.process.kill()
         self._pipe_processes.clear()
+        self._results_dict.clear()
+
+    def get_results(self) -> list[WorkerResult]:
+        results = []
+        for i in range(len(self._pipe_processes)):
+            res = self._results_dict.get(i, {})
+            results.append(
+                WorkerResult(
+                    worker_id=i,
+                    success=res.get("success", False),
+                    output_path=res.get("output_path"),
+                    metrics=res.get("metrics", {}),
+                    error=res.get("error"),
+                )
+            )
+        return results
 
     @property
     def is_running(self) -> bool:
