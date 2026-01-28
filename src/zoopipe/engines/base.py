@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import TYPE_CHECKING
+
+from zoopipe.report import PipeReport, PipeStatus
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
-    from zoopipe.report import PipeReport
 
 
 class BaseEngine(ABC):
@@ -18,14 +18,12 @@ class BaseEngine(ABC):
     """
 
     def __init__(self):
-        from zoopipe.report import PipeReport
-
         self._report = PipeReport()
         self._start_time = None
         self._cached_report = None
 
     @abstractmethod
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         """Execute the given list of pipes."""
         pass
 
@@ -48,10 +46,6 @@ class BaseEngine(ABC):
     @property
     def report(self) -> PipeReport:
         """Get an aggregated report of the current execution."""
-        from datetime import datetime
-
-        from zoopipe.report import PipeStatus
-
         # If cache is finished, returns cache
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
@@ -91,8 +85,6 @@ class BaseEngine(ABC):
 
     def _reset_report(self) -> None:
         """Reset the internal report state for a new execution."""
-        from zoopipe.report import PipeReport
-
         self._report = PipeReport()
         self._start_time = None
         self._cached_report = None

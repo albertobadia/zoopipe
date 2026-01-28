@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from zoopipe.engines import MultiProcessEngine
-from zoopipe.engines.local import PipeReport
 from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ class PipeManager:
     through a pluggable Engine (e.g., Local Multiprocessing, Ray, Dask).
     """
 
-    def __init__(self, pipes: list[Pipe], engine: BaseEngine | None = None):
+    def __init__(self, pipes: list["Pipe"], engine: "BaseEngine" | None = None):
         """
         Initialize PipeManager with a list of Pipe instances.
 
@@ -72,7 +72,7 @@ class PipeManager:
         self.engine.shutdown(timeout)
 
     @property
-    def report(self) -> PipeReport:
+    def report(self) -> "PipeReport":
         """Get an aggregated report of all running pipes."""
         return self.engine.report
 
@@ -84,24 +84,45 @@ class PipeManager:
         return len(sources) > 1
 
     @property
-    def pipe_reports(self) -> list[PipeReport]:
+    def pipe_reports(self) -> list["PipeReport"]:
         """Get reports for all managed pipes."""
         return self.engine.pipe_reports
 
-    def get_pipe_report(self, index: int) -> PipeReport:
+    def get_pipe_report(self, index: int) -> "PipeReport":
         """
         Get the current report for a specific pipe.
 
         Args:
             index: The index of the pipe in the original list.
         """
-        if not hasattr(self.engine, "get_pipe_report"):
-            raise AttributeError("Engine does not support per-pipe reports")
         return self.engine.get_pipe_report(index)
 
-    def __enter__(self) -> PipeManager:
+    def __enter__(self) -> "PipeManager":
         self.start()
         return self
+
+    def run(
+        self, wait: bool = True, merge: bool = True, timeout: float | None = None
+    ) -> bool:
+        """
+        Start execution, optionally wait for completion, and merge results.
+
+        Args:
+            wait: Whether to wait for execution to finish.
+            merge: Whether to automatically merge shards after success.
+            timeout: Maximum time to wait if wait=True.
+
+        Returns:
+            True if execution finished (and merged if requested).
+        """
+        self.start()
+        if not wait:
+            return True
+
+        finished = self.wait(timeout)
+        if finished and merge:
+            self.merge()
+        return finished
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self.is_running:
@@ -110,11 +131,11 @@ class PipeManager:
     @classmethod
     def parallelize_pipe(
         cls,
-        pipe: Pipe,
+        pipe: "Pipe",
         workers: int,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
-        engine: BaseEngine | None = None,
-    ) -> PipeManager:
+        engine: "BaseEngine" | None = None,
+    ) -> "PipeManager":
         """
         Create a PipeManager that runs the given pipe in parallel across
         `workers` shards.
@@ -137,12 +158,13 @@ class PipeManager:
         input_shards = pipe.input_adapter.split(workers)
         output_shards = pipe.output_adapter.split(workers)
 
-        if len(input_shards) != workers or len(output_shards) != workers:
+        if len(input_shards) != len(output_shards):
             raise ValueError(
-                f"Adapters failed to split into {workers} shards. "
+                f"Adapters failed to split consistently. "
                 f"Got {len(input_shards)} inputs and {len(output_shards)} outputs."
             )
 
+        workers = len(input_shards)
         exec_strategy = executor or pipe.executor
 
         pipes = []
@@ -159,10 +181,14 @@ class PipeManager:
             pipes.append(sharded_pipe)
 
         manager = cls(pipes, engine=engine)
-        manager._merge_info = {
-            "target": getattr(pipe.output_adapter, "output_path", None),
-            "sources": [getattr(shard, "output_path", None) for shard in output_shards],
-        }
+        target_path = getattr(pipe.output_adapter, "output_path", None)
+        if target_path:
+            manager._merge_info = {
+                "target": target_path,
+                "sources": [
+                    getattr(shard, "output_path", None) for shard in output_shards
+                ],
+            }
         return manager
 
     def merge(self, remove_parts: bool = True) -> None:
@@ -172,17 +198,24 @@ class PipeManager:
         if not self.should_merge:
             return
 
-        target = self._merge_info["target"]
-        sources = [s for s in self._merge_info["sources"] if s and os.path.exists(s)]
+        target = Path(self._merge_info["target"])
+        sources = [
+            Path(s)
+            for s in self._merge_info["sources"]
+            if s and Path(s).exists() and Path(s) != target
+        ]
 
-        with open(target, "wb") as dest:
+        if not sources:
+            return
+
+        with target.open("wb") as dest:
             for src_path in sources:
-                with open(src_path, "rb") as src:
+                with src_path.open("rb") as src:
                     self._append_file(dest, src)
 
         if remove_parts:
             for src_path in sources:
-                os.remove(src_path)
+                src_path.unlink(missing_ok=True)
 
     def _append_file(self, dest, src) -> None:
         """Append file content using zero-copy where available."""
@@ -199,5 +232,7 @@ class PipeManager:
 
     def __repr__(self) -> str:
         status = "running" if self.is_running else "stopped"
-        return f"<PipeManager pipes={self.pipe_count} status={status} "
-        f"engine={self.engine.__class__.__name__}>"
+        return (
+            f"<PipeManager pipes={self.pipe_count} status={status} "
+            f"engine={self.engine.__class__.__name__}>"
+        )

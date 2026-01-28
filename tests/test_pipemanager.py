@@ -4,7 +4,8 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import CSVInputAdapter, CSVOutputAdapter, JSONOutputAdapter, Pipe
-from zoopipe.manager import PipeManager, PipeReport
+from zoopipe.manager import PipeManager
+from zoopipe.report import PipeReport
 
 
 class UserSchema(BaseModel):

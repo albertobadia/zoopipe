@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from zoosync import ZooPool
+
 from zoopipe.engines.base import BaseEngine
 from zoopipe.report import PipeReport, PipeStatus
 
@@ -154,13 +156,6 @@ class ZoosyncPoolEngine(BaseEngine):
     def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("Engine is already running")
-
-        try:
-            from zoosync import ZooPool
-        except ImportError:
-            raise ImportError(
-                "zoosync is not installed. Please install it with 'uv add zoosync'"
-            )
 
         self._reset_report()
         self._start_time = datetime.now()

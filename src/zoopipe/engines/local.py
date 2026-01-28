@@ -31,7 +31,7 @@ class PipeProcess:
 
 
 def _run_pipe(
-    pipe: Pipe,
+    pipe: "Pipe",
     total_processed: Synchronized[c_longlong],
     success_count: Synchronized[c_longlong],
     error_count: Synchronized[c_longlong],
@@ -68,7 +68,7 @@ class MultiProcessEngine(BaseEngine):
         super().__init__()
         self._pipe_processes: list[PipeProcess] = []
 
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("Engine is already running")
 

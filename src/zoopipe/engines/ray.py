@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -21,7 +19,7 @@ class RayPipeWorker:
     Ray Actor that wraps a single Pipe execution.
     """
 
-    def __init__(self, pipe: Pipe, index: int):
+    def __init__(self, pipe: "Pipe", index: int):
         self.pipe = pipe
         self.index = index
         self.is_finished = False
@@ -122,7 +120,7 @@ class RayEngine(BaseEngine):
         if refs:
             ray.get(refs)
 
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("RayEngine is already running")
 

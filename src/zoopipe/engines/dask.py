@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -21,7 +19,7 @@ class DaskPipeWorker:
     Can be used as a Dask Actor for stateful reporting.
     """
 
-    def __init__(self, pipe: Pipe, index: int):
+    def __init__(self, pipe: "Pipe", index: int):
         self.pipe = pipe
         self.index = index
         self.is_finished = False
@@ -100,7 +98,7 @@ class DaskEngine(BaseEngine):
 
             self.client.run(append_path, src_path)
 
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("DaskEngine is already running")
 
