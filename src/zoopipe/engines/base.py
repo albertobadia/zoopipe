@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from zoopipe.report import PipeReport
-from zoopipe.structs import PipeStatus, WorkerResult
+from zoopipe.structs import WorkerResult
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -51,38 +50,20 @@ class BaseEngine(ABC):
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
 
-        report = self._report
-        report.start_time = self._start_time
-
         try:
             p_reports = self.pipe_reports
         except (AttributeError, RuntimeError):
-            return report
+            return self._report
 
-        # Reset counters to re-aggregate
-        report.total_processed = 0
-        report.success_count = 0
-        report.error_count = 0
-        report.ram_bytes = 0
+        aggregated = PipeReport.aggregate(p_reports)
 
-        for pr in p_reports:
-            report.total_processed += pr.total_processed
-            report.success_count += pr.success_count
-            report.error_count += pr.error_count
-            report.ram_bytes += pr.ram_bytes
+        if self._start_time:
+            aggregated.start_time = self._start_time
 
-        all_finished = all(pr.is_finished for pr in p_reports)
-        any_error = any(pr.has_error for pr in p_reports)
+        if aggregated.is_finished:
+            self._cached_report = aggregated
 
-        if all_finished and p_reports:
-            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
-            report.end_time = datetime.now()
-            report._finished_event.set()
-            self._cached_report = report
-        else:
-            report.status = PipeStatus.RUNNING if p_reports else PipeStatus.PENDING
-
-        return report
+        return aggregated
 
     def _reset_report(self) -> None:
         """Reset the internal report state for a new execution."""

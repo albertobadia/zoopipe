@@ -1,6 +1,5 @@
 import logging
 import threading
-import time
 from typing import Callable
 
 from pydantic import TypeAdapter, ValidationError
@@ -153,28 +152,14 @@ class Pipe:
             if not wait:
                 return True
 
-            if on_report_update is None:
-                return self.wait(timeout)
+            from zoopipe.utils.progress import monitor_progress
 
-            start_time = time.time()
-            finished = False
-            while not finished:
-                on_report_update(self.report)
-
-                # Calculate remaining time if timeout is set
-                wait_time = 0.5
-                if timeout:
-                    remaining = timeout - (time.time() - start_time)
-                    if remaining <= 0:
-                        break
-                    wait_time = min(0.5, remaining)
-
-                finished = self.wait(timeout=wait_time)
-
-            # Final update
-            on_report_update(self.report)
-            print("")  # Newline
-            return finished
+            return monitor_progress(
+                waitable=self,
+                report_source=self,
+                timeout=timeout,
+                on_report_update=on_report_update,
+            )
         except Exception as e:
             self.logger.error(f"Pipe run failed: {e}")
             raise

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from zoopipe.coordinators import (
@@ -135,27 +134,14 @@ class PipeManager:
             if not wait:
                 return True
 
-            if on_report_update is None:
-                finished = self.wait(timeout)
-            else:
-                start_time = time.time()
-                finished = False
-                while not finished:
-                    on_report_update(self.report)
+            from zoopipe.utils.progress import monitor_progress
 
-                    # Calculate remaining time if timeout is set
-                    wait_time = 0.5
-                    if timeout:
-                        remaining = timeout - (time.time() - start_time)
-                        if remaining <= 0:
-                            break
-                        wait_time = min(0.5, remaining)
-
-                    finished = self.wait(timeout=wait_time)
-
-                # Final update ensures 100% progress is shown
-                on_report_update(self.report)
-                print("")  # Newline
+            finished = monitor_progress(
+                waitable=self,
+                report_source=self,
+                timeout=timeout,
+                on_report_update=on_report_update,
+            )
 
             if finished and self.coordinator:
                 results = self.engine.get_results()

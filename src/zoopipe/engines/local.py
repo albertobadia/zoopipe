@@ -43,9 +43,18 @@ def _run_pipe(
     results_dict: dict[int, any],
 ) -> None:
     try:
-        pipe.start(wait=True)
+        pipe.start(wait=False)
 
-        # Update final stats
+        while not pipe.report.is_finished:
+            # Live update of stats
+            total_processed.value = pipe.report.total_processed
+            success_count.value = pipe.report.success_count
+            error_count.value = pipe.report.error_count
+            ram_bytes.value = pipe.report.ram_bytes
+
+            pipe.report.wait(timeout=0.5)
+
+        # Final update
         total_processed.value = pipe.report.total_processed
         success_count.value = pipe.report.success_count
         error_count.value = pipe.report.error_count

@@ -136,6 +136,42 @@ class PipeReport:
             f"duration={self.duration:.2f}s>"
         )
 
+    @classmethod
+    def aggregate(cls, reports: list["PipeReport"]) -> "PipeReport":
+        """
+        Aggregate multiple reports into a single summary report.
+        """
+        if not reports:
+            return cls(status=PipeStatus.PENDING)
+
+        agg = cls()
+
+        # Filter out None start_times
+        start_times = [r.start_time for r in reports if r.start_time]
+        agg.start_time = min(start_times) if start_times else None
+
+        for r in reports:
+            agg.total_processed += r.total_processed
+            agg.success_count += r.success_count
+            agg.error_count += r.error_count
+            agg.ram_bytes += r.ram_bytes
+
+        all_finished = all(r.is_finished for r in reports)
+        any_error = any(r.has_error for r in reports)
+        any_running = any(r.status == PipeStatus.RUNNING for r in reports)
+
+        if all_finished:
+            agg.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
+            end_times = [r.end_time for r in reports if r.end_time]
+            agg.end_time = max(end_times) if end_times else datetime.now()
+            agg._finished_event.set()
+        elif any_running:
+            agg.status = PipeStatus.RUNNING
+        else:
+            agg.status = PipeStatus.PENDING
+
+        return agg
+
     def __getstate__(self) -> dict:
         """Serialize the report state, excluding non-picklable lock objects."""
         state = self.__dict__.copy()
