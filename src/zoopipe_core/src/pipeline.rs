@@ -321,17 +321,22 @@ impl NativePipe {
 
         for entry in processed_list.iter() {
             let dict = entry.cast::<PyDict>()?;
+
+            // Fast status check using raw pointer comparison for interned objects
             let status = dict
                 .get_item(status_key)?
                 .ok_or_else(|| PyRuntimeError::new_err("Missing status in entry"))?;
 
-            if status.eq(status_failed)? {
+            let is_failed = status.as_ptr() == status_failed.as_ptr();
+            let is_validated = !is_failed && status.as_ptr() == status_validated.as_ptr();
+
+            if is_failed {
                 error_list.push(
                     dict.get_item(raw_key)?.ok_or_else(|| {
                         PyRuntimeError::new_err("Missing raw_data in error entry")
                     })?,
                 );
-            } else if status.eq(status_validated)? {
+            } else if is_validated {
                 success_data.push(dict.get_item(val_key)?.ok_or_else(|| {
                     PyRuntimeError::new_err("Missing validated_data in success entry")
                 })?);

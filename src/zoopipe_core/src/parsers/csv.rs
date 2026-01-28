@@ -294,7 +294,9 @@ impl CSVReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        slf.next_internal(slf.py())
+        let py = slf.py();
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(py, &mut state)
     }
 
     pub fn read_batch<'py>(
@@ -302,11 +304,12 @@ impl CSVReader {
         py: Python<'py>,
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         let batch = PyList::empty(py);
         let mut count = 0;
 
         while count < batch_size {
-            if let Some(item) = self.next_internal(py)? {
+            if let Some(item) = self.next_internal(py, &mut state)? {
                 batch.append(item)?;
                 count += 1;
             } else {
@@ -323,9 +326,11 @@ impl CSVReader {
 }
 
 impl CSVReader {
-    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
-        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
-
+    fn next_internal<'py>(
+        &self,
+        py: Python<'py>,
+        state: &mut CSVReaderState,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
         if let Some(lim) = state.limit
             && state.position >= lim
         {
@@ -342,22 +347,15 @@ impl CSVReader {
                     raw_data.set_item(header_py.bind(py), value)?;
                 }
 
-                let envelope = PyDict::new(py);
-
-                let id = if self.generate_ids {
-                    crate::utils::generate_entry_id(py)?
-                } else {
-                    py.None().into_bound(py)
-                };
-
-                envelope.set_item(self.keys.get_id(py), id)?;
-                envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-                envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-                envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-                envelope.set_item(self.keys.get_position(py), current_pos)?;
-                envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-                Ok(Some(envelope.into_any()))
+                let env = crate::utils::wrap_in_envelope(
+                    py,
+                    &self.keys,
+                    raw_data.into_any(),
+                    self.status_pending.bind(py).clone(),
+                    current_pos,
+                    self.generate_ids,
+                )?;
+                Ok(Some(env))
             }
             Some(Err(e)) => {
                 let line = state.position + 1;

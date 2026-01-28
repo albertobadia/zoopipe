@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::PipeError;
 use crate::utils::interning::InternedKeys;
-use pyo3::types::{PyAnyMethods, PyDict, PyList};
+use pyo3::types::{PyAnyMethods, PyList};
 
 struct JSONReaderState {
     reader: SmartReader<Value>,
@@ -167,8 +167,9 @@ impl JSONReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
+        let py = slf.py();
         let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
-        slf.next_internal(slf.py(), &mut state)
+        slf.next_internal(py, &mut state)
     }
 
     pub fn read_batch<'py>(
@@ -214,14 +215,15 @@ impl JSONReader {
         value: Value,
         position: usize,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let envelope = PyDict::new(py);
-        envelope.set_item(self.keys.get_id(py), crate::utils::generate_entry_id(py)?)?;
-        envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-        envelope.set_item(self.keys.get_raw_data(py), serde_to_py(py, value)?)?;
-        envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-        envelope.set_item(self.keys.get_position(py), position)?;
-        envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-        Ok(envelope.into_any())
+        let raw_data = serde_to_py(py, value)?;
+        crate::utils::wrap_in_envelope(
+            py,
+            &self.keys,
+            raw_data,
+            self.status_pending.bind(py).clone(),
+            position,
+            true, // JSON reader usually generates IDs
+        )
     }
 }
 

@@ -19,6 +19,32 @@ pub fn generate_entry_id(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
     }
 }
 
+pub fn wrap_in_envelope<'py>(
+    py: Python<'py>,
+    keys: &interning::InternedKeys,
+    raw_data: Bound<'py, PyAny>,
+    status: Bound<'py, PyAny>,
+    position: usize,
+    generate_ids: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let envelope = PyDict::new(py);
+
+    let id = if generate_ids {
+        generate_entry_id(py)?
+    } else {
+        py.None().into_bound(py)
+    };
+
+    envelope.set_item(keys.get_id(py), id)?;
+    envelope.set_item(keys.get_status(py), status)?;
+    envelope.set_item(keys.get_raw_data(py), raw_data)?;
+    envelope.set_item(keys.get_metadata(py), PyDict::new(py))?;
+    envelope.set_item(keys.get_position(py), position)?;
+    envelope.set_item(keys.get_errors(py), PyList::empty(py))?;
+
+    Ok(envelope.into_any())
+}
+
 pub fn serde_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, PyAny>> {
     match value {
         Value::Null => Ok(py.None().into_bound(py)),

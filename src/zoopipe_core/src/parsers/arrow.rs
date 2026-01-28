@@ -15,16 +15,22 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::{Arc, Mutex};
 
+use crate::io::SmartReader;
+
+struct ArrowReaderState {
+    reader: SmartReader<RecordBatch>,
+    current_batch: Option<(RecordBatch, usize)>,
+    position: usize,
+}
+
 /// Fast Arrow IPC (Feather) reader for ultra-efficient data loading.
 ///
 /// It leverages zero-copy principles where possible to stream records directly
 /// from the Arrow IPC format into the pipeline.
 #[pyclass]
 pub struct ArrowReader {
-    reader: Mutex<FileReader<BoxedReader>>,
-    current_batch: Mutex<Option<(RecordBatch, usize)>>,
+    state: Mutex<ArrowReaderState>,
     headers: Vec<Py<PyString>>,
-    position: Mutex<usize>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
     keys: InternedKeys,
@@ -48,8 +54,28 @@ impl ArrowReader {
             BoxedReader::File(BufReader::new(file))
         };
 
-        let reader = FileReader::try_new(boxed_reader, None).map_err(wrap_py_err)?;
-        let schema = reader.schema();
+        let reader = SmartReader::new(&path, boxed_reader, |br| {
+            match FileReader::try_new(br, None) {
+                Ok(r) => Box::new(r.map(|res| res.map_err(|e| e.to_string())))
+                    as Box<dyn Iterator<Item = Result<RecordBatch, String>> + Send>,
+                Err(e) => Box::new(std::iter::once(Err(e.to_string())))
+                    as Box<dyn Iterator<Item = Result<RecordBatch, String>> + Send>,
+            }
+        });
+
+        // Get schema from a temporary reader to extract headers
+        let temp_reader = if path.starts_with("s3://") {
+            BoxedReader::Remote(RemoteReader::new(
+                controller.store(),
+                ObjectPath::from(controller.path()),
+            ))
+        } else {
+            let file = File::open(&path).map_err(wrap_py_err)?;
+            BoxedReader::File(BufReader::new(file))
+        };
+        let fr = FileReader::try_new(temp_reader, None).map_err(wrap_py_err)?;
+        let schema = fr.schema();
+
         let headers: Vec<Py<PyString>> = schema
             .fields()
             .iter()
@@ -61,10 +87,12 @@ impl ArrowReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(ArrowReader {
-            reader: Mutex::new(reader),
-            current_batch: Mutex::new(None),
+            state: Mutex::new(ArrowReaderState {
+                reader,
+                current_batch: None,
+                position: 0,
+            }),
             headers,
-            position: Mutex::new(0),
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
@@ -76,7 +104,9 @@ impl ArrowReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        slf.next_internal(slf.py())
+        let py = slf.py();
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(py, &mut state)
     }
 
     pub fn read_batch<'py>(
@@ -84,11 +114,12 @@ impl ArrowReader {
         py: Python<'py>,
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         let batch = PyList::empty(py);
         let mut count = 0;
 
         while count < batch_size {
-            if let Some(item) = self.next_internal(py)? {
+            if let Some(item) = self.next_internal(py, &mut state)? {
                 batch.append(item)?;
                 count += 1;
             } else {
@@ -105,26 +136,23 @@ impl ArrowReader {
 }
 
 impl ArrowReader {
-    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
-        let mut reader = self.reader.lock().map_err(|_| PipeError::MutexLock)?;
-        let mut current_opt = self
-            .current_batch
-            .lock()
-            .map_err(|_| PipeError::MutexLock)?;
-        let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
-
-        if current_opt.is_none() {
-            if let Some(batch_res) = reader.next() {
-                let batch: RecordBatch = batch_res.map_err(wrap_py_err)?;
-                *current_opt = Some((batch, 0));
+    fn next_internal<'py>(
+        &self,
+        py: Python<'py>,
+        state: &mut ArrowReaderState,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        if state.current_batch.is_none() {
+            if let Some(batch_res) = state.reader.next() {
+                let batch: RecordBatch = batch_res.map_err(PyRuntimeError::new_err)?;
+                state.current_batch = Some((batch, 0));
             } else {
                 return Ok(None);
             }
         }
 
-        if let Some((batch, row_idx)) = current_opt.as_mut() {
-            let current_pos = *pos;
-            *pos += 1;
+        if let Some((batch, row_idx)) = state.current_batch.as_mut() {
+            let current_pos = state.position;
+            state.position += 1;
 
             let raw_data = PyDict::new(py);
             for (i, header) in self.headers.iter().enumerate() {
@@ -135,24 +163,19 @@ impl ArrowReader {
 
             *row_idx += 1;
             if *row_idx >= batch.num_rows() {
-                *current_opt = None;
+                state.current_batch = None;
             }
 
-            let envelope = PyDict::new(py);
-            let id = if self.generate_ids {
-                crate::utils::generate_entry_id(py)?
-            } else {
-                py.None().into_bound(py)
-            };
+            let env = crate::utils::wrap_in_envelope(
+                py,
+                &self.keys,
+                raw_data.into_any(),
+                self.status_pending.bind(py).clone(),
+                current_pos,
+                self.generate_ids,
+            )?;
 
-            envelope.set_item(self.keys.get_id(py), id)?;
-            envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-            envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-            envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-            envelope.set_item(self.keys.get_position(py), current_pos)?;
-            envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-            Ok(Some(envelope.into_any()))
+            Ok(Some(env))
         } else {
             Ok(None)
         }

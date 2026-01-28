@@ -251,21 +251,16 @@ impl ParquetReader {
                     raw_data.set_item(header.bind(py), val)?;
                 }
 
-                let envelope = PyDict::new(py);
-                let id = if self.generate_ids {
-                    crate::utils::generate_entry_id(py)?
-                } else {
-                    py.None().into_bound(py)
-                };
+                let env = crate::utils::wrap_in_envelope(
+                    py,
+                    &self.keys,
+                    raw_data.into_any(),
+                    self.status_pending.bind(py).clone(),
+                    pos,
+                    self.generate_ids,
+                )?;
 
-                envelope.set_item(self.keys.get_id(py), id)?;
-                envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-                envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-                envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-                envelope.set_item(self.keys.get_position(py), pos)?;
-                envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-                Ok(Some(envelope.into_any()))
+                Ok(Some(env))
             }
             Some(Err(_e)) => Ok(None),
             None => Ok(None),

@@ -141,30 +141,6 @@ impl SQLReader {
         }
         Ok(())
     }
-
-    fn create_envelope<'py>(
-        &self,
-        py: Python<'py>,
-        raw_data: Bound<'py, PyDict>,
-        current_pos: usize,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let envelope = PyDict::new(py);
-        let id = if self.generate_ids {
-            crate::utils::generate_entry_id(py)?
-        } else {
-            py.None().into_bound(py)
-        };
-
-        envelope.set_item(self.keys.get_id(py), id)?;
-        envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-        envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-        envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-        envelope.set_item(self.keys.get_position(py), current_pos)?;
-        envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-        Ok(envelope.into_any())
-    }
-
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let rx = self.ensure_receiver()?;
 
@@ -200,7 +176,14 @@ impl SQLReader {
                         raw_data.set_item(key.bind(py), value.into_pyobject(py)?)?;
                     }
 
-                    return Ok(Some(self.create_envelope(py, raw_data, current_pos)?));
+                    return Ok(Some(crate::utils::wrap_in_envelope(
+                        py,
+                        &self.keys,
+                        raw_data.into_any(),
+                        self.status_pending.bind(py).clone(),
+                        current_pos,
+                        self.generate_ids,
+                    )?));
                 }
                 Ok(SQLData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
                 Err(_) => return Ok(None),
