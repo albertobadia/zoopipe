@@ -178,7 +178,6 @@ Executors control how ZooPipe scales **up** within a single node using Rust-mana
 
 - [**SQL Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/sql.md) - Read from and write to SQL databases with batch optimization
 - [**SQL Pagination**](https://github.com/albertobadia/zoopipe/blob/main/docs/sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
-- [**DuckDB Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/duckdb.md) - Analytical database for OLAP workloads
 
 #### Messaging Systems
 

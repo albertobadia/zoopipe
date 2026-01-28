@@ -11,13 +11,17 @@ use crate::error::PipeError;
 use crate::io::get_runtime;
 use crate::utils::interning::InternedKeys;
 
+struct SQLReaderState {
+    receiver: Option<crossbeam_channel::Receiver<SQLData>>,
+    column_names: Option<Vec<Py<PyString>>>,
+    position: usize,
+}
+
 #[pyclass]
 pub struct SQLReader {
     uri: String,
     query: String,
-    receiver: Mutex<Option<crossbeam_channel::Receiver<SQLData>>>,
-    column_names: Mutex<Option<Vec<Py<PyString>>>>,
-    position: Mutex<usize>,
+    state: Mutex<SQLReaderState>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
     keys: InternedKeys,
@@ -36,9 +40,11 @@ impl SQLReader {
         Ok(SQLReader {
             uri,
             query,
-            receiver: Mutex::new(None),
-            column_names: Mutex::new(None),
-            position: Mutex::new(0),
+            state: Mutex::new(SQLReaderState {
+                receiver: None,
+                column_names: None,
+                position: 0,
+            }),
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
@@ -50,7 +56,9 @@ impl SQLReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        slf.next_internal(slf.py())
+        let py = slf.py();
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(py, &mut state)
     }
 
     pub fn read_batch<'py>(
@@ -58,10 +66,11 @@ impl SQLReader {
         py: Python<'py>,
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         let batch = PyList::empty(py);
 
         for _ in 0..batch_size {
-            if let Some(item) = self.next_internal(py)? {
+            if let Some(item) = self.next_internal(py, &mut state)? {
                 batch.append(item)?;
             } else {
                 break;
@@ -77,10 +86,11 @@ impl SQLReader {
 }
 
 impl SQLReader {
-    fn ensure_receiver(&self) -> PyResult<crossbeam_channel::Receiver<SQLData>> {
-        let mut receiver_opt = self.receiver.lock().map_err(|_| PipeError::MutexLock)?;
-
-        if let Some(rx) = receiver_opt.as_ref() {
+    fn ensure_receiver(
+        &self,
+        state: &mut SQLReaderState,
+    ) -> PyResult<crossbeam_channel::Receiver<SQLData>> {
+        if let Some(rx) = state.receiver.as_ref() {
             return Ok(rx.clone());
         }
 
@@ -98,7 +108,7 @@ impl SQLReader {
         });
 
         let rx_clone = rx.clone();
-        *receiver_opt = Some(rx);
+        state.receiver = Some(rx);
         Ok(rx_clone)
     }
 
@@ -141,8 +151,13 @@ impl SQLReader {
         }
         Ok(())
     }
-    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
-        let rx = self.ensure_receiver()?;
+
+    fn next_internal<'py>(
+        &self,
+        py: Python<'py>,
+        state: &mut SQLReaderState,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let rx = self.ensure_receiver(state)?;
 
         loop {
             match rx.recv() {
@@ -151,11 +166,10 @@ impl SQLReader {
                         .into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    *self.column_names.lock().map_err(|_| PipeError::MutexLock)? = Some(py_cols);
+                    state.column_names = Some(py_cols);
                 }
                 Ok(SQLData::Row(row_values)) => {
-                    let cols_lock = self.column_names.lock().map_err(|_| PipeError::MutexLock)?;
-                    let cols = match cols_lock.as_ref() {
+                    let cols = match state.column_names.as_ref() {
                         Some(c) => c,
                         None => {
                             return Err(PyRuntimeError::new_err(
@@ -164,9 +178,8 @@ impl SQLReader {
                         }
                     };
 
-                    let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
-                    let current_pos = *pos;
-                    *pos += 1;
+                    let current_pos = state.position;
+                    state.position += 1;
 
                     let raw_data = PyDict::new(py);
                     for (i, value) in row_values.into_iter().enumerate() {

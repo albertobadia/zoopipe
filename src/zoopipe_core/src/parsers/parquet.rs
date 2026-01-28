@@ -374,7 +374,7 @@ impl ParquetWriter {
             .lock()
             .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(w) = writer_guard.take() {
-            let _: parquet::file::metadata::ParquetMetaData = w.close().map_err(wrap_py_err)?;
+            let _metadata = w.close().map_err(wrap_py_err)?;
         }
         let mut inner_guard = self
             .inner_writer

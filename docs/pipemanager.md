@@ -278,17 +278,17 @@ manager = PipeManager(
     pipes=[
         Pipe(
             input_adapter=CSVInputAdapter("users.csv"),
-            output_adapter=DuckDBOutputAdapter("analytics.duckdb", table_name="users"),
+            output_adapter=CSVOutputAdapter("users_clean.csv"),
             schema_model=UserSchema,
         ),
         Pipe(
             input_adapter=CSVInputAdapter("orders.csv"),
-            output_adapter=DuckDBOutputAdapter("analytics.duckdb", table_name="orders"),
+            output_adapter=CSVOutputAdapter("orders_clean.csv"),
             schema_model=OrderSchema,
         ),
         Pipe(
             input_adapter=CSVInputAdapter("products.csv"),
-            output_adapter=DuckDBOutputAdapter("analytics.duckdb", table_name="products"),
+            output_adapter=CSVOutputAdapter("products_clean.csv"),
             schema_model=ProductSchema,
         ),
     ]

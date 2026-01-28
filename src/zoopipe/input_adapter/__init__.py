@@ -1,7 +1,6 @@
 from zoopipe.input_adapter.arrow import ArrowInputAdapter
 from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.input_adapter.csv import CSVInputAdapter
-from zoopipe.input_adapter.duckdb import DuckDBInputAdapter
 from zoopipe.input_adapter.excel import ExcelInputAdapter
 from zoopipe.input_adapter.json import JSONInputAdapter
 from zoopipe.input_adapter.kafka import KafkaInputAdapter
@@ -13,7 +12,6 @@ __all__ = [
     "BaseInputAdapter",
     "CSVInputAdapter",
     "JSONInputAdapter",
-    "DuckDBInputAdapter",
     "ArrowInputAdapter",
     "ExcelInputAdapter",
     "SQLInputAdapter",

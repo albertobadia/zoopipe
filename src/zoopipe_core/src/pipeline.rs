@@ -4,7 +4,6 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList};
 
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::csv::{CSVReader, CSVWriter};
-use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::kafka::{KafkaReader, KafkaWriter};
@@ -17,7 +16,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub enum PipeReader {
     CSV(Py<CSVReader>),
     JSON(Py<JSONReader>),
-    DuckDB(Py<DuckDBReader>),
     Arrow(Py<ArrowReader>),
     SQL(Py<SQLReader>),
     Parquet(Py<ParquetReader>),
@@ -35,7 +33,6 @@ impl PipeReader {
         match self {
             PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::JSON(r) => r.bind(py).borrow().read_batch(py, batch_size),
-            PipeReader::DuckDB(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Arrow(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::SQL(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Parquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
@@ -49,7 +46,6 @@ impl PipeReader {
         match self {
             PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
             PipeReader::JSON(r) => JSONReader::__next__(r.bind(py).borrow()),
-            PipeReader::DuckDB(r) => DuckDBReader::__next__(r.bind(py).borrow()),
             PipeReader::Arrow(r) => ArrowReader::__next__(r.bind(py).borrow()),
             PipeReader::SQL(r) => SQLReader::__next__(r.bind(py).borrow()),
             PipeReader::Parquet(r) => ParquetReader::__next__(r.bind(py).borrow()),
@@ -64,7 +60,6 @@ impl PipeReader {
 pub enum PipeWriter {
     CSV(Py<CSVWriter>),
     JSON(Py<JSONWriter>),
-    DuckDB(Py<DuckDBWriter>),
     Arrow(Py<ArrowWriter>),
     SQL(Py<SQLWriter>),
     Parquet(Py<ParquetWriter>),
@@ -78,7 +73,6 @@ impl PipeWriter {
         match self {
             PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, entries),
-            PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, entries),
@@ -92,7 +86,6 @@ impl PipeWriter {
         match self {
             PipeWriter::CSV(w) => w.bind(py).borrow().close(),
             PipeWriter::JSON(w) => w.bind(py).borrow().close(),
-            PipeWriter::DuckDB(w) => w.bind(py).borrow().close(),
             PipeWriter::Arrow(w) => w.bind(py).borrow().close(),
             PipeWriter::SQL(w) => w.bind(py).borrow().close(),
             PipeWriter::Parquet(w) => w.bind(py).borrow().close(),
