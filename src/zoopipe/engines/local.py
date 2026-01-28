@@ -65,17 +65,16 @@ class MultiProcessEngine(BaseEngine):
     """
 
     def __init__(self):
+        super().__init__()
         self._pipe_processes: list[PipeProcess] = []
-        self._start_time: datetime | None = None
-        self._cached_report: PipeReport | None = None
 
     def start(self, pipes: list[Pipe]) -> None:
         if self.is_running:
             raise RuntimeError("Engine is already running")
 
+        self._reset_report()
         self._start_time = datetime.now()
         self._pipe_processes.clear()
-        self._cached_report = None
 
         for i, pipe in enumerate(pipes):
             total_processed: Synchronized[c_longlong] = multiprocessing.Value(
@@ -142,52 +141,29 @@ class MultiProcessEngine(BaseEngine):
         )
 
     @property
-    def report(self) -> PipeReport:
-        if self._cached_report and self._cached_report.is_finished:
-            return self._cached_report
-
-        report = PipeReport()
-        report.start_time = self._start_time
-
-        for pp in self._pipe_processes:
-            report.total_processed += pp.total_processed.value
-            report.success_count += pp.success_count.value
-            report.error_count += pp.error_count.value
-            report.ram_bytes += pp.ram_bytes.value
-
-        all_finished = all(pp.is_finished.value == 1 for pp in self._pipe_processes)
-        any_error = any(pp.has_error.value == 1 for pp in self._pipe_processes)
-
-        if all_finished:
-            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
-            report.end_time = datetime.now()
-            report._finished_event.set()
-            self._cached_report = report
-        else:
-            report.status = PipeStatus.RUNNING
-
-        return report
-
-    @property
     def pipe_reports(self) -> list[PipeReport]:
         """Get reports for all managed pipes."""
-        return [self.get_pipe_report(i) for i in range(len(self._pipe_processes))]
-
-    def get_pipe_report(self, index: int) -> PipeReport:
         if not self._pipe_processes:
-            raise RuntimeError("Engine has not been started")
-        pp = self._pipe_processes[index]
-        status = PipeStatus.RUNNING
-        if pp.is_finished.value == 1:
-            status = (
-                PipeStatus.FAILED if pp.has_error.value == 1 else PipeStatus.COMPLETED
-            )
+            return []
 
-        return PipeReport(
-            pipe_index=index,
-            status=status,
-            total_processed=pp.total_processed.value,
-            success_count=pp.success_count.value,
-            error_count=pp.error_count.value,
-            ram_bytes=pp.ram_bytes.value,
-        )
+        reports = []
+        for i, pp in enumerate(self._pipe_processes):
+            status = PipeStatus.RUNNING
+            if pp.is_finished.value == 1:
+                status = (
+                    PipeStatus.FAILED
+                    if pp.has_error.value == 1
+                    else PipeStatus.COMPLETED
+                )
+
+            reports.append(
+                PipeReport(
+                    pipe_index=i,
+                    status=status,
+                    total_processed=pp.total_processed.value,
+                    success_count=pp.success_count.value,
+                    error_count=pp.error_count.value,
+                    ram_bytes=pp.ram_bytes.value,
+                )
+            )
+        return reports

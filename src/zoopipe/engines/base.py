@@ -17,6 +17,13 @@ class BaseEngine(ABC):
     (locally, distributed, etc.).
     """
 
+    def __init__(self):
+        from zoopipe.report import PipeReport
+
+        self._report = PipeReport()
+        self._start_time = None
+        self._cached_report = None
+
     @abstractmethod
     def start(self, pipes: list[Pipe]) -> None:
         """Execute the given list of pipes."""
@@ -39,10 +46,56 @@ class BaseEngine(ABC):
         pass
 
     @property
-    @abstractmethod
     def report(self) -> PipeReport:
         """Get an aggregated report of the current execution."""
-        pass
+        from datetime import datetime
+
+        from zoopipe.report import PipeStatus
+
+        # If cache is finished, returns cache
+        if self._cached_report and self._cached_report.is_finished:
+            return self._cached_report
+
+        report = self._report
+        report.start_time = self._start_time
+
+        try:
+            p_reports = self.pipe_reports
+        except (AttributeError, RuntimeError):
+            return report
+
+        # Reset counters to re-aggregate
+        report.total_processed = 0
+        report.success_count = 0
+        report.error_count = 0
+        report.ram_bytes = 0
+
+        for pr in p_reports:
+            report.total_processed += pr.total_processed
+            report.success_count += pr.success_count
+            report.error_count += pr.error_count
+            report.ram_bytes += pr.ram_bytes
+
+        all_finished = all(pr.is_finished for pr in p_reports)
+        any_error = any(pr.has_error for pr in p_reports)
+
+        if all_finished and p_reports:
+            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
+            report.end_time = datetime.now()
+            report._finished_event.set()
+            self._cached_report = report
+        else:
+            report.status = PipeStatus.RUNNING if p_reports else PipeStatus.PENDING
+
+        return report
+
+    def _reset_report(self) -> None:
+        """Reset the internal report state for a new execution."""
+        from zoopipe.report import PipeReport
+
+        self._report = PipeReport()
+        self._start_time = None
+        self._cached_report = None
 
     @property
     def pipe_reports(self) -> list[PipeReport]:
@@ -50,4 +103,10 @@ class BaseEngine(ABC):
         raise AttributeError("Engine does not support per-pipe reports")
 
     def get_pipe_report(self, pipe_index: int) -> PipeReport:
-        raise AttributeError("Engine does not support per-pipe reports")
+        """Get report for a specific pipe by index."""
+        reports = self.pipe_reports
+        if not reports:
+            raise RuntimeError("Engine has not been started")
+        if 0 <= pipe_index < len(reports):
+            return reports[pipe_index]
+        raise IndexError(f"Pipe index {pipe_index} out of range")

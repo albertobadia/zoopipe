@@ -145,11 +145,10 @@ class ZoosyncPoolEngine(BaseEngine):
     """
 
     def __init__(self, n_workers: int | None = None):
+        super().__init__()
         self.n_workers = n_workers
         self._pool = None
         self._handles: list[ZoosyncPipeHandle] = []
-        self._start_time: datetime | None = None
-        self._cached_report: PipeReport | None = None
         self._temp_dir = None
 
     def start(self, pipes: list["Pipe"]) -> None:
@@ -163,9 +162,9 @@ class ZoosyncPoolEngine(BaseEngine):
                 "zoosync is not installed. Please install it with 'uv add zoosync'"
             )
 
+        self._reset_report()
         self._start_time = datetime.now()
         self._handles.clear()
-        self._cached_report = None
 
         # Create a temp directory for stats files
         self._temp_dir = tempfile.TemporaryDirectory(prefix="zoopipe_zoosync_")
@@ -227,39 +226,6 @@ class ZoosyncPoolEngine(BaseEngine):
             if not is_finished:
                 return True
         return False
-
-    @property
-    def report(self) -> PipeReport:
-        if self._cached_report and self._cached_report.is_finished:
-            return self._cached_report
-
-        report = PipeReport()
-        report.start_time = self._start_time
-
-        all_finished = True
-        any_error = False
-
-        for h in self._handles:
-            proc, succ, err, ram, fin, has_err = MmapStats.read_file(h.stats_filepath)
-            report.total_processed += proc
-            report.success_count += succ
-            report.error_count += err
-            report.ram_bytes += ram
-
-            if not fin:
-                all_finished = False
-            if has_err:
-                any_error = True
-
-        if all_finished and self._handles:
-            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
-            report.end_time = datetime.now()
-            report._finished_event.set()
-            self._cached_report = report
-        else:
-            report.status = PipeStatus.RUNNING
-
-        return report
 
     @property
     def pipe_reports(self) -> list[PipeReport]:
