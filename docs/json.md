@@ -276,6 +276,20 @@ Common errors:
 - **Permission Denied**: Can't read input or write output
 - **Encoding Error**: Non-UTF-8 characters in file
 
+## Compression
+
+Similar to CSV, JSON adapters support transparent compression and decompression for JSONL files based on file extension:
+
+- `.jsonl.gz`: Gzip compression
+- `.jsonl.zst`: Zstandard compression
+
+```python
+pipe = Pipe(
+    input_adapter=JSONInputAdapter("logs.jsonl.zst"),
+    output_adapter=JSONOutputAdapter("archived.jsonl.gz", format="jsonl"),
+)
+```
+
 ## Performance Tips
 
 1. **JSONL vs Array**: JSONL is 2-3x faster for large datasets

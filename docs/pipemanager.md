@@ -198,9 +198,9 @@ Returns `True` if the engine reports that execution is still active.
 
 Returns a list of `PipeReport` objects, one for each pipe.
 
-##### `report -> FlowReport`
+##### `report -> PipeReport`
 
-Returns an aggregated `FlowReport` combining metrics from all pipes.
+Returns an aggregated `PipeReport` combining metrics from all pipes.
 
 ### PipeReport
 
@@ -217,14 +217,11 @@ Individual pipe report with the following fields:
 
 ## The MultiProcessEngine
 
-The default engine uses Python's `multiprocessing` module with a forking strategy.
+The default engine uses Python's `multiprocessing` module.
 
 - **True parallelism**: Each pipe runs on a separate CPU core.
 - **Memory isolation**: Each pipe has its own memory space.
 - **Fault isolation**: If one pipe crashes, others continue running.
-
-### Process Start Method
-ZooPipe initializes `multiprocessing` using the `fork` start method. This is significantly faster for data-heavy workloads as it avoids re-loading the Python interpreter and modules for every worker.
 
 ## Performance Considerations
 

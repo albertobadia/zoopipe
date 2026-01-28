@@ -441,6 +441,10 @@ export AWS_REGION=us-east-1
 
 Or use AWS credential files (`~/.aws/credentials`).
 
+## Native Compression
+
+Parquet files are natively compressed. ZooPipe utilizes the defaults provided by the Arrow/Parquet ecosystems (typically Snappy or Zstandard) to ensure optimal storage and read performance. External compression (like `.parquet.gz`) is not supported as Parquet requires random access for efficient columnar reads.
+
 ## Performance Tips
 
 1. **Compression**: Parquet automatically uses Snappy compression for optimal balance

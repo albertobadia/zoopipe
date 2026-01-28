@@ -5,12 +5,11 @@ from zoopipe import (
     BaseEngine,
     CSVInputAdapter,
     CSVOutputAdapter,
-    FlowReport,
     MultiProcessEngine,
     Pipe,
     PipeManager,
+    PipeReport,
 )
-from zoopipe.engines.local import PipeReport
 
 
 class UserSchema(BaseModel):
@@ -22,7 +21,7 @@ class UserSchema(BaseModel):
 class MockEngine(BaseEngine):
     def __init__(self):
         self._running = False
-        self._report = FlowReport()
+        self._report = PipeReport()
         self.pipes_started = []
 
     def start(self, pipes):

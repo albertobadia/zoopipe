@@ -5,7 +5,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from zoopipe.hooks.base import BaseHook, HookStore
 from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
-from zoopipe.report import EntryStatus, FlowReport, get_logger
+from zoopipe.report import EntryStatus, PipeReport, get_logger
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
@@ -77,7 +77,7 @@ class Pipe:
         self.report_update_interval = report_update_interval
         self.executor = executor or SingleThreadExecutor()
 
-        self._report = FlowReport()
+        self._report = PipeReport()
         self._thread: threading.Thread | None = None
         self._store: HookStore = {}
         self._validator = TypeAdapter(self.schema_model) if self.schema_model else None
@@ -116,7 +116,7 @@ class Pipe:
                 entry["errors"].append({"msg": str(error), "type": "validation_error"})
 
     @property
-    def report(self) -> FlowReport:
+    def report(self) -> PipeReport:
         """Get the current progress report of the pipeline."""
         return self._report
 

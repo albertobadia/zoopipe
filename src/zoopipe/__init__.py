@@ -25,8 +25,8 @@ from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
 from zoopipe.report import (
     EntryStatus,
     EntryTypedDict,
-    FlowReport,
-    FlowStatus,
+    PipeReport,
+    PipeStatus,
     get_logger,
 )
 from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
@@ -36,8 +36,8 @@ __all__ = [
     "PipeManager",
     "BaseEngine",
     "MultiProcessEngine",
-    "FlowReport",
-    "FlowStatus",
+    "PipeReport",
+    "PipeStatus",
     "BaseHook",
     "HookStore",
     "EntryStatus",

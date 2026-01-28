@@ -7,9 +7,11 @@ ZooPipe provides seamless cloud storage integration through S3-compatible object
 ZooPipe integrates with cloud storage via the [object_store](https://docs.rs/object_store/) Rust crate, providing:
 
 - **S3 Support**: Direct integration with Amazon S3
-- **URI-Based Access**: Use `s3://bucket/path/file` URIs just like local paths
+- **GCS Support**: Native Google Cloud Storage support
+- **Azure Support**: Microsoft Azure Blob Storage support
+- **URI-Based Access**: Use `s3://`, `gs://`, or `az://` URIs just like local paths
 - **Automatic Handling**: No code changes needed beyond URI format
-- **Compatible Services**: Works with AWS S3, MinIO, Wasabi, and other S3-compatible services
+- **Compatible Services**: Works with AWS S3, MinIO, Wasabi, GCS, Azure, and other S3-compatible services
 - **Format Support**: Available for CSV, JSON, Arrow, and Parquet adapters
 - **Hybrid I/O Strategy**: ZooPipe automatically uses persistent background threads for S3 streams to prevent network latency from blocking the Python GIL, ensuring high throughput even in cloud environments.
 
@@ -34,13 +36,25 @@ export AWS_SECRET_ACCESS_KEY=your_secret_key_here
 export AWS_REGION=us-east-1
 ```
 
-Or use AWS credential files (`~/.aws/credentials`):
+Or use AWS credential files (`~/.aws/credentials`).
 
-```ini
-[default]
-aws_access_key_id = your_access_key_here
-aws_secret_access_key = your_secret_key_here
-region = us-east-1
+### Google Cloud Storage (GCS)
+
+For GCS, use the standard Google Application Credentials:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+Or ensure the environment is authenticated via `gcloud auth application-default login`.
+
+### Azure Blob Storage
+
+For Azure, set the following environment variables:
+
+```bash
+export AZURE_STORAGE_ACCOUNT_NAME=your_storage_account
+export AZURE_STORAGE_ACCESS_KEY=your_access_key
 ```
 
 ### URI Format
@@ -51,10 +65,22 @@ S3 URIs follow the standard format:
 s3://bucket-name/path/to/file.ext
 ```
 
+GCS URIs support `gs://` or `gcs://`:
+
+```
+gs://bucket-name/path/to/file.ext
+```
+
+Azure URIs use `az://` or `abfs://` (Azure Data Lake Gen2):
+
+```
+az://container-name/path/to/file.ext
+```
+
 Examples:
 - `s3://my-data-bucket/raw/users.csv`
-- `s3://analytics/processed/2024/01/sales.parquet`
-- `s3://exports/customers.jsonl`
+- `gs://analytics-data/processed/sales.parquet`
+- `az://exports/customers.jsonl`
 
 ## Usage by Adapter Type
 

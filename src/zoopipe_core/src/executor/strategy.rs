@@ -29,8 +29,8 @@ impl ExecutionStrategy for SingleThreadStrategy {
 }
 
 /// Strategy that utilizes a Rayon thread pool for concurrent batch processing.
-/// 
-/// It coordinates parallel execution while safely managing GIL acquisition 
+///
+/// It coordinates parallel execution while safely managing GIL acquisition
 /// for each worker thread during call-backs to Python.
 pub struct ParallelStrategy {
     thread_pool: rayon::ThreadPool,
@@ -57,18 +57,15 @@ impl ExecutionStrategy for ParallelStrategy {
         batches: Vec<Bound<'py, PyList>>,
         processor: &Bound<'py, PyAny>,
     ) -> PyResult<Vec<Bound<'py, PyAny>>> {
-        use rayon::prelude::*;
         use crossbeam_channel::bounded;
+        use rayon::prelude::*;
 
         let batch_count = batches.len();
         let (result_tx, result_rx) = bounded(batch_count);
 
         let processor_py: Py<PyAny> = processor.clone().unbind();
-        
-        let batch_data: Vec<Py<PyList>> = batches
-            .into_iter()
-            .map(|b| b.unbind())
-            .collect();
+
+        let batch_data: Vec<Py<PyList>> = batches.into_iter().map(|b| b.unbind()).collect();
 
         // Release the GIL while we wait for the Rayon threads to finish
         // This is CRITICAL to avoid deadlocks:
@@ -83,8 +80,7 @@ impl ExecutionStrategy for ParallelStrategy {
                         let result = Python::attach(|py| {
                             let processor = processor_py.bind(py);
                             let batch = batch.bind(py);
-                            processor.call1((batch,))
-                                .map(|res| res.unbind())
+                            processor.call1((batch,)).map(|res| res.unbind())
                         });
                         let _ = result_tx.send((idx, result));
                     });
@@ -92,28 +88,31 @@ impl ExecutionStrategy for ParallelStrategy {
         });
 
         let mut results: Vec<Option<Py<PyAny>>> = (0..batch_count).map(|_| None).collect();
-        
+
         for _ in 0..batch_count {
             match result_rx.recv() {
                 Ok((idx, Ok(result))) => {
                     results[idx] = Some(result);
                 }
                 Ok((_, Err(e))) => return Err(e),
-                Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(
-                    format!("Channel receive error: {}", e)
-                )),
+                Err(e) => {
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Channel receive error: {}",
+                        e
+                    )));
+                }
             }
         }
 
-        results.into_iter()
-            .map(|opt| opt.ok_or_else(|| 
-                pyo3::exceptions::PyRuntimeError::new_err("Missing batch result")
-            ))
+        results
+            .into_iter()
+            .map(|opt| {
+                opt.ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Missing batch result"))
+            })
             .map(|r| r.map(|py_obj| py_obj.bind(py).clone()))
             .collect()
     }
 }
-
 
 #[cfg(test)]
 mod tests {

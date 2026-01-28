@@ -1,18 +1,17 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyAnyMethods};
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use pyo3::types::{PyAnyMethods, PyDict, PyList};
 
-use crate::parsers::sql::{SQLReader, SQLWriter};
-use crate::parsers::csv::{CSVReader, CSVWriter};
-use crate::parsers::json::{JSONReader, JSONWriter};
-use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
+use crate::parsers::csv::{CSVReader, CSVWriter};
+use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
+use crate::parsers::excel::{ExcelReader, ExcelWriter};
+use crate::parsers::json::{JSONReader, JSONWriter};
+use crate::parsers::kafka::{KafkaReader, KafkaWriter};
 use crate::parsers::parquet::{ParquetReader, ParquetWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
-use crate::parsers::excel::{ExcelReader, ExcelWriter};
-use crate::parsers::kafka::{KafkaReader, KafkaWriter};
+use crate::parsers::sql::{SQLReader, SQLWriter};
 use std::sync::atomic::{AtomicUsize, Ordering};
-
 
 #[derive(FromPyObject)]
 pub enum PipeReader {
@@ -28,7 +27,11 @@ pub enum PipeReader {
 }
 
 impl PipeReader {
-    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
         match self {
             PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::JSON(r) => r.bind(py).borrow().read_batch(py, batch_size),
@@ -41,7 +44,7 @@ impl PipeReader {
             PipeReader::Kafka(_) => Ok(None),
         }
     }
-    
+
     pub fn next<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         match self {
             PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
@@ -84,7 +87,7 @@ impl PipeWriter {
             PipeWriter::Kafka(w) => w.bind(py).borrow().write_batch(py, entries),
         }
     }
-    
+
     pub fn close(&self, py: Python) -> PyResult<()> {
         match self {
             PipeWriter::CSV(w) => w.bind(py).borrow().close(),
@@ -114,8 +117,12 @@ impl PipeExecutor {
         processor: &Bound<'py, PyAny>,
     ) -> PyResult<Vec<Bound<'py, PyAny>>> {
         match self {
-            PipeExecutor::SingleThread(e) => e.bind(py).borrow().process_batches(py, batches, processor),
-            PipeExecutor::MultiThread(e) => e.bind(py).borrow().process_batches(py, batches, processor),
+            PipeExecutor::SingleThread(e) => {
+                e.bind(py).borrow().process_batches(py, batches, processor)
+            }
+            PipeExecutor::MultiThread(e) => {
+                e.bind(py).borrow().process_batches(py, batches, processor)
+            }
         }
     }
 
@@ -159,7 +166,7 @@ impl PipeCounters {
 }
 
 /// Internal Rust implementation of the data pipeline.
-/// 
+///
 /// NativePipe handles the heavy lifting of reading from sources, coordinating
 /// batch processing (which calls back into Python), and writing to destinations.
 /// It is designed for high performance and minimal GIL interaction during I/O.
@@ -216,11 +223,11 @@ impl NativePipe {
 
         let batch_size = self.executor.get_batch_size(py)?;
         let concurrency = self.executor.get_concurrency(py)?;
-        
+
         // Setup buffering for both row-wise accumulation and batch-wise accumulation
         let mut row_buffer = Vec::with_capacity(batch_size);
         let mut batch_buffer: Vec<Bound<'_, PyList>> = Vec::with_capacity(concurrency);
-        
+
         loop {
             // Priority 1: Check if reader has a full batch ready (e.g. Arrow/Parquet/SQL chunks)
             if let Some(batch) = self.reader.read_batch(py, batch_size)? {
@@ -239,7 +246,7 @@ impl NativePipe {
                         let py_list = PyList::new(py, row_buffer.iter())?;
                         batch_buffer.push(py_list);
                         row_buffer.clear();
-                        
+
                         if batch_buffer.len() >= concurrency {
                             self.process_buffered_batches(py, &mut batch_buffer, report)?;
                         }
@@ -251,8 +258,8 @@ impl NativePipe {
 
         // Flush remaining rows
         if !row_buffer.is_empty() {
-             let py_list = PyList::new(py, row_buffer.iter())?;
-             batch_buffer.push(py_list);
+            let py_list = PyList::new(py, row_buffer.iter())?;
+            batch_buffer.push(py_list);
         }
 
         // Flush remaining batches
@@ -270,8 +277,6 @@ impl NativePipe {
 
         Ok(())
     }
-
-
 }
 
 impl NativePipe {
@@ -282,15 +287,17 @@ impl NativePipe {
         report: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let batch_processor = self.batch_processor.bind(py);
-        
+
         let batches = std::mem::take(batch_buffer);
-        let results = self.executor.process_batches(py, batches, batch_processor)?;
-        
+        let results = self
+            .executor
+            .process_batches(py, batches, batch_processor)?;
+
         for processed_entries in results {
             if let Ok(processed_list) = processed_entries.cast::<PyList>() {
-               self.handle_processed_entries(py, processed_list, report)?;
+                self.handle_processed_entries(py, processed_list, report)?;
             } else {
-               return Err(PyRuntimeError::new_err("Batch processor returned non-list"));
+                return Err(PyRuntimeError::new_err("Batch processor returned non-list"));
             }
         }
         Ok(())
@@ -308,20 +315,31 @@ impl NativePipe {
         let val_key = pyo3::intern!(py, "validated_data");
         let raw_key = pyo3::intern!(py, "raw_data");
         let status_key = pyo3::intern!(py, "status");
-        
+
         let status_failed = self.status_failed.bind(py);
         let status_validated = self.status_validated.bind(py);
 
         for entry in processed_list.iter() {
             let dict = entry.cast::<PyDict>()?;
-            let status = dict.get_item(status_key)?.ok_or_else(|| PyRuntimeError::new_err("Missing status in entry"))?;
-            
+            let status = dict
+                .get_item(status_key)?
+                .ok_or_else(|| PyRuntimeError::new_err("Missing status in entry"))?;
+
             if status.eq(status_failed)? {
-                error_list.push(dict.get_item(raw_key)?.ok_or_else(|| PyRuntimeError::new_err("Missing raw_data in error entry"))?);
+                error_list.push(
+                    dict.get_item(raw_key)?.ok_or_else(|| {
+                        PyRuntimeError::new_err("Missing raw_data in error entry")
+                    })?,
+                );
             } else if status.eq(status_validated)? {
-                success_data.push(dict.get_item(val_key)?.ok_or_else(|| PyRuntimeError::new_err("Missing validated_data in success entry"))?);
+                success_data.push(dict.get_item(val_key)?.ok_or_else(|| {
+                    PyRuntimeError::new_err("Missing validated_data in success entry")
+                })?);
             } else {
-                success_data.push(dict.get_item(raw_key)?.ok_or_else(|| PyRuntimeError::new_err("Missing raw_data in entry"))?);
+                success_data.push(
+                    dict.get_item(raw_key)?
+                        .ok_or_else(|| PyRuntimeError::new_err("Missing raw_data in entry"))?,
+                );
             }
         }
 
@@ -330,7 +348,9 @@ impl NativePipe {
             self.writer.write_batch(py, data_list.into_any())?;
         }
 
-        if !error_list.is_empty() && let Some(ref ew) = self.error_writer {
+        if !error_list.is_empty()
+            && let Some(ref ew) = self.error_writer
+        {
             let data_list = PyList::new(py, error_list.iter())?;
             ew.write_batch(py, data_list.into_any())?;
         }
@@ -338,13 +358,24 @@ impl NativePipe {
         let batch_len = processed_list.len();
         let success_len = success_data.len();
         let error_len = error_list.len();
-        
-        self.counters.total_processed.fetch_add(batch_len, Ordering::Relaxed);
-        self.counters.success_count.fetch_add(success_len, Ordering::Relaxed);
-        self.counters.error_count.fetch_add(error_len, Ordering::Relaxed);
-        let batches_count = self.counters.batches_processed.fetch_add(1, Ordering::Relaxed) + 1;
 
-        let should_sync = self.report_update_interval > 0 && batches_count.is_multiple_of(self.report_update_interval);
+        self.counters
+            .total_processed
+            .fetch_add(batch_len, Ordering::Relaxed);
+        self.counters
+            .success_count
+            .fetch_add(success_len, Ordering::Relaxed);
+        self.counters
+            .error_count
+            .fetch_add(error_len, Ordering::Relaxed);
+        let batches_count = self
+            .counters
+            .batches_processed
+            .fetch_add(1, Ordering::Relaxed)
+            + 1;
+
+        let should_sync = self.report_update_interval > 0
+            && batches_count.is_multiple_of(self.report_update_interval);
 
         if should_sync {
             self.sync_report(py, report)?;
@@ -354,11 +385,20 @@ impl NativePipe {
     }
 
     fn sync_report(&self, _py: Python<'_>, report: &Bound<'_, PyAny>) -> PyResult<()> {
-        report.setattr("total_processed", self.counters.total_processed.load(Ordering::Relaxed))?;
-        report.setattr("success_count", self.counters.success_count.load(Ordering::Relaxed))?;
-        report.setattr("error_count", self.counters.error_count.load(Ordering::Relaxed))?;
+        report.setattr(
+            "total_processed",
+            self.counters.total_processed.load(Ordering::Relaxed),
+        )?;
+        report.setattr(
+            "success_count",
+            self.counters.success_count.load(Ordering::Relaxed),
+        )?;
+        report.setattr(
+            "error_count",
+            self.counters.error_count.load(Ordering::Relaxed),
+        )?;
         report.setattr("ram_bytes", get_process_ram_rss())?;
-        
+
         Ok(())
     }
 }
@@ -387,11 +427,11 @@ mod tests {
     #[test]
     fn test_pipe_counters_increment() {
         let counters = PipeCounters::new();
-        
+
         counters.total_processed.fetch_add(10, Ordering::Relaxed);
         counters.success_count.fetch_add(8, Ordering::Relaxed);
         counters.error_count.fetch_add(2, Ordering::Relaxed);
-        
+
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 10);
         assert_eq!(counters.success_count.load(Ordering::Relaxed), 8);
         assert_eq!(counters.error_count.load(Ordering::Relaxed), 2);
@@ -400,7 +440,7 @@ mod tests {
     #[test]
     fn test_pipe_counters_batches() {
         let counters = PipeCounters::new();
-        
+
         let batch_count = counters.batches_processed.fetch_add(1, Ordering::Relaxed);
         assert_eq!(batch_count, 0);
         assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 1);
@@ -414,12 +454,12 @@ mod tests {
     #[test]
     fn test_pipe_counters_multiple_increments() {
         let counters = PipeCounters::new();
-        
+
         for _ in 0..100 {
             counters.total_processed.fetch_add(1, Ordering::Relaxed);
             counters.success_count.fetch_add(1, Ordering::Relaxed);
         }
-        
+
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 100);
         assert_eq!(counters.success_count.load(Ordering::Relaxed), 100);
     }
@@ -427,11 +467,11 @@ mod tests {
     #[test]
     fn test_pipe_counters_mixed_operations() {
         let counters = PipeCounters::new();
-        
+
         counters.total_processed.fetch_add(50, Ordering::Relaxed);
         counters.success_count.fetch_add(30, Ordering::Relaxed);
         counters.error_count.fetch_add(20, Ordering::Relaxed);
-        
+
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 50);
         assert_eq!(counters.success_count.load(Ordering::Relaxed), 30);
         assert_eq!(counters.error_count.load(Ordering::Relaxed), 20);
@@ -440,30 +480,31 @@ mod tests {
     #[test]
     fn test_pipe_counters_batch_processing() {
         let counters = PipeCounters::new();
-        
+
         for _ in 0..10 {
             counters.batches_processed.fetch_add(1, Ordering::Relaxed);
         }
-        
+
         assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 10);
     }
 
     #[test]
     fn test_pipe_counters_zero_operations() {
         let counters = PipeCounters::new();
-        
+
         counters.total_processed.fetch_add(0, Ordering::Relaxed);
-        
+
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 0);
     }
 
     #[test]
     fn test_pipe_counters_large_values() {
         let counters = PipeCounters::new();
-        
-        counters.total_processed.fetch_add(1_000_000, Ordering::Relaxed);
-        
+
+        counters
+            .total_processed
+            .fetch_add(1_000_000, Ordering::Relaxed);
+
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 1_000_000);
     }
 }
-

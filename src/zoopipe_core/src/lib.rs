@@ -1,29 +1,28 @@
 #![allow(clippy::too_many_arguments)]
 
-
 use pyo3::prelude::*;
 
 pub mod error;
+pub mod executor;
 pub mod io;
-pub mod utils;
 pub mod parsers;
 pub mod pipeline;
-pub mod executor;
+pub mod utils;
 
-use crate::io::storage::StorageController;
+use crate::executor::{MultiThreadExecutor, SingleThreadExecutor};
 use crate::io::get_runtime;
-use crate::utils::wrap_py_err;
-use crate::parsers::sql::{SQLReader, SQLWriter};
-use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
-use crate::parsers::csv::{CSVReader, CSVWriter};
-use crate::parsers::json::{JSONReader, JSONWriter};
-use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
+use crate::io::storage::StorageController;
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
-use crate::parsers::parquet::{ParquetReader, ParquetWriter};
+use crate::parsers::csv::{CSVReader, CSVWriter};
+use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
+use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::kafka::{KafkaReader, KafkaWriter};
+use crate::parsers::parquet::{ParquetReader, ParquetWriter};
+use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
+use crate::parsers::sql::{SQLReader, SQLWriter};
 use crate::pipeline::NativePipe;
-use crate::executor::{SingleThreadExecutor, MultiThreadExecutor};
+use crate::utils::wrap_py_err;
 
 #[pyfunction]
 fn get_version() -> PyResult<String> {
@@ -33,9 +32,7 @@ fn get_version() -> PyResult<String> {
 #[pyfunction]
 fn get_file_size(path: String) -> PyResult<u64> {
     let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-    get_runtime().block_on(async {
-        controller.get_size().await.map_err(wrap_py_err)
-    })
+    get_runtime().block_on(async { controller.get_size().await.map_err(wrap_py_err) })
 }
 
 #[pymodule]
@@ -59,14 +56,13 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KafkaReader>()?;
     m.add_class::<KafkaWriter>()?;
 
-
     m.add_class::<NativePipe>()?;
-    
+
     m.add_class::<SingleThreadExecutor>()?;
     m.add_class::<MultiThreadExecutor>()?;
-    
+
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(get_file_size, m)?)?;
-    
+
     Ok(())
 }

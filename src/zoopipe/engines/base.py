@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
-    from zoopipe.report import FlowReport
+    from zoopipe.report import PipeReport
 
 
 class BaseEngine(ABC):
@@ -40,6 +40,14 @@ class BaseEngine(ABC):
 
     @property
     @abstractmethod
-    def report(self) -> FlowReport:
+    def report(self) -> PipeReport:
         """Get an aggregated report of the current execution."""
         pass
+
+    @property
+    def pipe_reports(self) -> list[PipeReport]:
+        """Get reports for all managed pipes."""
+        raise AttributeError("Engine does not support per-pipe reports")
+
+    def get_pipe_report(self, pipe_index: int) -> PipeReport:
+        raise AttributeError("Engine does not support per-pipe reports")

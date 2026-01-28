@@ -1,23 +1,21 @@
-pub mod sql;
-pub mod csv;
-pub mod json;
-pub mod duckdb;
 pub mod arrow;
-pub mod pygen;
-pub mod parquet;
 pub mod arrow_utils;
+pub mod csv;
+pub mod duckdb;
 pub mod excel;
+pub mod json;
 pub mod kafka;
+pub mod parquet;
+pub mod pygen;
+pub mod sql;
 
 pub use sql::{SQLReader, SQLWriter};
 
-pub use csv::{CSVReader, CSVWriter};
-pub use json::{JSONReader, JSONWriter};
-pub use duckdb::{DuckDBReader, DuckDBWriter};
 pub use arrow::{ArrowReader, ArrowWriter};
+pub use csv::{CSVReader, CSVWriter};
+pub use duckdb::{DuckDBReader, DuckDBWriter};
+pub use excel::{ExcelReader, ExcelWriter};
+pub use json::{JSONReader, JSONWriter};
+pub use kafka::{KafkaReader, KafkaWriter};
 pub use parquet::{ParquetReader, ParquetWriter};
 pub use pygen::{PyGeneratorReader, PyGeneratorWriter};
-pub use excel::{ExcelReader, ExcelWriter};
-pub use kafka::{KafkaReader, KafkaWriter};
-
-

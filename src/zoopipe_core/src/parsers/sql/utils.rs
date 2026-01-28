@@ -19,11 +19,13 @@ pub fn ensure_parent_dir(uri: &str) {
     };
 
     let path_only = path_part.split('?').next().unwrap_or(path_part);
-    if !path_only.is_empty() && path_only != ":memory:"
+    if !path_only.is_empty()
+        && path_only != ":memory:"
         && let Some(parent) = std::path::Path::new(path_only).parent()
-        && !parent.as_os_str().is_empty() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
 }
 
 pub fn is_postgres(uri: &str) -> bool {

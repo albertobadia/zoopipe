@@ -410,6 +410,10 @@ Common errors:
 - **Memory Limits**: File too large for available memory
 - **Permission Denied**: Can't read input or write output
 
+## Native Compression
+
+Arrow IPC files are designed for zero-copy access and typically use internal LZ4 or Zstandard compression. ZooPipe leverages these native format features. User-level transparent compression (e.g., `.arrow.gz`) is not recommended and not explicitly supported for the IPC format to maintain its performance advantages.
+
 ## Performance Tips
 
 1. **Format Advantage**: Arrow is the fastest format for read operations

@@ -12,7 +12,7 @@ from zoopipe import (
     SingleThreadExecutor,
 )
 from zoopipe.engines.dask import DaskEngine
-from zoopipe.report import FlowStatus
+from zoopipe.report import PipeStatus
 
 try:
     from dask.distributed import Client, LocalCluster
@@ -129,4 +129,4 @@ def test_dask_engine_monitoring(dask_client, tmp_path):
 
     assert duration > 2.0
     assert engine.report.total_processed == 100
-    assert engine.report.status == FlowStatus.COMPLETED
+    assert engine.report.status == PipeStatus.COMPLETED

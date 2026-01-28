@@ -9,8 +9,7 @@ from typing import TYPE_CHECKING, Any
 import ray
 
 from zoopipe.engines.base import BaseEngine
-from zoopipe.engines.local import PipeReport
-from zoopipe.report import FlowReport, FlowStatus
+from zoopipe.report import PipeReport, PipeStatus
 from zoopipe.utils.dependency import install_dependencies
 
 if TYPE_CHECKING:
@@ -39,15 +38,17 @@ class RayPipeWorker:
 
     def get_report(self) -> PipeReport:
         report = self.pipe.report
+        status = PipeStatus.RUNNING
+        if self.is_finished:
+            status = PipeStatus.FAILED if self.has_error else PipeStatus.COMPLETED
+
         return PipeReport(
             pipe_index=self.index,
+            status=status,
             total_processed=report.total_processed,
             success_count=report.success_count,
             error_count=report.error_count,
             ram_bytes=report.ram_bytes,
-            is_finished=self.is_finished or report.is_finished,
-            has_error=self.has_error,
-            is_alive=not self.is_finished,
         )
 
 
@@ -87,7 +88,7 @@ class RayEngine(BaseEngine):
         self._workers: list[Any] = []
         self._futures: list[Any] = []
         self._start_time: datetime | None = None
-        self._cached_report: FlowReport | None = None
+        self._cached_report: PipeReport | None = None
 
     def _install_deps_on_all_nodes(self, deps: list[str]) -> None:
         """
@@ -212,11 +213,11 @@ class RayEngine(BaseEngine):
         return len(ready) < len(self._futures)
 
     @property
-    def report(self) -> FlowReport:
+    def report(self) -> PipeReport:
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
 
-        report = FlowReport()
+        report = PipeReport()
         report.start_time = self._start_time
 
         p_reports = self.pipe_reports
@@ -230,12 +231,12 @@ class RayEngine(BaseEngine):
         any_error = any(pr.has_error for pr in p_reports)
 
         if all_finished:
-            report.status = FlowStatus.FAILED if any_error else FlowStatus.COMPLETED
+            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
             report.end_time = datetime.now()
             report._finished_event.set()
             self._cached_report = report
         else:
-            report.status = FlowStatus.RUNNING
+            report.status = PipeStatus.RUNNING
 
         return report
 

@@ -1,8 +1,8 @@
-mod types;
-mod utils;
 mod backend;
 mod backends;
 mod reader;
+mod types;
+mod utils;
 mod writer;
 
 pub use reader::SQLReader;

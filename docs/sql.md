@@ -142,10 +142,12 @@ pipe = Pipe(
 
 ### Batch Insert Optimization
 
-The SQLWriter implements high-performance batch inserts:
+The SQLWriter implements high-performance batch operations:
 
-- **Batch Size**: 500 rows per INSERT statement
-- **Transaction**: All batches are wrapped in a single transaction
+- **PostgreSQL**: Automatically uses the native binary `COPY` protocol, providing 5-10x faster writes compared to `INSERT`.
+- **Other Databases**: Uses optimized chunked `INSERT` statements.
+- **Batch Size**: Default 500 rows per batch (can be increased for higher throughput).
+- **Transaction**: All operations are wrapped in a single transaction.
 - **Automatic Chunking**: Large datasets are automatically split into optimal chunks
 - **Optimized Design**: Minimizes data copying overhead between Python and Rust
 

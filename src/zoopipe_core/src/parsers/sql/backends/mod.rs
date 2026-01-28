@@ -1,5 +1,5 @@
-mod postgres;
 mod generic;
+mod postgres;
 
-pub use postgres::PostgresCopyBackend;
 pub use generic::GenericInsertBackend;
+pub use postgres::PostgresCopyBackend;

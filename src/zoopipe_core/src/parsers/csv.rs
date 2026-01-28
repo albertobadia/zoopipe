@@ -1,17 +1,15 @@
-use pyo3::prelude::*;
-use std::io::{BufRead, Cursor, Seek, SeekFrom};
-use std::sync::{Arc, Mutex};
-use csv::StringRecord;
 use crate::io::{BoxedReader, BoxedWriter, SharedWriter, SmartReader};
 use crate::utils::wrap_py_err;
+use csv::StringRecord;
+use pyo3::prelude::*;
+use std::io::{Cursor, Seek, SeekFrom};
+use std::sync::{Arc, Mutex};
 
 use crate::error::PipeError;
-use pyo3::types::{PyAnyMethods, PyString, PyDict, PyList};
 use crate::utils::interning::InternedKeys;
 use itoa;
+use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 use ryu;
-
-
 
 struct CSVReaderState {
     reader: SmartReader<StringRecord>,
@@ -37,13 +35,17 @@ impl<R: std::io::Read> Iterator for BoundedCsvIter<R> {
                 return None;
             }
         }
-        self.iter.next().map(|res: std::result::Result<csv::StringRecord, csv::Error>| res.map_err(|e| format!("{}", e)))
+        self.iter
+            .next()
+            .map(|res: std::result::Result<csv::StringRecord, csv::Error>| {
+                res.map_err(|e| format!("{}", e))
+            })
     }
 }
 
 /// High-performance CSV reader implemented in Rust.
-/// 
-/// It supports streaming from local files, S3, or raw bytes. It uses 
+///
+/// It supports streaming from local files, S3, or raw bytes. It uses
 /// a threaded architecture to avoid GIL contention during I/O.
 #[pyclass]
 pub struct CSVReader {
@@ -70,29 +72,77 @@ impl CSVReader {
         start_byte: u64,
         end_byte: Option<u64>,
     ) -> PyResult<Self> {
-        
-        let mut boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err) {
-             if start_byte > 0 {
-                 if path.ends_with(".gz") || path.ends_with(".zst") {
-                      return Err(PipeError::Other("Cannot use start_byte with compressed files".into()).into());
-                 }
-                 r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
-             }
-             r
+        // 1. Open and seek
+        let mut boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err)
+        {
+            if start_byte > 0 {
+                if path.ends_with(".gz") || path.ends_with(".zst") {
+                    return Err(PipeError::Other(
+                        "Cannot use start_byte with compressed files".into(),
+                    )
+                    .into());
+                }
+                r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
+            }
+            r
         } else {
-             return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
+            return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
         };
 
+        // 2. Align to next valid record
+        let expected_count = if let Some(fields) = &fieldnames {
+            fields.len()
+        } else {
+            0
+        };
 
+        // 2a. If start_byte > 0, we perform the Heuristic Scan
         if start_byte > 0 {
-             let mut dummy = String::new();
-             boxed_reader.read_line(&mut dummy).map_err(wrap_py_err)?;
+            if expected_count == 0 {
+                return Err(
+                    PipeError::Other("Fieldnames required for start_byte > 0".into()).into(),
+                );
+            }
+
+            loop {
+                let start_pos = boxed_reader.stream_position().map_err(wrap_py_err)?;
+
+                // Read line
+                let mut line_buf = String::new();
+                // We need to use `read_line` from `BufRead`. BoxedReader impls it.
+                let n = std::io::BufRead::read_line(&mut boxed_reader, &mut line_buf)
+                    .map_err(wrap_py_err)?;
+                if n == 0 {
+                    break; // EOF
+                }
+
+                // Check validity
+                let mut t_rdr = csv::ReaderBuilder::new()
+                    .delimiter(delimiter)
+                    .quote(quote)
+                    .has_headers(false)
+                    .from_reader(Cursor::new(line_buf.as_bytes()));
+
+                let mut record = csv::StringRecord::new();
+                let is_valid = match t_rdr.read_record(&mut record) {
+                    Ok(true) => record.len() == expected_count,
+                    _ => false,
+                };
+
+                if is_valid {
+                    // Found it. Seek back to `start_pos` so the REAL reader starts here.
+                    boxed_reader
+                        .seek(SeekFrom::Start(start_pos))
+                        .map_err(wrap_py_err)?;
+                    break;
+                }
+            }
         }
 
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
-            .has_headers(start_byte == 0) 
+            .has_headers(start_byte == 0)
             .from_reader(boxed_reader);
 
         for _ in 0..skip_rows {
@@ -113,34 +163,28 @@ impl CSVReader {
                 .collect()
         };
 
-        let headers: Vec<Py<PyString>> = headers_str
+        let headers_vec: Vec<Py<PyString>> = headers_str
             .into_iter()
             .map(|s| PyString::new(py, &s).unbind())
             .collect();
 
-        let reader = SmartReader::new(
-            &path,
-            reader,
-            move |r| {
-                BoundedCsvIter {
-                    iter: r.into_records(),
-                    start_byte,
-                    end_byte,
-                }
-            }
-        );
+        let reader = SmartReader::new(&path, reader, move |r| BoundedCsvIter {
+            iter: r.into_records(),
+            start_byte,
+            end_byte,
+        });
 
         let models = py.import("zoopipe.report")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            state: Mutex::new(CSVReaderState { 
-                reader, 
-                position: 0, 
-                limit, 
+            state: Mutex::new(CSVReaderState {
+                reader,
+                position: 0,
+                limit,
             }),
-            headers,
+            headers: headers_vec,
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
@@ -196,7 +240,7 @@ impl CSVReader {
                     start_byte: 0,
                     end_byte: limit.map(|_| u64::MAX), // Not using byte limit for bytes reader usually
                 }
-            }
+            },
         );
 
         let models = py.import("zoopipe.report")?;
@@ -204,9 +248,9 @@ impl CSVReader {
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(CSVReader {
-            state: Mutex::new(CSVReaderState { 
-                reader: reader_impl, 
-                position: 0, 
+            state: Mutex::new(CSVReaderState {
+                reader: reader_impl,
+                position: 0,
                 limit,
             }),
             headers,
@@ -218,14 +262,8 @@ impl CSVReader {
 
     #[staticmethod]
     #[pyo3(signature = (path, delimiter=b',', quote=b'"', has_header=true))]
-    fn count_rows(
-        path: String,
-        delimiter: u8,
-        quote: u8,
-        has_header: bool,
-    ) -> PyResult<usize> {
+    fn count_rows(path: String, delimiter: u8, quote: u8, has_header: bool) -> PyResult<usize> {
         let boxed_reader = crate::io::get_reader(&path).map_err(wrap_py_err)?;
-
 
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
@@ -259,10 +297,14 @@ impl CSVReader {
         slf.next_internal(slf.py())
     }
 
-    pub fn read_batch<'py>(&self, py: Python<'py>, batch_size: usize) -> PyResult<Option<Bound<'py, PyList>>> {
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
         let batch = PyList::empty(py);
         let mut count = 0;
-        
+
         while count < batch_size {
             if let Some(item) = self.next_internal(py)? {
                 batch.append(item)?;
@@ -283,23 +325,25 @@ impl CSVReader {
 impl CSVReader {
     fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
-        
-        if let Some(lim) = state.limit && state.position >= lim {
+
+        if let Some(lim) = state.limit
+            && state.position >= lim
+        {
             return Ok(None);
         }
-        
+
         match state.reader.next() {
             Some(Ok(record)) => {
                 let current_pos = state.position;
                 state.position += 1;
-                
+
                 let raw_data = PyDict::new(py);
                 for (header_py, value) in self.headers.iter().zip(record.iter()) {
                     raw_data.set_item(header_py.bind(py), value)?;
                 }
-                
+
                 let envelope = PyDict::new(py);
-                
+
                 let id = if self.generate_ids {
                     crate::utils::generate_entry_id(py)?
                 } else {
@@ -318,16 +362,12 @@ impl CSVReader {
             Some(Err(e)) => {
                 let line = state.position + 1;
                 Err(PipeError::Other(format!("CSV parse error at line {}: {}", line, e)).into())
-            },
+            }
             None => Ok(None),
         }
     }
 }
 
-/// Optimized CSV writer for high-volume data egress.
-/// 
-/// Automatically handles header generation and supports both local 
-/// files and S3 destinations.
 #[pyclass]
 pub struct CSVWriter {
     state: Mutex<CSVWriterState>,
@@ -353,15 +393,17 @@ impl CSVWriter {
     ) -> PyResult<Self> {
         let boxed_writer = crate::io::get_writer(&path).map_err(wrap_py_err)?;
 
-        
         let shared_writer = Arc::new(Mutex::new(boxed_writer));
         let writer = csv::WriterBuilder::new()
             .delimiter(delimiter)
             .quote(quote)
             .from_writer(SharedWriter(shared_writer.clone()));
-        
+
         let py_fieldnames = fieldnames.map(|names| {
-            names.into_iter().map(|s| PyString::new(py, &s).unbind()).collect()
+            names
+                .into_iter()
+                .map(|s| PyString::new(py, &s).unbind())
+                .collect()
         });
 
         Ok(CSVWriter {
@@ -381,7 +423,7 @@ impl CSVWriter {
 
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
-        
+
         let iterator = entries.try_iter()?;
         for entry in iterator {
             write_record_to_csv(py, entry?, &mut state)?;
@@ -398,7 +440,10 @@ impl CSVWriter {
     pub fn close(&self) -> PyResult<()> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         state.writer.flush().map_err(wrap_py_err)?;
-        let mut inner = state.inner_writer.lock().map_err(|_| PipeError::MutexLock)?;
+        let mut inner = state
+            .inner_writer
+            .lock()
+            .map_err(|_| PipeError::MutexLock)?;
         inner.close().map_err(wrap_py_err)?;
         Ok(())
     }
@@ -420,7 +465,7 @@ fn write_record_to_csv(
             for k in keys_list.iter() {
                 record_keys.push(k.cast::<PyString>()?.clone());
             }
-            
+
             record_keys.sort_by(|a, b| {
                 let s1 = a.to_str().unwrap_or("");
                 let s2 = b.to_str().unwrap_or("");
@@ -429,8 +474,10 @@ fn write_record_to_csv(
             let interned: Vec<Py<PyString>> = record_keys.into_iter().map(|s| s.unbind()).collect();
             state.fieldnames = Some(interned);
         }
-        
-        let names = state.fieldnames.as_ref()
+
+        let names = state
+            .fieldnames
+            .as_ref()
             .expect("Fieldnames should be initialized before header write");
         let bounds: Vec<Bound<'_, PyString>> = names.iter().map(|n| n.bind(py).clone()).collect();
         let mut name_strs = Vec::with_capacity(names.len());
@@ -467,7 +514,10 @@ fn write_record_to_csv(
                 row_out.push(Cow::Borrowed(""));
             }
         }
-        state.writer.write_record(row_out.iter().map(|c| c.as_bytes())).map_err(wrap_py_err)?;
+        state
+            .writer
+            .write_record(row_out.iter().map(|c| c.as_bytes()))
+            .map_err(wrap_py_err)?;
     }
 
     Ok(())
@@ -485,7 +535,7 @@ mod tests {
         let csv_reader = csv::ReaderBuilder::new()
             .has_headers(true)
             .from_reader(reader);
-        
+
         let mut iter = BoundedCsvIter {
             iter: csv_reader.into_records(),
             start_byte: 0,
@@ -494,36 +544,30 @@ mod tests {
 
         let rec1 = iter.next().unwrap().unwrap();
         assert_eq!(rec1.get(0).unwrap(), "val1");
-        
+
         let rec2 = iter.next().unwrap().unwrap();
         assert_eq!(rec2.get(0).unwrap(), "val3");
-        
+
         assert!(iter.next().is_none());
     }
 
     #[test]
     fn test_bounded_csv_iter_limit_byte() {
-        // "col1,col2\n" -> 10 bytes
-        // "val1,val2\n" -> 10 bytes (total 20)
-        // "val3,val4"   -> 9 bytes (total 29)
         let data = "col1,col2\nval1,val2\nval3,val4";
         let reader = Cursor::new(data);
         let csv_reader = csv::ReaderBuilder::new()
             .has_headers(true)
             .from_reader(reader);
-            
 
         let mut iter = BoundedCsvIter {
             iter: csv_reader.into_records(),
             start_byte: 0,
-            end_byte: Some(15), 
+            end_byte: Some(15),
         };
 
-        // First record starts at 10. 10 < 15. OK.
         let rec1 = iter.next().unwrap().unwrap();
         assert_eq!(rec1.get(0).unwrap(), "val1");
 
-        // Second record starts at 20. 20 >= 15. Should be None.
         assert!(iter.next().is_none());
     }
 }
