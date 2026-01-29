@@ -23,6 +23,8 @@ dependencies = [
 ray = ["ray>=2.53.0"]
 dask = ["dask[distributed]>=2026.1.1"]
 zoosyncmp = ["zoosyncmp>=2026.1.24"]
+opentelemetry = ["opentelemetry-api>=1.39.1", "opentelemetry-sdk>=1.39.1"]
+
 docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.1",
@@ -39,12 +41,8 @@ dev = [
     "ray>=2.53.0",
     "dask[distributed]>=2026.1.1",
     "zoosyncmp>=2026.1.24",
-]
-
-docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.1",
-    "mkdocstrings[python]>=1.0.0",
+    "opentelemetry-api>=1.39.1",
+    "opentelemetry-sdk>=1.39.1",
 ]
 
 [tool.maturin]

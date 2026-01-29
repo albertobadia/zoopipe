@@ -48,6 +48,7 @@ nav:
       - Pipe Manager: pipemanager.md
       - Executors: executors.md
       - Hooks: hooks.md
+      - Coordinators: coordinators.md
   - Formats & Integrations:
       - Arrow: arrow.md
       - Cloud Storage: cloud-storage.md

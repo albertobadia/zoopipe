@@ -9,6 +9,7 @@ from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.report import PipeReport, get_logger
 from zoopipe.structs import EntryStatus
+from zoopipe.utils.telemetry import TelemetryController
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
@@ -47,6 +48,7 @@ class Pipe:
         logger: logging.Logger | None = None,
         report_update_interval: int = 1,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
+        telemetry_controller: TelemetryController | None = None,
     ) -> None:
         """
         Initialize a new Pipe.
@@ -63,6 +65,7 @@ class Pipe:
                 progress report.
             executor: Strategy for batch processing. Defaults to SingleThreadExecutor.
                 For advanced parallel execution, use `PipeManager`.
+            telemetry_controller: Controller for observability (tracing).
         """
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
@@ -85,6 +88,7 @@ class Pipe:
         self.post_validation_hooks = bundled_post_hooks + (post_validation_hooks or [])
 
         self.logger = logger or get_logger()
+        self.telemetry = telemetry_controller or TelemetryController()
 
         self.report_update_interval = report_update_interval
         self.executor = executor or SingleThreadExecutor()
@@ -100,18 +104,19 @@ class Pipe:
         self._status_failed = EntryStatus.FAILED
 
     def _process_batch(self, entries: list[dict]) -> list[dict]:
-        local_store: HookStore = {}
+        with self.telemetry.trace_batch(len(entries)):
+            local_store: HookStore = {}
 
-        for hook in self.pre_validation_hooks:
-            entries = hook.execute(entries, local_store)
+            for hook in self.pre_validation_hooks:
+                entries = hook.execute(entries, local_store)
 
-        if self._validator:
-            self._validate_batch(entries)
+            if self._validator:
+                self._validate_batch(entries)
 
-        for hook in self.post_validation_hooks:
-            entries = hook.execute(entries, local_store)
+            for hook in self.post_validation_hooks:
+                entries = hook.execute(entries, local_store)
 
-        return entries
+            return entries
 
     def _validate_batch(self, entries: list[dict]) -> None:
         try:
@@ -207,7 +212,8 @@ class Pipe:
             for hook in self.post_validation_hooks:
                 hook.setup(self._store)
 
-            metadata = native_pipe.run()
+            with self.telemetry.trace_span("rust_execution"):
+                metadata = native_pipe.run()
             if metadata and hasattr(self.output_adapter, "_writer"):
                 # We can store the metadata on the adapter
                 # for later retrieval by the coordinator
