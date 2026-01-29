@@ -7,6 +7,7 @@
 ZooPipe separates orchestration from execution. `PipeManager` delegates the lifecycle of pipes to an engine:
 
 - **`MultiProcessEngine` (Default)**: Runs each pipe in a separate Python process. Ideal for bypassing the GIL on a single machine.
+- **`ZoosyncPoolEngine`**: Specialized engine using shared memory (`mmap`) for zero-latency status reporting. Best for "Heavy ETL" and granular monitoring (see [ZooSync Guide](zoosync.md)).
 - **`RayEngine`**: Distributed execution across a cluster using Ray. Zero-config dependency management for pip, uv, and poetry (see [Ray Guide](ray.md)).
 - **`DaskEngine`**: Distributed execution using Dask. Zero-config dependency management for pip, uv, and poetry (see [Dask Guide](dask.md)).
 

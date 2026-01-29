@@ -45,7 +45,6 @@ __all__ = [
     "SingleThreadExecutor",
     "MultiThreadExecutor",
     "SQLExpansionHook",
-    "SQLExpansionHook",
     # Input Adapters
     "ArrowInputAdapter",
     "CSVInputAdapter",

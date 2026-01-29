@@ -219,6 +219,55 @@ impl ParquetReader {
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+
+        // Optimization: Fast-path for full batches
+        if state.current_batch.is_none() && state.rows_to_skip == 0 {
+            // Peek at limit check
+            let can_read_full_batch = if let Some(limit) = state.rows_to_read {
+                state.rows_read < limit
+            } else {
+                true
+            };
+
+            if can_read_full_batch {
+                match state.reader.next() {
+                    Some(Ok(batch)) => {
+                        let batch_len = batch.num_rows();
+
+                        // Check if batch fits in request AND within global limit
+                        let fits_in_request = batch_len <= batch_size;
+                        let fits_in_limit = if let Some(limit) = state.rows_to_read {
+                            state.rows_read + batch_len <= limit
+                        } else {
+                            true
+                        };
+
+                        if fits_in_request && fits_in_limit {
+                            let current_pos = state.position;
+                            state.position += batch_len;
+                            state.rows_read += batch_len;
+
+                            let envelopes =
+                                crate::parsers::arrow_utils::record_batch_to_py_envelopes(
+                                    py,
+                                    batch,
+                                    &self.keys,
+                                    self.status_pending.bind(py),
+                                    self.generate_ids,
+                                    current_pos,
+                                )?;
+                            return Ok(Some(envelopes));
+                        } else {
+                            // Too big or hits limit -> process row-by-row
+                            state.current_batch = Some((batch, 0));
+                        }
+                    }
+                    Some(Err(_e)) => return Ok(None), // Error handled in loop
+                    None => return Ok(None),
+                }
+            }
+        }
+
         let batch = PyList::empty(py);
 
         for _ in 0..batch_size {

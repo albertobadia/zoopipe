@@ -155,3 +155,119 @@ pub fn build_record_batch(
 
     RecordBatch::try_new(schema.clone(), columns).map_err(wrap_py_err)
 }
+
+use crate::utils::interning::InternedKeys;
+use crate::utils::wrap_in_envelope;
+
+pub fn record_batch_to_py_envelopes<'py>(
+    py: Python<'py>,
+    batch: RecordBatch,
+    keys: &InternedKeys,
+    status_pending: &Bound<'py, PyAny>,
+    generate_ids: bool,
+    start_position: usize,
+) -> PyResult<Bound<'py, PyList>> {
+    let num_rows = batch.num_rows();
+    let schema = batch.schema();
+    let fields = schema.fields();
+    let column_names: Vec<Bound<'py, PyString>> =
+        fields.iter().map(|f| PyString::new(py, f.name())).collect();
+
+    let columns = batch.columns();
+    let mut py_columns: Vec<Vec<Py<PyAny>>> = Vec::with_capacity(columns.len());
+
+    // Column-wise conversion to minimize dispatch overhead
+    for col in columns {
+        let mut py_col = Vec::with_capacity(num_rows);
+        match col.data_type() {
+            DataType::Int64 => {
+                let arr = col
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .expect("Type mismatch");
+                for i in 0..num_rows {
+                    if arr.is_null(i) {
+                        py_col.push(py.None());
+                    } else {
+                        py_col.push(arr.value(i).into_pyobject(py).unwrap().into_any().unbind());
+                    }
+                }
+            }
+            DataType::Float64 => {
+                let arr = col
+                    .as_any()
+                    .downcast_ref::<Float64Array>()
+                    .expect("Type mismatch");
+                for i in 0..num_rows {
+                    if arr.is_null(i) {
+                        py_col.push(py.None());
+                    } else {
+                        py_col.push(arr.value(i).into_pyobject(py).unwrap().into_any().unbind());
+                    }
+                }
+            }
+            DataType::Utf8 => {
+                let arr = col
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .expect("Type mismatch");
+                for i in 0..num_rows {
+                    if arr.is_null(i) {
+                        py_col.push(py.None());
+                    } else {
+                        py_col.push(arr.value(i).into_pyobject(py).unwrap().into_any().unbind());
+                    }
+                }
+            }
+            DataType::Boolean => {
+                let arr = col
+                    .as_any()
+                    .downcast_ref::<BooleanArray>()
+                    .expect("Type mismatch");
+                for i in 0..num_rows {
+                    if arr.is_null(i) {
+                        py_col.push(py.None());
+                    } else {
+                        py_col.push(
+                            pyo3::types::PyBool::new(py, arr.value(i))
+                                .as_any()
+                                .clone()
+                                .unbind(),
+                        );
+                    }
+                }
+            }
+            _ => {
+                // Fallback for other types
+                for i in 0..num_rows {
+                    py_col.push(arrow_to_py(py, col, i)?);
+                }
+            }
+        }
+        py_columns.push(py_col);
+    }
+
+    // Row-wise construction
+    let list = PyList::empty(py);
+    let mut column_iters: Vec<_> = py_columns.iter().map(|c| c.iter()).collect();
+
+    for i in 0..num_rows {
+        let raw_data = PyDict::new(py);
+        for (name_bound, col_iter) in column_names.iter().zip(column_iters.iter_mut()) {
+            let val = col_iter.next().expect("Column length mismatch");
+            raw_data.set_item(name_bound, val)?;
+        }
+
+        let env = wrap_in_envelope(
+            py,
+            keys,
+            raw_data.into_any(),
+            status_pending.clone(),
+            start_position + i,
+            generate_ids,
+        )?;
+        list.append(env)?;
+    }
+
+    Ok(list)
+}

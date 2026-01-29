@@ -59,6 +59,7 @@ nav:
       - Parquet: parquet.md
       - Ray: ray.md
       - SQL: sql.md
+      - ZooSync: zoosync.md
   - Advanced:
       - Code Generation: pygen.md
       - Architecture Decisions:

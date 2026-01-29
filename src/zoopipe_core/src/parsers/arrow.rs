@@ -115,6 +115,35 @@ impl ArrowReader {
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+
+        // Optimization: If no current partial batch, try to read a full one directly
+        if state.current_batch.is_none() {
+            if let Some(batch_res) = state.reader.next() {
+                let batch: RecordBatch = batch_res.map_err(PyRuntimeError::new_err)?;
+
+                // If the fresh batch fits entirely in the requested size, fast-path it
+                if batch.num_rows() <= batch_size {
+                    let current_pos = state.position;
+                    state.position += batch.num_rows();
+
+                    let envelopes = crate::parsers::arrow_utils::record_batch_to_py_envelopes(
+                        py,
+                        batch,
+                        &self.keys,
+                        self.status_pending.bind(py),
+                        self.generate_ids,
+                        current_pos,
+                    )?;
+                    return Ok(Some(envelopes));
+                }
+
+                // Otherwise, store it to be consumed partially via next_internal
+                state.current_batch = Some((batch, 0));
+            } else {
+                return Ok(None);
+            }
+        }
+
         let batch = PyList::empty(py);
         let mut count = 0;
 
