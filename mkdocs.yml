@@ -53,7 +53,6 @@ nav:
       - Cloud Storage: cloud-storage.md
       - CSV: csv.md
       - Dask: dask.md
-      - DuckDB: duckdb.md
       - Excel: excel.md
       - JSON: json.md
       - Kafka: kafka.md

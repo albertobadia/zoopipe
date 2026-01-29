@@ -21,8 +21,7 @@ def kafka_producer_flow():
     )
 
     pipe = Pipe(input_adapter, output_adapter)
-    pipe.start()
-    pipe.wait()
+    pipe.run()
 
     print(f"Producer finished: {pipe.report.processed} messages sent.")
     print(pipe.report)
@@ -43,8 +42,7 @@ def kafka_consumer_flow():
     output_adapter = CSVOutputAdapter("kafka_output.csv")
 
     pipe = Pipe(input_adapter, output_adapter)
-    pipe.start()
-    pipe.wait()
+    pipe.run()
 
     print(f"Consumer finished: {pipe.report.processed} messages received.")
     print(pipe.report)

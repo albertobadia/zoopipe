@@ -26,7 +26,7 @@ class JSONOutputAdapter(BaseOutputAdapter):
         Args:
             output: Path where the JSON file will be created.
             format: JSON format ('array' for a single JSON array, or
-                'lines' for JSONLines).
+                'jsonl' for JSONLines).
             indent: Optional indentation for pretty-printing.
         """
         self.output_path = str(output)

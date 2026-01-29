@@ -26,7 +26,7 @@ impl PyGeneratorReader {
     #[new]
     #[pyo3(signature = (iterable, generate_ids=true))]
     fn new(py: Python<'_>, iterable: Py<PyAny>, generate_ids: bool) -> PyResult<Self> {
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 

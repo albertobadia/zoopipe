@@ -73,22 +73,15 @@ def main():
         executor=MultiThreadExecutor(max_workers=2, batch_size=1000),
         engine=MultiProcessEngine(),  # Explicit engine (defaults to MultiProcessEngine)
     )
-    pipe_manager.start()
+    print("Running pipeline with manager.run() which handles sharding and merging...")
+    success = pipe_manager.run(wait=True, merge=True)
 
-    while not pipe_manager.report.is_finished:
-        print(
-            f"Processed: {pipe_manager.report.total_processed} | "
-            f"Speed: {pipe_manager.report.items_per_second:.2f} rows/s | "
-            f"Ram Usage: {pipe_manager.report.ram_bytes / 1024 / 1024:.2f} MB"
-        )
-        time.sleep(0.5)
-
-    print("\nPipeline Finished!")
-    print(pipe_manager.report)
-
-    print("\nMerging files incredibly fast...")
-    pipe_manager.merge()
-    print(f"Merged successfully into {output_path}")
+    if success:
+        print("\nPipeline Finished!")
+        print(pipe_manager.report)
+        print(f"Merged successfully into {output_path}")
+    else:
+        print("\nPipeline Failed!")
 
 
 if __name__ == "__main__":
