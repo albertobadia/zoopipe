@@ -127,7 +127,11 @@ def _run_pipe_zoosync(
             )
 
         result_data["success"] = not pipe.report.has_error
-        result_data["output_path"] = getattr(pipe.output_adapter, "output_path", None)
+        result_data["output_path"] = getattr(
+            pipe.output_adapter,
+            "output_path",
+            getattr(pipe.output_adapter, "_metadata", None),
+        )
         result_data["metrics"] = {
             "total": pipe.report.total_processed,
             "success": pipe.report.success_count,
@@ -223,8 +227,11 @@ class ZoosyncPoolEngine(BaseEngine):
         return True
 
     def shutdown(self, timeout: float = 5.0) -> None:
+        # Cache report before clearing
+        self._cached_report = self.report
+
         if self._pool:
-            self._pool.shutdown(wait=False)
+            self._pool.__exit__(None, None, None)
             self._pool = None
 
         self._handles.clear()

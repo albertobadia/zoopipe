@@ -1,6 +1,7 @@
 from zoopipe.coordinators.base import BaseCoordinator
 from zoopipe.coordinators.composite import CompositeCoordinator
 from zoopipe.coordinators.default import DefaultShardingCoordinator
+from zoopipe.coordinators.iceberg import IcebergCoordinator
 from zoopipe.coordinators.merge import FileMergeCoordinator
 
 __all__ = [
@@ -8,4 +9,5 @@ __all__ = [
     "DefaultShardingCoordinator",
     "FileMergeCoordinator",
     "CompositeCoordinator",
+    "IcebergCoordinator",
 ]

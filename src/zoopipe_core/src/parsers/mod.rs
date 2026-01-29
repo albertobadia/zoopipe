@@ -2,6 +2,7 @@ pub mod arrow;
 pub mod arrow_utils;
 pub mod csv;
 pub mod excel;
+pub mod iceberg;
 pub mod json;
 pub mod kafka;
 pub mod parquet;

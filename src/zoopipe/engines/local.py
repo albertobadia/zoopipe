@@ -153,6 +153,9 @@ class MultiProcessEngine(BaseEngine):
         return all(not pp.process.is_alive() for pp in self._pipe_processes)
 
     def shutdown(self, timeout: float = 5.0) -> None:
+        # Cache report before clearing
+        self._cached_report = self.report
+
         for pp in self._pipe_processes:
             if pp.process.is_alive():
                 pp.process.terminate()

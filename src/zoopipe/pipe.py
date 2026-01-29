@@ -207,7 +207,11 @@ class Pipe:
             for hook in self.post_validation_hooks:
                 hook.setup(self._store)
 
-            native_pipe.run()
+            metadata = native_pipe.run()
+            if metadata and hasattr(self.output_adapter, "_writer"):
+                # We can store the metadata on the adapter
+                # for later retrieval by the coordinator
+                self.output_adapter._metadata = metadata
         except Exception as e:
             self.logger.error(f"Pipeline execution failed: {e}")
             self._report._mark_failed(e)

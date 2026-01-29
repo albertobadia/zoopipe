@@ -46,24 +46,26 @@ class BaseEngine(ABC):
     @property
     def report(self) -> PipeReport:
         """Get an aggregated report of the current execution."""
-        # If cache is finished, returns cache
+        # 1. If we have a finished cache, definitely return it
         if self._cached_report and self._cached_report.is_finished:
             return self._cached_report
 
+        # 2. Try to get fresh reports from the engine
         try:
             p_reports = self.pipe_reports
+            if p_reports:
+                aggregated = PipeReport.aggregate(p_reports)
+                if self._start_time:
+                    aggregated.start_time = self._start_time
+
+                # Update cache
+                self._cached_report = aggregated
+                return aggregated
         except (AttributeError, RuntimeError):
-            return self._report
+            pass
 
-        aggregated = PipeReport.aggregate(p_reports)
-
-        if self._start_time:
-            aggregated.start_time = self._start_time
-
-        if aggregated.is_finished:
-            self._cached_report = aggregated
-
-        return aggregated
+        # 3. Fallback to last known cached report or the default initial report
+        return self._cached_report or self._report
 
     def _reset_report(self) -> None:
         """Reset the internal report state for a new execution."""

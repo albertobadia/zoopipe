@@ -7,7 +7,7 @@ use crate::parsers::csv::{CSVReader, CSVWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::kafka::{KafkaReader, KafkaWriter};
-use crate::parsers::parquet::{ParquetReader, ParquetWriter};
+use crate::parsers::parquet::{MultiParquetReader, ParquetReader, ParquetWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
 use crate::parsers::sql::{SQLReader, SQLWriter};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -22,6 +22,7 @@ pub enum PipeReader {
     PyGen(Py<PyGeneratorReader>),
     Excel(Py<ExcelReader>),
     Kafka(Py<KafkaReader>),
+    MultiParquet(Py<MultiParquetReader>),
 }
 
 impl PipeReader {
@@ -39,6 +40,7 @@ impl PipeReader {
             PipeReader::Excel(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::PyGen(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Kafka(_) => Ok(None),
+            PipeReader::MultiParquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
         }
     }
 
@@ -52,6 +54,9 @@ impl PipeReader {
             PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
             PipeReader::Excel(r) => ExcelReader::__next__(r.bind(py).borrow()),
             PipeReader::Kafka(r) => KafkaReader::__next__(r.bind(py).borrow()),
+            PipeReader::MultiParquet(r) => {
+                crate::parsers::parquet::MultiParquetReader::__next__(r.bind(py).borrow())
+            }
         }
     }
 }
@@ -66,6 +71,7 @@ pub enum PipeWriter {
     PyGen(Py<PyGeneratorWriter>),
     Excel(Py<ExcelWriter>),
     Kafka(Py<KafkaWriter>),
+    Iceberg(Py<crate::parsers::iceberg::IcebergWriter>),
 }
 
 impl PipeWriter {
@@ -79,19 +85,45 @@ impl PipeWriter {
             PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Kafka(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Iceberg(w) => w.bind(py).borrow().write_batch(py, entries),
         }
     }
 
-    pub fn close(&self, py: Python) -> PyResult<()> {
+    pub fn close(&self, py: Python) -> PyResult<String> {
         match self {
-            PipeWriter::CSV(w) => w.bind(py).borrow().close(),
-            PipeWriter::JSON(w) => w.bind(py).borrow().close(),
-            PipeWriter::Arrow(w) => w.bind(py).borrow().close(),
-            PipeWriter::SQL(w) => w.bind(py).borrow().close(),
-            PipeWriter::Parquet(w) => w.bind(py).borrow().close(),
-            PipeWriter::PyGen(w) => w.bind(py).borrow().close(),
-            PipeWriter::Excel(w) => w.bind(py).borrow().close(),
-            PipeWriter::Kafka(w) => w.bind(py).borrow().close(),
+            PipeWriter::CSV(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::JSON(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::Arrow(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::SQL(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::Parquet(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::PyGen(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::Excel(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::Kafka(w) => {
+                w.bind(py).borrow().close()?;
+                Ok("[]".into())
+            }
+            PipeWriter::Iceberg(w) => w.bind(py).borrow().close(),
         }
     }
 }
@@ -210,7 +242,7 @@ impl NativePipe {
     }
 
     /// Executes the pipeline until the source is exhausted or an error occurs.
-    fn run(&self, py: Python<'_>) -> PyResult<()> {
+    fn run(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let report = self.report.bind(py);
         report.call_method0("_mark_running")?;
 
@@ -263,12 +295,12 @@ impl NativePipe {
         self.sync_report(py, report)?;
         report.call_method0("_mark_completed")?;
 
-        self.writer.close(py)?;
+        let metadata = self.writer.close(py)?;
         if let Some(ref ew) = self.error_writer {
             ew.close(py)?;
         }
 
-        Ok(())
+        Ok(Some(metadata))
     }
 }
 

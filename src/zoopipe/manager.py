@@ -130,7 +130,8 @@ class PipeManager:
             self.coordinator.on_start(self)
 
         try:
-            self.start()
+            if not self.is_running:
+                self.start()
             if not wait:
                 return True
 
@@ -153,8 +154,7 @@ class PipeManager:
             raise
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.is_running:
-            self.shutdown()
+        self.shutdown()
 
     @classmethod
     def parallelize_pipe(
