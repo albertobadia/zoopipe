@@ -126,6 +126,9 @@ def _run_pipe_zoosync(
                 pipe.report.has_error,
             )
 
+        # Ensure the pipeline thread has finished updating metadata
+        pipe.shutdown()
+
         result_data["success"] = not pipe.report.has_error
         result_data["output_path"] = getattr(
             pipe.output_adapter,

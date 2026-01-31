@@ -10,6 +10,29 @@ pub fn wrap_py_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
 
+pub fn parse_uri(uri: &str) -> PyResult<url::Url> {
+    match url::Url::parse(uri) {
+        Ok(u) => Ok(u),
+        Err(e) => {
+            // Check if it's a relative URL error, regardless of match arm weirdness
+            if e == url::ParseError::RelativeUrlWithoutBase {
+                let path = std::path::Path::new(uri);
+                if path.is_absolute() {
+                    return url::Url::from_file_path(path).map_err(|_| {
+                        PyRuntimeError::new_err(format!("Invalid file path: {}", uri))
+                    });
+                } else {
+                    return Err(PyRuntimeError::new_err(format!(
+                        "Relative path without scheme: {}",
+                        uri
+                    )));
+                }
+            }
+            Err(PyRuntimeError::new_err(e.to_string()))
+        }
+    }
+}
+
 pub fn generate_entry_id(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
     let mut buf = [0u8; 32];
     uuid::Uuid::new_v4().simple().encode_lower(&mut buf);

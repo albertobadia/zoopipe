@@ -370,7 +370,10 @@ impl MultiParquetReader {
 }
 
 impl MultiParquetReader {
-    fn get_next_item<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+    pub(crate) fn get_next_item<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
         loop {
             // First, try to get an item from the current reader if it exists
             let mut exhausted = false;

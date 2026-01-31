@@ -4,6 +4,7 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList};
 
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::csv::{CSVReader, CSVWriter};
+use crate::parsers::delta::{DeltaReader, DeltaWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::kafka::{KafkaReader, KafkaWriter};
@@ -23,6 +24,7 @@ pub enum PipeReader {
     Excel(Py<ExcelReader>),
     Kafka(Py<KafkaReader>),
     MultiParquet(Py<MultiParquetReader>),
+    Delta(Py<DeltaReader>),
 }
 
 impl PipeReader {
@@ -41,6 +43,7 @@ impl PipeReader {
             PipeReader::PyGen(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Kafka(_) => Ok(None),
             PipeReader::MultiParquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::Delta(r) => r.bind(py).borrow().read_batch(py, batch_size),
         }
     }
 
@@ -57,6 +60,9 @@ impl PipeReader {
             PipeReader::MultiParquet(r) => {
                 crate::parsers::parquet::MultiParquetReader::__next__(r.bind(py).borrow())
             }
+            PipeReader::Delta(r) => {
+                crate::parsers::delta::DeltaReader::__next__(r.bind(py).borrow())
+            }
         }
     }
 }
@@ -72,6 +78,7 @@ pub enum PipeWriter {
     Excel(Py<ExcelWriter>),
     Kafka(Py<KafkaWriter>),
     Iceberg(Py<crate::parsers::iceberg::IcebergWriter>),
+    Delta(Py<DeltaWriter>),
 }
 
 impl PipeWriter {
@@ -86,6 +93,7 @@ impl PipeWriter {
             PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Kafka(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Iceberg(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Delta(w) => w.bind(py).borrow().write_batch(py, entries),
         }
     }
 
@@ -124,6 +132,7 @@ impl PipeWriter {
                 Ok("[]".into())
             }
             PipeWriter::Iceberg(w) => w.bind(py).borrow().close(),
+            PipeWriter::Delta(w) => w.bind(py).borrow().close(),
         }
     }
 }

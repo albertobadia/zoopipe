@@ -1,6 +1,7 @@
 pub mod arrow;
 pub mod arrow_utils;
 pub mod csv;
+pub mod delta;
 pub mod excel;
 pub mod iceberg;
 pub mod json;

@@ -3,6 +3,7 @@ from zoopipe.hooks.base import BaseHook
 from zoopipe.hooks.sql import SQLExpansionHook
 from zoopipe.input_adapter.arrow import ArrowInputAdapter
 from zoopipe.input_adapter.csv import CSVInputAdapter
+from zoopipe.input_adapter.delta import DeltaInputAdapter
 from zoopipe.input_adapter.excel import ExcelInputAdapter
 from zoopipe.input_adapter.iceberg import IcebergInputAdapter
 from zoopipe.input_adapter.json import JSONInputAdapter
@@ -13,6 +14,7 @@ from zoopipe.input_adapter.sql import SQLInputAdapter, SQLPaginationInputAdapter
 from zoopipe.manager import PipeManager
 from zoopipe.output_adapter.arrow import ArrowOutputAdapter
 from zoopipe.output_adapter.csv import CSVOutputAdapter
+from zoopipe.output_adapter.delta import DeltaOutputAdapter
 from zoopipe.output_adapter.excel import ExcelOutputAdapter
 from zoopipe.output_adapter.iceberg import IcebergOutputAdapter
 from zoopipe.output_adapter.json import JSONOutputAdapter
@@ -56,6 +58,7 @@ __all__ = [
     "ParquetInputAdapter",
     "KafkaInputAdapter",
     "IcebergInputAdapter",
+    "DeltaInputAdapter",
     # Output Adapters
     "ArrowOutputAdapter",
     "CSVOutputAdapter",
@@ -66,4 +69,5 @@ __all__ = [
     "ParquetOutputAdapter",
     "KafkaOutputAdapter",
     "IcebergOutputAdapter",
+    "DeltaOutputAdapter",
 ]

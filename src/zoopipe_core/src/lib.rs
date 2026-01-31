@@ -29,10 +29,14 @@ fn get_version() -> PyResult<String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
-#[pyfunction]
-fn get_file_size(path: String) -> PyResult<u64> {
+pub fn get_file_size_rust(path: String) -> PyResult<u64> {
     let controller = StorageController::new(&path).map_err(wrap_py_err)?;
     get_runtime().block_on(async { controller.get_size().await.map_err(wrap_py_err) })
+}
+
+#[pyfunction]
+fn get_file_size(path: String) -> PyResult<u64> {
+    get_file_size_rust(path)
 }
 
 #[pymodule]
@@ -65,6 +69,14 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<IcebergWriter>()?;
     m.add_function(wrap_pyfunction!(commit_iceberg_transaction, m)?)?;
     m.add_function(wrap_pyfunction!(get_iceberg_data_files, m)?)?;
+
+    m.add_class::<crate::parsers::delta::DeltaReader>()?;
+    m.add_class::<crate::parsers::delta::DeltaWriter>()?;
+    m.add_function(wrap_pyfunction!(
+        crate::parsers::delta::commit_delta_transaction,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(crate::parsers::delta::get_delta_files, m)?)?;
 
     Ok(())
 }
