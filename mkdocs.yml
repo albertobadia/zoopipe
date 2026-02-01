@@ -58,6 +58,8 @@ nav:
       - JSON: json.md
       - Kafka: kafka.md
       - Parquet: parquet.md
+      - Iceberg: iceberg.md
+      - Delta Lake: delta.md
       - Ray: ray.md
       - SQL: sql.md
       - ZooSync: zoosync.md

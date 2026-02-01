@@ -68,16 +68,21 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 ### Installation
 
-```bash
-pip install zoopipe
-```
-Or using uv:
+### Installation
+
+Using [uv](https://github.com/astral-sh/uv) (recommended):
 ```bash
 uv add zoopipe
 ```
-Or from source (uv recommended):
+
+Or using pip:
 ```bash
-uv build
+pip install zoopipe
+```
+
+From source:
+```bash
+uv sync
 uv run maturin develop --release
 ```
 

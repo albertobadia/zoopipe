@@ -10,6 +10,14 @@ Unlike the default `MultiProcessEngine` which relies on standard Python `multipr
 - **Chaos Engineering**: You are running complex "chaotic" pipelines where you expect frequent failures and need immediate visibility.
 - **Maximum Performance**: You want to squeeze every bit of CPU by removing IPC (Inter-Process Communication) overhead.
 
+## Installation
+
+ZooSync is an optional dependency. Install it with:
+
+```bash
+uv add "zoopipe[zoosyncmp]"
+```
+
 ## Usage
 
 ```python

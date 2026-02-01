@@ -7,7 +7,7 @@ ZooPipe includes a `DaskEngine` that allows you to scale your pipelines across a
 To use the Dask engine, install ZooPipe with the dask extras:
 
 ```bash
-pip install "zoopipe[dask-distributed]"
+uv add "zoopipe[dask]"
 ```
 
 ## Quick Start
