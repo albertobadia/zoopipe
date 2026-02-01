@@ -20,6 +20,7 @@ class DeltaInputAdapter(BaseInputAdapter):
         storage_options: Optional[Dict[str, str]] = None,
         batch_size: int = 1000,
         files: Optional[List[str]] = None,
+        eager_init: bool = False,
     ):
         """
         Args:
@@ -29,6 +30,7 @@ class DeltaInputAdapter(BaseInputAdapter):
             cloud storage (AWS, Azure, GCS).
             batch_size: Number of records to yield per batch.
             files: Optional subset of files to read (used for splitting).
+            eager_init: If True, validates connection immediately.
         """
         super().__init__()
         self.table_uri = table_uri
@@ -36,7 +38,11 @@ class DeltaInputAdapter(BaseInputAdapter):
         self.storage_options = storage_options
         self.batch_size = batch_size
         self.files = files
+        self.eager_init = eager_init
         self._reader: Optional[DeltaReader] = None
+
+        if self.eager_init:
+            self._get_rust_reader()
 
     def _get_rust_reader(self) -> Any:
         if not self._reader:
@@ -47,6 +53,7 @@ class DeltaInputAdapter(BaseInputAdapter):
                 self.batch_size,
                 self.files,
                 projection=self.required_columns,
+                eager_init=self.eager_init,
             )
         return self._reader
 

@@ -244,9 +244,7 @@ impl KafkaWriter {
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let json = py.import("json")?;
-        let dumps = json.getattr("dumps")?;
-        let bytes = self.extract_bytes(data, Some(&dumps))?;
+        let bytes = self.extract_bytes_native(py, data)?;
         let topic = self.topic.clone();
         let producer = self.producer.clone();
 
@@ -268,12 +266,10 @@ impl KafkaWriter {
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let iterator = entries.try_iter()?;
         let mut futures = Vec::new();
-        let json = py.import("json")?;
-        let dumps = json.getattr("dumps")?;
 
         for entry in iterator {
             let entry = entry?;
-            let bytes = self.extract_bytes(entry, Some(&dumps))?;
+            let bytes = self.extract_bytes_native(py, entry)?;
             let topic = self.topic.clone();
             let producer = self.producer.clone();
 
@@ -316,10 +312,10 @@ impl KafkaWriter {
 }
 
 impl KafkaWriter {
-    fn extract_bytes<'py>(
+    fn extract_bytes_native<'py>(
         &self,
+        _py: Python<'py>,
         entry: Bound<'py, PyAny>,
-        json_dumps: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Vec<u8>> {
         let raw_data = if let Ok(dict) = entry.cast::<PyDict>() {
             if let Some(rd) = dict.get_item("raw_data")? {
@@ -335,17 +331,10 @@ impl KafkaWriter {
             Ok(b.as_bytes().to_vec())
         } else if let Ok(s) = raw_data.cast::<PyString>() {
             Ok(s.to_str()?.as_bytes().to_vec())
-        } else if raw_data.is_instance_of::<PyDict>() {
-            if let Some(dumps) = json_dumps {
-                let s: String = dumps.call1((&raw_data,))?.extract()?;
-                Ok(s.into_bytes())
-            } else {
-                // Fallback if no dumper provided (shouldn't happen in optimized path)
-                let s = raw_data.to_string();
-                Ok(s.into_bytes())
-            }
         } else {
-            Ok(raw_data.to_string().into_bytes())
+            // Use native Rust serialization for speed and to avoid GIL contention
+            let serializable = crate::utils::PySerializable(raw_data);
+            serde_json::to_vec(&serializable).map_err(|e| PyRuntimeError::new_err(e.to_string()))
         }
     }
 }

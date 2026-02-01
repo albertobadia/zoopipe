@@ -80,3 +80,27 @@ def test_delta_output_adapter_instantiation():
     # The _get_rust_writer calls Rust, which might fail if DLLs are missing
     # or mocked incorrectly, but the method call itself should exist.
     assert hasattr(adapter, "get_native_writer")
+
+
+def test_delta_eager_init():
+    """Test that setting eager_init=True causes immediate connection/validation."""
+    from zoopipe.input_adapter.delta import DeltaInputAdapter
+
+    # We expect a RuntimeError because the table URI is invalid/unreachable,
+    # and eager_init=True forces the check in __init__.
+    # We assume the internal reader construction fails for the bad URI.
+
+    # We expect a RuntimeError because the table URI is invalid and we have
+    # no credentials. The actual error comes from Rust's DeltaTableBuilder.
+    try:
+        DeltaInputAdapter("s3://bad-bucket/table", eager_init=True)
+    except RuntimeError:
+        # Success: eager_init caused an immediate failure
+        pass
+    else:
+        assert False, "Should have raised RuntimeError with eager_init=True"
+
+    # With eager_init=False (default), it should NOT raise during init despite
+    # the bad URI because it is lazy.
+    adapter = DeltaInputAdapter("s3://bad-bucket/table", eager_init=False)
+    assert adapter is not None

@@ -192,16 +192,58 @@ impl JSONReader {
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         let batch = PyList::empty(py);
+        let mut count = 0;
 
-        for _ in 0..batch_size {
-            if let Some(item) = self.next_internal(py, &mut state)? {
-                batch.append(item)?;
-            } else {
-                break;
+        let status_pending = self.status_pending.bind(py);
+        let key_id = self.keys.get_id(py);
+        let key_status = self.keys.get_status(py);
+        let key_raw_data = self.keys.get_raw_data(py);
+        let key_metadata = self.keys.get_metadata(py);
+        let key_position = self.keys.get_position(py);
+        let key_errors = self.keys.get_errors(py);
+        let generate_ids = true;
+
+        while count < batch_size {
+            match state.next_value() {
+                Some(Ok((value, pos))) => {
+                    let raw_data = if let Value::Object(obj) = value {
+                        let dict = PyDict::new(py);
+                        for (k, v) in obj {
+                            if let Some(ref proj) = self.projection
+                                && !proj.contains(&k)
+                            {
+                                continue;
+                            }
+                            dict.set_item(k, serde_to_py(py, v)?)?;
+                        }
+                        dict.as_any().clone()
+                    } else {
+                        serde_to_py(py, value)?
+                    };
+
+                    let envelope = PyDict::new(py);
+                    let id = if generate_ids {
+                        crate::utils::generate_entry_id(py)?
+                    } else {
+                        py.None().into_bound(py)
+                    };
+
+                    envelope.set_item(key_id, id)?;
+                    envelope.set_item(key_status, status_pending)?;
+                    envelope.set_item(key_raw_data, raw_data)?;
+                    envelope.set_item(key_metadata, PyDict::new(py))?;
+                    envelope.set_item(key_position, pos)?;
+                    envelope.set_item(key_errors, PyList::empty(py))?;
+
+                    batch.append(envelope)?;
+                    count += 1;
+                }
+                Some(Err(e)) => return Err(PipeError::Other(e).into()),
+                None => break,
             }
         }
 
-        if batch.is_empty() {
+        if count == 0 {
             Ok(None)
         } else {
             Ok(Some(batch))

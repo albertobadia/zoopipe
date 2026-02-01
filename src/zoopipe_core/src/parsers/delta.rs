@@ -24,16 +24,18 @@ pub struct DeltaReader {
 #[pymethods]
 impl DeltaReader {
     #[new]
-    #[pyo3(signature = (table_uri, version=None, storage_options=None, batch_size=1024, files=None, projection=None))]
+    #[pyo3(signature = (table_uri, version=None, storage_options=None, batch_size=1024, files=None, projection=None, eager_init=false))]
     pub fn new(
+        py: Python<'_>,
         table_uri: String,
         version: Option<i64>,
         storage_options: Option<HashMap<String, String>>,
         batch_size: usize,
         files: Option<Vec<String>>,
         projection: Option<Vec<String>>,
-    ) -> Self {
-        DeltaReader {
+        eager_init: bool,
+    ) -> PyResult<Self> {
+        let reader = DeltaReader {
             table_uri,
             version,
             storage_options,
@@ -41,7 +43,13 @@ impl DeltaReader {
             batch_size,
             files,
             projection,
+        };
+
+        if eager_init {
+            reader.ensure_initialized(py)?;
         }
+
+        Ok(reader)
     }
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {

@@ -310,12 +310,73 @@ impl CSVReader {
         let batch = PyList::empty(py);
         let mut count = 0;
 
+        // Pre-bind headers to avoid repeated GIL-bound calls inside the loop
+        let bound_headers: Vec<Bound<'py, PyString>> =
+            self.headers.iter().map(|h| h.bind(py).clone()).collect();
+        let headers_len = bound_headers.len();
+
+        let status_pending = self.status_pending.bind(py);
+        let key_id = self.keys.get_id(py);
+        let key_status = self.keys.get_status(py);
+        let key_raw_data = self.keys.get_raw_data(py);
+        let key_metadata = self.keys.get_metadata(py);
+        let key_position = self.keys.get_position(py);
+        let key_errors = self.keys.get_errors(py);
+        let none = py.None().into_bound(py);
+
         while count < batch_size {
-            if let Some(item) = self.next_internal(py, &mut state)? {
-                batch.append(item)?;
-                count += 1;
-            } else {
+            if let Some(lim) = state.limit
+                && state.position >= lim
+            {
                 break;
+            }
+
+            match state.reader.next() {
+                Some(Ok(record)) => {
+                    let current_pos = state.position;
+                    state.position += 1;
+
+                    let raw_data = PyDict::new(py);
+                    for (i, value) in record.iter().enumerate() {
+                        if i < headers_len {
+                            let h_bound = &bound_headers[i];
+                            if let Some(ref proj) = self.projection
+                                && !proj.contains(h_bound.to_str().unwrap_or(""))
+                            {
+                                continue;
+                            }
+                            raw_data.set_item(h_bound, value)?;
+                        }
+                    }
+
+                    // Inline wrap_in_envelope logic for performance
+                    let envelope = PyDict::new(py);
+
+                    let id = if self.generate_ids {
+                        crate::utils::generate_entry_id(py)?
+                    } else {
+                        none.clone()
+                    };
+
+                    envelope.set_item(key_id, id)?;
+                    envelope.set_item(key_status, status_pending)?;
+                    envelope.set_item(key_raw_data, raw_data)?;
+                    envelope.set_item(key_metadata, PyDict::new(py))?;
+                    envelope.set_item(key_position, current_pos)?;
+                    envelope.set_item(key_errors, PyList::empty(py))?;
+
+                    batch.append(envelope)?;
+                    count += 1;
+                }
+                Some(Err(e)) => {
+                    let line = state.position + 1;
+                    return Err(PipeError::Other(format!(
+                        "CSV parse error at line {}: {}",
+                        line, e
+                    ))
+                    .into());
+                }
+                None => break,
             }
         }
 
