@@ -10,7 +10,6 @@ pub mod pipeline;
 pub mod utils;
 
 use crate::executor::{MultiThreadExecutor, SingleThreadExecutor};
-use crate::io::get_runtime;
 use crate::io::storage::StorageController;
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::csv::{CSVReader, CSVWriter};
@@ -31,7 +30,14 @@ fn get_version() -> PyResult<String> {
 
 pub fn get_file_size_rust(path: String) -> PyResult<u64> {
     let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-    get_runtime().block_on(async { controller.get_size().await.map_err(wrap_py_err) })
+    use crate::io::get_runtime_handle;
+    get_runtime_handle().block_on(async { controller.get_size().await.map_err(wrap_py_err) })
+}
+
+#[pyfunction]
+fn shutdown() -> PyResult<()> {
+    crate::io::shutdown_runtime();
+    Ok(())
 }
 
 #[pyfunction]
@@ -66,12 +72,14 @@ fn zoopipe_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(get_file_size, m)?)?;
+    m.add_function(wrap_pyfunction!(shutdown, m)?)?;
     m.add_class::<IcebergWriter>()?;
     m.add_function(wrap_pyfunction!(commit_iceberg_transaction, m)?)?;
     m.add_function(wrap_pyfunction!(get_iceberg_data_files, m)?)?;
 
     m.add_class::<crate::parsers::delta::DeltaReader>()?;
     m.add_class::<crate::parsers::delta::DeltaWriter>()?;
+    m.add_class::<crate::parsers::delta::DeltaTransactionHandle>()?;
     m.add_function(wrap_pyfunction!(
         crate::parsers::delta::commit_delta_transaction,
         m

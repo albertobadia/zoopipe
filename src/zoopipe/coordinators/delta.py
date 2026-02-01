@@ -1,4 +1,7 @@
 import json
+import os
+import time
+import uuid
 from typing import Any, Dict, List
 
 from zoopipe.coordinators.base import BaseCoordinator
@@ -32,9 +35,6 @@ class DeltaCoordinator(BaseCoordinator):
         Validate table existence or prepare transaction state.
         If table does not exist and schema is provided, create it.
         """
-        import os
-
-        # Simple check for local filesystem
         if self.table_uri.startswith("file://"):
             path_str = self.table_uri.replace("file://", "")
         elif not self.table_uri.startswith("/"):
@@ -57,9 +57,6 @@ class DeltaCoordinator(BaseCoordinator):
 
             if self.schema:
                 print(f"Creating new Delta Table at {self.table_uri}...")
-                import json
-                import time
-                import uuid
 
                 os.makedirs(log_dir, exist_ok=True)
 
@@ -91,32 +88,20 @@ class DeltaCoordinator(BaseCoordinator):
         """
         Collect AddActions from workers and commit transaction.
         """
-        action_jsons = []
+        handles = []
         for res in results:
             if res.success and res.output_path:
-                # Output path from DeltaWriter is a JSON list of AddActions
-                # We collect them all to pass to the commit function
-                try:
-                    # Validate it's JSON list
-                    actions = json.loads(res.output_path)
-                    if actions:
-                        action_jsons.append(res.output_path)
-                except json.JSONDecodeError:
-                    print(
-                        f"Warning: Worker {res.worker_id} returned"
-                        f"invalid JSON output: {res.output_path}"
-                    )
+                # The output_path is now the opaque DeltaTransactionHandle object
+                handles.append(res.output_path)
 
-        if action_jsons:
-            print(f"Committing transaction to Delta table at {self.table_uri}...")
+        if handles:
             try:
                 commit_delta_transaction(
                     self.table_uri,
-                    action_jsons,
+                    handles,
                     self.mode,
                     self.storage_options,
                 )
-                print("Delta Lake transaction committed successfully.")
             except Exception as e:
                 print(f"Error committing Delta transaction: {e}")
                 raise e
@@ -128,5 +113,3 @@ class DeltaCoordinator(BaseCoordinator):
         Clean up orphaned files if necessary.
         """
         print(f"DeltaCoordinator caught error: {error}. Transaction aborted.")
-        # Future: Implement logic to delete the parquet files created by failed workers
-        # since they are not committed to the log yet.

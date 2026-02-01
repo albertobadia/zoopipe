@@ -8,7 +8,7 @@ use super::backend::SqlBackend;
 use super::backends::{GenericInsertBackend, PostgresCopyBackend};
 use super::utils::{ensure_parent_dir, init_drivers, is_postgres};
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 
 #[pyclass]
 pub struct SQLWriter {
@@ -133,7 +133,7 @@ impl SQLWriter {
         let table_name = self.table_name.clone();
         let mode = self.mode.clone();
 
-        let rt = get_runtime();
+        let rt = get_runtime_handle();
         rt.block_on(async {
             ensure_parent_dir(&uri);
             let pool = AnyPool::connect(&uri)

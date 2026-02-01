@@ -1,3 +1,5 @@
+import atexit
+
 from zoopipe.engines import BaseEngine, MultiProcessEngine
 from zoopipe.hooks.base import BaseHook
 from zoopipe.hooks.sql import SQLExpansionHook
@@ -30,7 +32,14 @@ from zoopipe.structs import (
     HookStore,
     PipeStatus,
 )
-from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
+from zoopipe.zoopipe_rust_core import (
+    MultiThreadExecutor,
+    SingleThreadExecutor,
+    shutdown,
+)
+
+atexit.register(shutdown)
+
 
 __all__ = [
     "Pipe",

@@ -9,6 +9,7 @@ from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.report import PipeReport, get_logger
 from zoopipe.structs import EntryStatus
+from zoopipe.utils.progress import monitor_progress
 from zoopipe.utils.telemetry import TelemetryController
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
@@ -157,8 +158,6 @@ class Pipe:
             if not wait:
                 return True
 
-            from zoopipe.utils.progress import monitor_progress
-
             return monitor_progress(
                 waitable=self,
                 report_source=self,
@@ -242,6 +241,17 @@ class Pipe:
                 self.logger.warning(
                     "Pipeline thread did not finish cleanly within timeout"
                 )
+
+    @staticmethod
+    def shutdown_engine() -> None:
+        """
+        Shutdown the underlying Rust engine (Tokio runtime).
+        This is called automatically at exit, but can be
+        called manually to free resources.
+        """
+        from zoopipe.zoopipe_rust_core import shutdown
+
+        shutdown()
 
     def wait(self, timeout: float | None = None) -> bool:
         """

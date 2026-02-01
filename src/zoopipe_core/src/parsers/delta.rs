@@ -1,16 +1,14 @@
 use crate::parsers::parquet::MultiParquetReader;
+use deltalake::kernel::{Action, Add};
+use deltalake::protocol::{DeltaOperation, SaveMode};
 use deltalake::{DeltaTable, DeltaTableBuilder};
+use deltalake_core::kernel::transaction::{CommitBuilder, TableReference};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
-use serde_json;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use deltalake::kernel::{Action, Add};
-use std::fs::File;
-
-/// Reader for Delta Lake tables.
 /// Reader for Delta Lake tables.
 #[pyclass]
 pub struct DeltaReader {
@@ -81,7 +79,7 @@ impl DeltaReader {
         let files = if let Some(files) = &self.files {
             files.clone()
         } else {
-            let rt = crate::io::get_runtime();
+            let rt = crate::io::get_runtime_handle();
             let table_uri = self.table_uri.clone();
             let version = self.version;
             let storage_options = self.storage_options.clone();
@@ -103,8 +101,6 @@ impl DeltaReader {
                     PyRuntimeError::new_err(format!("Failed to load Delta table: {}", e))
                 })?;
 
-                // Correct method for Delta Lake 0.30 to get absolute file URIs
-                // get_file_uris() returns Result<impl Iterator<Item = String>, Error>
                 let file_uris: Vec<String> = table
                     .get_file_uris()
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
@@ -115,7 +111,6 @@ impl DeltaReader {
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
         };
 
-        // get_file_uris returns absolute URIs, so we pass them directly
         let reader = MultiParquetReader::new(files, true, self.batch_size);
         *guard = Some(reader);
 
@@ -130,7 +125,7 @@ pub fn get_delta_files(
     version: Option<i64>,
     storage_options: Option<HashMap<String, String>>,
 ) -> PyResult<Vec<String>> {
-    let rt = crate::io::get_runtime();
+    let rt = crate::io::get_runtime_handle();
 
     rt.block_on(async {
         let url = crate::utils::parse_uri(&table_uri)?;
@@ -166,6 +161,40 @@ pub struct DeltaWriter {
     current_file_path: Mutex<Option<String>>,
     #[allow(dead_code)]
     storage_options: Option<HashMap<String, String>>,
+}
+
+#[pyclass(module = "zoopipe.zoopipe_rust_core")]
+pub struct DeltaTransactionHandle {
+    pub actions: Vec<Action>,
+}
+
+impl Default for DeltaTransactionHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[pymethods]
+impl DeltaTransactionHandle {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            actions: Vec::new(),
+        }
+    }
+
+    pub fn __getstate__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        let data = serde_json::to_vec(&self.actions)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok(pyo3::types::PyBytes::new(py, &data))
+    }
+
+    pub fn __setstate__(&mut self, state: &Bound<'_, pyo3::types::PyBytes>) -> PyResult<()> {
+        let data = state.as_bytes();
+        self.actions =
+            serde_json::from_slice(data).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok(())
+    }
 }
 
 #[pymethods]
@@ -209,7 +238,7 @@ impl DeltaWriter {
         Ok(())
     }
 
-    pub fn close(&self) -> PyResult<String> {
+    pub fn close(&self) -> PyResult<Option<DeltaTransactionHandle>> {
         let mut writer_guard = self
             .inner_writer
             .lock()
@@ -232,18 +261,25 @@ impl DeltaWriter {
                 .unwrap()
                 .as_millis() as i64;
 
-            let action_info = serde_json::json!({
-                "path": file_name,
-                "size": size,
-                "partitionValues": {},
-                "modificationTime": now,
-                "dataChange": true,
-                "stats": null
-            });
+            let add = Add {
+                path: file_name,
+                size,
+                partition_values: HashMap::new(),
+                modification_time: now,
+                data_change: true,
+                stats: None,
+                tags: None,
+                deletion_vector: None,
+                base_row_id: None,
+                default_row_commit_version: None,
+                clustering_provider: None,
+            };
 
-            Ok(serde_json::to_string(&vec![action_info]).unwrap())
+            Ok(Some(DeltaTransactionHandle {
+                actions: vec![Action::Add(add)],
+            }))
         } else {
-            Ok("[]".to_string())
+            Ok(None)
         }
     }
 }
@@ -251,95 +287,55 @@ impl DeltaWriter {
 #[pyfunction]
 pub fn commit_delta_transaction(
     table_uri: String,
-    actions_json: Vec<String>,
+    handles: Vec<Bound<'_, DeltaTransactionHandle>>,
     _mode: String,
-    _storage_options: Option<HashMap<String, String>>,
+    storage_options: Option<HashMap<String, String>>,
 ) -> PyResult<()> {
-    // Only support local file paths for this manual implementation
-    let path_str = if table_uri.starts_with("file://") {
-        table_uri.strip_prefix("file://").unwrap()
-    } else if table_uri.starts_with('/') {
-        &table_uri
-    } else {
-        // Fallback to error if not local
-        println!(
-            "Dry run: Atomic commit logic not implemented for non-local URI: {}",
-            table_uri
-        );
-        return Err(PyRuntimeError::new_err(
-            "Atomic commit only supported for local paths in this version",
-        ));
-    };
+    let rt = crate::io::get_runtime_handle();
 
-    let table_path = std::path::Path::new(path_str);
-    let log_dir = table_path.join("_delta_log");
-    std::fs::create_dir_all(&log_dir).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+    rt.block_on(async {
+        let url = crate::utils::parse_uri(&table_uri)?;
+        let mut builder = DeltaTableBuilder::from_url(url)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+            .with_allow_http(true);
 
-    // Parse actions
-    let mut add_actions: Vec<Add> = Vec::new();
-    for json_str in actions_json {
-        let adds: Vec<Add> = serde_json::from_str(&json_str)
-            .map_err(|e| PyRuntimeError::new_err(format!("Invalid action JSON: {}", e)))?;
-        add_actions.extend(adds);
-    }
+        if let Some(opts) = storage_options {
+            builder = builder.with_storage_options(opts);
+        }
 
-    if add_actions.is_empty() {
-        return Ok(());
-    }
+        let table = builder
+            .load()
+            .await
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load Delta table: {}", e)))?;
 
-    // Determine next version
-    let mut version = 0;
-    while log_dir.join(format!("{:020}.json", version)).exists() {
-        version += 1;
-    }
+        // Collect actions from handles
+        let mut add_actions: Vec<Action> = Vec::new();
+        for handle in handles {
+            let handle_ref = handle.borrow();
+            add_actions.extend(handle_ref.actions.clone());
+        }
 
-    let mut actions: Vec<Action> = Vec::new();
+        if add_actions.is_empty() {
+            return Ok(());
+        }
 
-    // If version 0, we need Protocol and Metadata
-    if version == 0 {
-        // Use deltalake's parquet re-export to match types
-        // Check if deltalake provides parquet re-export.
-        // If not, we cannot easily infer schema => Error.
-        // Assuming it does or we can fail gracefully.
+        let operation = DeltaOperation::Write {
+            mode: SaveMode::Append,
+            partition_by: None,
+            predicate: None,
+        };
 
-        // Since I cannot guarantee `deltalake::parquet` availability without checking docs/source (which I can't),
-        // and `zoopipe` depends on specific parquet version.
-        // I will enforce "Table Must Exist" for this iteration if usage of `TryFrom` fails.
+        let snapshot = table.state.clone();
+        let log_store = table.log_store();
 
-        // BUT WAIT: StructType::try_from relies on ArrowSchema.
-        // I can construct ArrowSchema manually if I had column names.
-        // I don't.
+        let table_data = snapshot.as_ref().map(|s| s as &dyn TableReference);
 
-        // Compromise:
-        // If version == 0, simple error: "Table does not exist. Please create the Delta Table first (e.g. using deltalake python library)."
-        // This allows `add` to work if I fix the example script.
+        let _ = CommitBuilder::default()
+            .with_actions(add_actions)
+            .build(table_data, log_store, operation)
+            .await
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to prepare commit: {}", e)))?;
 
-        return Err(PyRuntimeError::new_err(
-            "Auto-creating Delta Table from inferred schema is not supported in this version. Please ensure the target Delta Table exists before writing.",
-        ));
-    }
-
-    for add in add_actions {
-        actions.push(Action::Add(add));
-    }
-
-    // Write to JSON file
-    let commit_file = log_dir.join(format!("{:020}.json", version));
-    let file = File::create(&commit_file).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-    use std::io::Write;
-    let mut writer = std::io::BufWriter::new(file);
-
-    for action in actions {
-        let line =
-            serde_json::to_string(&action).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        writeln!(writer, "{}", line).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-    }
-
-    writer
-        .flush()
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-
-    // Also update _last_checkpoint if needed? Not strictly required for readers.
-
-    Ok(())
+        Ok(())
+    })
 }

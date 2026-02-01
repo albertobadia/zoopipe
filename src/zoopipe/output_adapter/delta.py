@@ -47,10 +47,10 @@ class DeltaOutputAdapter(BaseOutputAdapter):
         writer = self._get_rust_writer()
         writer.write_batch(batch)
 
-    def close(self) -> str:
+    def close(self) -> Any:
         if self._writer:
             return self._writer.close()
-        return "[]"
+        return None
 
     def get_coordinator(self) -> Optional[DeltaCoordinator]:
         """

@@ -37,6 +37,7 @@ zstd = "0.13.3"
 flate2 = "1.1.8"
 iceberg = "0.8.0"
 deltalake = { version = "0.30.1", features = ["s3", "gcs", "azure"] }
+deltalake-core = { version = "0.30.1" }
 
 [dev-dependencies]
 criterion = "0.8.1"

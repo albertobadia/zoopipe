@@ -6355,6 +6355,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "deltalake",
+ "deltalake-core",
  "flate2",
  "futures-util",
  "iceberg",

@@ -4,6 +4,7 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList};
 
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::csv::{CSVReader, CSVWriter};
+
 use crate::parsers::delta::{DeltaReader, DeltaWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
@@ -11,6 +12,7 @@ use crate::parsers::kafka::{KafkaReader, KafkaWriter};
 use crate::parsers::parquet::{MultiParquetReader, ParquetReader, ParquetWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
 use crate::parsers::sql::{SQLReader, SQLWriter};
+use pyo3::types::PyString;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(FromPyObject)]
@@ -97,42 +99,51 @@ impl PipeWriter {
         }
     }
 
-    pub fn close(&self, py: Python) -> PyResult<String> {
+    pub fn close(&self, py: Python) -> PyResult<Py<PyAny>> {
         match self {
             PipeWriter::CSV(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::JSON(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::Arrow(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::SQL(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::Parquet(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::PyGen(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::Excel(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
             PipeWriter::Kafka(w) => {
                 w.bind(py).borrow().close()?;
-                Ok("[]".into())
+                Ok(PyString::new(py, "[]").into_any().unbind())
             }
-            PipeWriter::Iceberg(w) => w.bind(py).borrow().close(),
-            PipeWriter::Delta(w) => w.bind(py).borrow().close(),
+            PipeWriter::Iceberg(w) => {
+                let s = w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, &s).into_any().unbind())
+            }
+            PipeWriter::Delta(w) => {
+                let opt = w.bind(py).borrow().close()?;
+                match opt {
+                    Some(handle) => Ok(Py::new(py, handle)?.into_any()),
+                    None => Ok(py.None()),
+                }
+            }
         }
     }
 }
@@ -251,7 +262,7 @@ impl NativePipe {
     }
 
     /// Executes the pipeline until the source is exhausted or an error occurs.
-    fn run(&self, py: Python<'_>) -> PyResult<Option<String>> {
+    fn run(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let report = self.report.bind(py);
         report.call_method0("_mark_running")?;
 

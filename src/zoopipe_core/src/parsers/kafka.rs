@@ -1,5 +1,5 @@
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 use crate::utils::interning::InternedKeys;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -80,7 +80,7 @@ impl KafkaReader {
         }
 
         let consumer: StreamConsumer = {
-            let _guard = get_runtime().enter();
+            let _guard = get_runtime_handle().enter();
             config
                 .create()
                 .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
@@ -92,7 +92,7 @@ impl KafkaReader {
         let (tx, rx) = crossbeam_channel::bounded(1000);
 
         std::thread::spawn(move || {
-            let rt = get_runtime();
+            let rt = get_runtime_handle();
             rt.block_on(async move {
                 let mut stream = consumer.stream();
                 while let Some(msg_res) = stream.next().await {
@@ -227,7 +227,7 @@ impl KafkaWriter {
         };
 
         let producer: FutureProducer = {
-            let _guard = get_runtime().enter();
+            let _guard = get_runtime_handle().enter();
             ClientConfig::new()
                 .set("bootstrap.servers", &brokers)
                 .set("request.timeout.ms", format!("{}", timeout * 1000))
@@ -245,7 +245,7 @@ impl KafkaWriter {
         let producer = self.producer.clone();
 
         py.detach(|| {
-            get_runtime().block_on(async move {
+            get_runtime_handle().block_on(async move {
                 producer
                     .send(
                         FutureRecord::<(), [u8]>::to(&topic).payload(&bytes),
@@ -280,7 +280,7 @@ impl KafkaWriter {
         }
 
         py.detach(|| {
-            get_runtime().block_on(async move {
+            get_runtime_handle().block_on(async move {
                 let results = futures_util::future::join_all(futures).await;
                 for res in results {
                     if let Err((e, _)) = res {
@@ -295,7 +295,7 @@ impl KafkaWriter {
     }
 
     pub fn flush(&self) -> PyResult<()> {
-        let _guard = get_runtime().enter();
+        let _guard = get_runtime_handle().enter();
         self.producer
             .flush(Duration::from_secs(10))
             .map_err(|e| PyRuntimeError::new_err(format!("Kafka flush error: {}", e)))?;

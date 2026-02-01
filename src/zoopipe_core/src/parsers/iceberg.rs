@@ -137,7 +137,7 @@ impl IcebergWriter {
             let size = if crate::io::storage::is_cloud_path(&path) {
                 let controller =
                     crate::io::storage::StorageController::new(&path).map_err(wrap_py_err)?;
-                crate::io::get_runtime()
+                crate::io::get_runtime_handle()
                     .block_on(async { controller.get_size().await })
                     .map_err(wrap_py_err)?
             } else {
@@ -189,7 +189,7 @@ pub fn get_iceberg_data_files(table_location: String) -> PyResult<Vec<String>> {
         let prefix = object_store::path::Path::from(controller.path());
         let data_prefix = prefix.child("data");
 
-        let files = crate::io::get_runtime()
+        let files = crate::io::get_runtime_handle()
             .block_on(async {
                 use futures_util::stream::StreamExt;
                 let mut files = Vec::new();
@@ -325,7 +325,7 @@ pub fn commit_iceberg_transaction(
         let metadata_file = metadata_dir.child("v1.metadata.json");
         let version_hint_file = metadata_dir.child("version-hint.text");
 
-        crate::io::get_runtime()
+        crate::io::get_runtime_handle()
             .block_on(async {
                 // Import the trait to call methods on Arc<dyn ObjectStore>
                 use object_store::ObjectStoreExt;

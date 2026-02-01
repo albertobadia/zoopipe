@@ -1,5 +1,5 @@
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 use crate::io::storage::StorageController;
 use crate::utils::wrap_py_err;
 use calamine::{Data, Reader, Xlsx};
@@ -45,7 +45,7 @@ impl ExcelReader {
     ) -> PyResult<Self> {
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-            get_runtime()
+            get_runtime_handle()
                 .block_on(async {
                     controller
                         .store()
@@ -94,14 +94,14 @@ impl ExcelReader {
             range
                 .rows()
                 .nth(skip_rows)
-                .map(|row| row.iter().map(data_to_string).collect())
+                .map(|row: &[Data]| row.iter().map(data_to_string).collect())
                 .unwrap_or_default()
         };
 
         let all_rows: Vec<Vec<Data>> = range
             .rows()
             .skip(skip_rows + header_offset)
-            .map(|r| r.to_vec())
+            .map(|r: &[Data]| r.to_vec())
             .collect();
 
         let headers: Vec<Py<PyString>> = headers_str
@@ -160,7 +160,7 @@ impl ExcelReader {
     pub fn list_sheets(path: String) -> PyResult<Vec<String>> {
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-            get_runtime()
+            get_runtime_handle()
                 .block_on(async {
                     controller
                         .store()
@@ -330,7 +330,7 @@ impl ExcelWriter {
         if path.starts_with("s3://") {
             let buffer = state.workbook.save_to_buffer().map_err(wrap_py_err)?;
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-            get_runtime().block_on(async {
+            get_runtime_handle().block_on(async {
                 controller
                     .store()
                     .put(

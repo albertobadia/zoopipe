@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use super::types::SQLData;
 use super::utils::{ensure_parent_dir, init_drivers};
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 use crate::utils::interning::InternedKeys;
 
 struct SQLReaderState {
@@ -99,7 +99,7 @@ impl SQLReader {
         let query_str = self.query.clone();
 
         std::thread::spawn(move || {
-            let rt = get_runtime();
+            let rt = get_runtime_handle();
             rt.block_on(async {
                 if let Err(e) = Self::spawn_fetcher(uri, query_str, tx).await {
                     eprintln!("SQL fetcher thread error: {}", e);

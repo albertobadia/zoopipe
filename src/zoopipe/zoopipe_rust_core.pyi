@@ -9,6 +9,43 @@ def commit_iceberg_transaction(
     data_files_json: List[str],
 ) -> None: ...
 
+class DeltaTransactionHandle:
+    """Opaque handle for Delta Lake actions."""
+
+    pass
+
+def get_delta_files(
+    table_uri: str,
+    version: Optional[int] = None,
+    storage_options: Optional[Dict[str, str]] = None,
+) -> List[str]: ...
+def commit_delta_transaction(
+    table_uri: str,
+    handles: List[DeltaTransactionHandle],
+    mode: str,
+    storage_options: Optional[Dict[str, str]] = None,
+) -> None: ...
+
+class DeltaReader:
+    def __init__(
+        self,
+        table_uri: str,
+        version: Optional[int] = None,
+        storage_options: Optional[Dict[str, str]] = None,
+        batch_size: int = 1024,
+        files: Optional[List[str]] = None,
+    ) -> None: ...
+    def read_batch(self, batch_size: int) -> Optional[List[Any]]: ...
+
+class DeltaWriter:
+    def __init__(
+        self,
+        table_uri: str,
+        storage_options: Optional[Dict[str, str]] = None,
+    ) -> None: ...
+    def write_batch(self, entries: Any) -> None: ...
+    def close(self) -> Optional[DeltaTransactionHandle]: ...
+
 class SingleThreadExecutor:
     def __init__(self, batch_size: int = 1000) -> None: ...
     def get_batch_size(self) -> int: ...
