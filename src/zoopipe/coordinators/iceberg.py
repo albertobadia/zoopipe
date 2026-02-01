@@ -15,13 +15,11 @@ class IcebergCoordinator(BaseCoordinator):
         self.table_location = table_location
         self.catalog_properties = catalog_properties
 
-    def prepare_shards(self, input_adapter: Any, workers: int) -> List[Any]:
-        # Delegate input splitting to the default
-        # strategy (usually byte-based or file-based)
-        # Iceberg coordinator focuses on OUTPUT coordination.
-        # If input is also Iceberg, we would query the table scan here.
-        # For now, assuming input is something else (CSV/Parquet).
-        return input_adapter.split(workers)
+    def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
+        # Iceberg coordinator focuses on OUTPUT coordination (commits).
+        # Sharding logic is delegated to the input adapter's specific
+        # coordinator or the DefaultShardingCoordinator.
+        return []
 
     def on_start(self, manager: Any) -> None:
         """

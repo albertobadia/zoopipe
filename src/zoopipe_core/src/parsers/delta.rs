@@ -312,47 +312,64 @@ pub fn commit_delta_transaction(
 
     rt.block_on(async {
         let url = crate::utils::parse_uri(&table_uri)?;
-        let mut builder = DeltaTableBuilder::from_url(url)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
-            .with_allow_http(true);
+        let mut retry_count = 0;
+        let max_retries = 5;
 
-        if let Some(opts) = storage_options {
-            builder = builder.with_storage_options(opts);
+        loop {
+            let mut builder_loop = DeltaTableBuilder::from_url(url.clone())
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+                .with_allow_http(true);
+
+            if let Some(opts) = storage_options.as_ref() {
+                builder_loop = builder_loop.with_storage_options(opts.clone());
+            }
+
+            let table: DeltaTable = builder_loop.load().await.map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to load Delta table: {}", e))
+            })?;
+
+            // Collect actions from handles
+            let mut add_actions: Vec<Action> = Vec::new();
+            for handle in &handles {
+                let handle_ref = handle.borrow();
+                add_actions.extend(handle_ref.actions.clone());
+            }
+
+            if add_actions.is_empty() {
+                return Ok(());
+            }
+
+            let operation = DeltaOperation::Write {
+                mode: SaveMode::Append,
+                partition_by: None,
+                predicate: None,
+            };
+
+            let snapshot = table.state.clone();
+            let log_store = table.log_store();
+            let table_data = snapshot.as_ref().map(|s| s as &dyn TableReference);
+
+            let commit_result = CommitBuilder::default()
+                .with_actions(add_actions)
+                .build(table_data, log_store, operation)
+                .await;
+
+            match commit_result {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    if retry_count < max_retries {
+                        retry_count += 1;
+                        let delay = 100 * (2u64.pow(retry_count as u32 - 1));
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        continue;
+                    } else {
+                        return Err(PyRuntimeError::new_err(format!(
+                            "Failed to commit Delta transaction after {} retries: {}",
+                            max_retries, e
+                        )));
+                    }
+                }
+            }
         }
-
-        let table = builder
-            .load()
-            .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load Delta table: {}", e)))?;
-
-        // Collect actions from handles
-        let mut add_actions: Vec<Action> = Vec::new();
-        for handle in handles {
-            let handle_ref = handle.borrow();
-            add_actions.extend(handle_ref.actions.clone());
-        }
-
-        if add_actions.is_empty() {
-            return Ok(());
-        }
-
-        let operation = DeltaOperation::Write {
-            mode: SaveMode::Append,
-            partition_by: None,
-            predicate: None,
-        };
-
-        let snapshot = table.state.clone();
-        let log_store = table.log_store();
-
-        let table_data = snapshot.as_ref().map(|s| s as &dyn TableReference);
-
-        let _ = CommitBuilder::default()
-            .with_actions(add_actions)
-            .build(table_data, log_store, operation)
-            .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to prepare commit: {}", e)))?;
-
-        Ok(())
     })
 }

@@ -27,10 +27,8 @@ class FileMergeCoordinator(BaseCoordinator):
         )
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
-        # Sharding logic for output adapters is usually already handled by split()
-        if hasattr(adapter, "split"):
-            return adapter.split(workers)
-        return [adapter] * workers
+        # Sharding logic is delegated to DefaultShardingCoordinator
+        return []
 
     def on_finish(self, manager: "PipeManager", results: List[WorkerResult]) -> None:
         sources = [

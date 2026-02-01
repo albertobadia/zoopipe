@@ -28,7 +28,8 @@ class DeltaCoordinator(BaseCoordinator):
         self.schema = schema
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
-        return adapter.split(workers)
+        # Sharding logic is delegated to DefaultShardingCoordinator
+        return []
 
     def on_start(self, manager: Any) -> None:
         """

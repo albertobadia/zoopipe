@@ -1,6 +1,11 @@
 use crate::io::SharedWriter;
 use crate::parsers::arrow_utils::{build_record_batch, infer_type};
 use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef};
+use iceberg::spec::{
+    FormatVersion, NestedField, PartitionSpec, PrimitiveType, Schema, SortOrder,
+    TableMetadataBuilder, Type,
+};
+
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 use pyo3::exceptions::PyRuntimeError;
@@ -14,7 +19,6 @@ use crate::utils::wrap_py_err;
 #[derive(Serialize, Deserialize)]
 pub struct SerializableDataFile {
     pub file_path: String,
-    pub file_format: String,
     pub record_count: u64,
     pub file_size_in_bytes: u64,
     pub schema_json: Option<String>,
@@ -178,7 +182,6 @@ impl IcebergWriter {
 
             let meta = SerializableDataFile {
                 file_path: path,
-                file_format: "parquet".to_string(),
                 record_count,
                 file_size_in_bytes: size,
                 schema_json,
@@ -260,9 +263,6 @@ pub fn commit_iceberg_transaction(
     catalog_properties: std::collections::HashMap<String, String>,
     data_files_json: Vec<String>,
 ) -> PyResult<()> {
-    use std::fs;
-    use std::path::Path;
-
     let mut all_data_files = Vec::new();
     for json in data_files_json {
         let files: Vec<SerializableDataFile> = serde_json::from_str(&json)
@@ -274,7 +274,7 @@ pub fn commit_iceberg_transaction(
         return Ok(());
     }
 
-    // Logic to build metadata (shared)
+    // 1. Infer schema and fields
     let first_file = &all_data_files[0];
     let schema_json = first_file
         .schema_json
@@ -282,75 +282,76 @@ pub fn commit_iceberg_transaction(
         .cloned()
         .unwrap_or_else(|| "[]".to_string());
 
-    let schema: Vec<(String, String)> = serde_json::from_str(&schema_json).unwrap_or_default();
+    let schema_tuples: Vec<(String, String)> =
+        serde_json::from_str(&schema_json).unwrap_or_default();
 
-    let mut iceberg_fields = Vec::new();
-    for (idx, (name, dt)) in schema.into_iter().enumerate() {
-        iceberg_fields.push(serde_json::json!({
-            "id": idx + 1,
-            "name": name,
-            "required": false,
-            "type": dt.to_lowercase() // Simplified
-        }));
+    // We will build a TableMetadata using the iceberg crate to ensure correct structure
+    let mut fields = Vec::with_capacity(schema_tuples.len());
+    for (idx, (name, dt)) in schema_tuples.into_iter().enumerate() {
+        let field_type = match dt.to_lowercase().as_str() {
+            "int64" | "int32" => Type::Primitive(PrimitiveType::Long),
+            "float64" | "float32" => Type::Primitive(PrimitiveType::Double),
+            "boolean" => Type::Primitive(PrimitiveType::Boolean),
+            _ => Type::Primitive(PrimitiveType::String),
+        };
+        fields.push(std::sync::Arc::new(NestedField::optional(
+            idx as i32 + 1,
+            name,
+            field_type,
+        )));
     }
 
-    let metadata = serde_json::json!({
-        "format-version": 1,
-        "table-uuid": uuid::Uuid::new_v4().to_string(),
-        "location": table_location,
-        "last-updated-ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
-        "last-column-id": iceberg_fields.len(),
-        "schema": {
-            "type": "struct",
-            "fields": iceberg_fields,
-            "schema-id": 0
-        },
-        "current-schema-id": 0,
-        "schemas": [
-            {
-                "type": "struct",
-                "fields": iceberg_fields,
-                "schema-id": 0
-            }
-        ],
-        "partition-spec": [],
-        "default-spec-id": 0,
-        "partition-specs": [
-            {
-                "spec-id": 0,
-                "fields": []
-            }
-        ],
-        "last-partition-id": 999,
-        "properties": catalog_properties,
-        "current-snapshot-id": -1,
-        "snapshots": [],
-        "snapshot-log": [],
-        "metadata-log": []
-    });
+    let iceberg_schema = Schema::builder()
+        .with_schema_id(0)
+        .with_fields(fields)
+        .build()
+        .map_err(wrap_py_err)?;
 
-    let json_content = serde_json::to_string_pretty(&metadata).map_err(wrap_py_err)?;
+    let schema_ref = std::sync::Arc::new(iceberg_schema.clone());
+    let partition_spec = PartitionSpec::builder(schema_ref)
+        .with_spec_id(0)
+        .build()
+        .map_err(wrap_py_err)?;
+
+    let sort_order = SortOrder::builder()
+        .with_order_id(0)
+        .build(&iceberg_schema)
+        .map_err(wrap_py_err)?;
+
+    let builder = TableMetadataBuilder::new(
+        iceberg_schema,
+        partition_spec,
+        sort_order,
+        table_location.clone(),
+        FormatVersion::V1,
+        catalog_properties,
+    )
+    .map_err(wrap_py_err)?;
+
+    let build_result = builder.build().map_err(wrap_py_err)?;
+    let json_content = serde_json::to_string_pretty(&build_result.metadata).map_err(wrap_py_err)?;
     let version_hint_content = "1";
 
-    if crate::io::storage::is_cloud_path(&table_location) {
-        // Cloud Path Logic
-        let controller =
-            crate::io::storage::StorageController::new(&table_location).map_err(wrap_py_err)?;
-        let store = controller.store();
-        let prefix = object_store::path::Path::from(controller.path());
-        let metadata_dir = prefix.child("metadata");
-        let metadata_file = metadata_dir.child("v1.metadata.json");
-        let version_hint_file = metadata_dir.child("version-hint.text");
+    let mut retry_count = 0;
+    let max_retries = 3;
 
-        crate::io::get_runtime_handle()
-            .block_on(async {
-                // Import the trait to call methods on Arc<dyn ObjectStore>
+    loop {
+        let res = if crate::io::storage::is_cloud_path(&table_location) {
+            // Cloud Path Logic
+            let controller =
+                crate::io::storage::StorageController::new(&table_location).map_err(wrap_py_err)?;
+            let store = controller.store();
+            let prefix = object_store::path::Path::from(controller.path());
+            let metadata_dir = prefix.child("metadata");
+            let metadata_file = metadata_dir.child("v1.metadata.json");
+            let version_hint_file = metadata_dir.child("version-hint.text");
+
+            crate::io::get_runtime_handle().block_on(async {
                 use object_store::ObjectStoreExt;
-
                 let exists = store.head(&metadata_file).await.is_ok();
 
                 if !exists {
-                    let payload = object_store::PutPayload::from(json_content);
+                    let payload = object_store::PutPayload::from(json_content.clone());
                     store
                         .put(&metadata_file, payload)
                         .await
@@ -364,20 +365,39 @@ pub fn commit_iceberg_transaction(
                 }
                 Ok::<(), std::io::Error>(())
             })
-            .map_err(wrap_py_err)?;
-    } else {
-        // Local Filesystem Logic
-        // Use std::fs for local ensures compatibility with legacy paths
-        let metadata_dir = Path::new(&table_location).join("metadata");
-        if !metadata_dir.exists() {
-            fs::create_dir_all(&metadata_dir).map_err(wrap_py_err)?;
-        }
+        } else {
+            // Local Filesystem Logic
+            let metadata_dir = std::path::Path::new(&table_location).join("metadata");
+            if !metadata_dir.exists() {
+                std::fs::create_dir_all(&metadata_dir)
+                    .map_err(wrap_py_err)
+                    .map(|_| ())?;
+            }
 
-        let metadata_file = metadata_dir.join("v1.metadata.json");
-        if !metadata_file.exists() {
-            fs::write(&metadata_file, json_content).map_err(wrap_py_err)?;
-            let version_hint_file = metadata_dir.join("version-hint.text");
-            fs::write(&version_hint_file, version_hint_content).map_err(wrap_py_err)?;
+            let metadata_file = metadata_dir.join("v1.metadata.json");
+            if !metadata_file.exists() {
+                std::fs::write(&metadata_file, &json_content)
+                    .map_err(wrap_py_err)
+                    .map(|_| ())?;
+                let version_hint_file = metadata_dir.join("version-hint.text");
+                std::fs::write(&version_hint_file, version_hint_content)
+                    .map_err(wrap_py_err)
+                    .map(|_| ())?;
+            }
+            Ok(())
+        };
+
+        match res {
+            Ok(_) => break,
+            Err(e) => {
+                if retry_count < max_retries {
+                    retry_count += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(100 * retry_count));
+                    continue;
+                } else {
+                    return Err(wrap_py_err(e));
+                }
+            }
         }
     }
 

@@ -21,12 +21,12 @@ class CompositeCoordinator(BaseCoordinator):
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
         # Typically only one coordinator handles sharding
-        # We use the first one that provides a logic, or the default
+        # We use the first one that provides shards (usually DefaultShardingCoordinator)
         for coord in self.coordinators:
             shards = coord.prepare_shards(adapter, workers)
-            if shards and len(shards) == workers:
+            if shards:
                 return shards
-        return [adapter] * workers
+        return [adapter]
 
     def on_start(self, manager: "PipeManager") -> None:
         for coord in self.coordinators:

@@ -1,7 +1,8 @@
 import abc
 import typing
 
-from zoopipe.coordinators import BaseCoordinator, DefaultShardingCoordinator
+if typing.TYPE_CHECKING:
+    from zoopipe.coordinators.base import BaseCoordinator
 
 
 class BaseInputAdapter(abc.ABC):
@@ -47,4 +48,6 @@ class BaseInputAdapter(abc.ABC):
         Return the coordinator for this adapter.
         Default is the sharding coordinator that uses split().
         """
+        from zoopipe.coordinators.default import DefaultShardingCoordinator
+
         return DefaultShardingCoordinator()
