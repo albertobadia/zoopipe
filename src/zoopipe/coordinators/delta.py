@@ -36,30 +36,42 @@ class DeltaCoordinator(BaseCoordinator):
         Validate table existence or prepare transaction state.
         If table does not exist and schema is provided, create it.
         """
-        if self.table_uri.startswith("file://"):
-            path_str = self.table_uri.replace("file://", "")
-        elif not self.table_uri.startswith("/"):
-            # Assume remote or other scheme, skip auto-creation for now
-            return
-        else:
-            path_str = self.table_uri
+        log_dir = f"{self.table_uri.rstrip('/')}/_delta_log"
 
-        log_dir = os.path.join(path_str, "_delta_log")
+        # Auto-creation logic is only safe for local files currently without fsspec
+        is_local = self.table_uri.startswith("/") or self.table_uri.startswith(
+            "file://"
+        )
+
+        if not is_local:
+            # For remote URIs, we rely on the native writer to handle
+            # directory/log creation or fail if the bucket is not accessible.
+            return
+
+        path_str = self.table_uri.replace("file://", "")
+        local_log_dir = os.path.join(path_str, "_delta_log")
 
         # Check if version 0 exists
         has_log = False
-        if os.path.exists(log_dir):
-            if any(f.endswith(".json") for f in os.listdir(log_dir)):
+        if os.path.exists(local_log_dir):
+            if any(f.endswith(".json") for f in os.listdir(local_log_dir)):
                 has_log = True
 
         if not has_log:
-            if self.mode == "error":
-                raise RuntimeError(f"Delta Table does not exist at {self.table_uri}")
+            if self.mode == "error" or self.mode == "append":
+                # For append mode, we don't auto-create if it doesn't exist
+                # unless we have a schema
+                if not self.schema:
+                    print(
+                        f"Warning: Table {self.table_uri} does not exist "
+                        "and no schema provided. Write might fail."
+                    )
+                    return
 
             if self.schema:
                 print(f"Creating new Delta Table at {self.table_uri}...")
 
-                os.makedirs(log_dir, exist_ok=True)
+                os.makedirs(local_log_dir, exist_ok=True)
 
                 protocol = {"protocol": {"minReaderVersion": 1, "minWriterVersion": 2}}
 

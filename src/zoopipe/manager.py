@@ -210,6 +210,7 @@ class PipeManager:
                 report_update_interval=pipe.report_update_interval,
                 executor=exec_strategy,
                 use_column_pruning=pipe.use_column_pruning,
+                _skip_adapter_hooks=True,
             )
             pipes.append(sharded_pipe)
 

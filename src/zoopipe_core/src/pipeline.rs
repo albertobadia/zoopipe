@@ -263,57 +263,81 @@ impl NativePipe {
 
     /// Executes the pipeline until the source is exhausted or an error occurs.
     fn run(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        let report = self.report.bind(py);
-        report.call_method0("_mark_running")?;
+        let report_py = self.report.clone_ref(py);
+        report_py.bind(py).call_method0("_mark_running")?;
 
         let batch_size = self.executor.get_batch_size(py)?;
         let concurrency = self.executor.get_concurrency(py)?;
 
-        // Setup buffering for both row-wise accumulation and batch-wise accumulation
         let mut row_buffer = Vec::with_capacity(batch_size);
-        let mut batch_buffer: Vec<Bound<'_, PyList>> = Vec::with_capacity(concurrency);
+        let mut batch_buffer: Vec<Py<PyList>> = Vec::with_capacity(concurrency);
 
-        loop {
-            // Priority 1: Check if reader has a full batch ready (e.g. Arrow/Parquet/SQL chunks)
-            if let Some(batch) = self.reader.read_batch(py, batch_size)? {
-                batch_buffer.push(batch);
-                if batch_buffer.len() >= concurrency {
-                    self.process_buffered_batches(py, &mut batch_buffer, report)?;
+        // We release the GIL for the main loop, re-acquiring it only for Python-heavy operations.
+        // This allows other Python threads (like progress monitoring/API) to run.
+        let result: PyResult<()> = Python::detach(py, || {
+            loop {
+                let opt_batch = Python::attach(|py| {
+                    self.reader
+                        .read_batch(py, batch_size)
+                        .map(|opt| opt.map(|b| b.unbind()))
+                })?;
+
+                if let Some(batch) = opt_batch {
+                    batch_buffer.push(batch);
+                    if batch_buffer.len() >= concurrency {
+                        Python::attach(|py| {
+                            let r = report_py.bind(py);
+                            self.process_buffered_batches_detached(py, &mut batch_buffer, r)
+                        })?;
+                    }
+                    continue;
                 }
-                continue;
-            }
 
-            // Priority 2: Streaming row-by-row (e.g. CSV/JSON/Generator)
-            match self.reader.next(py)? {
-                Some(entry) => {
-                    row_buffer.push(entry);
-                    if row_buffer.len() >= batch_size {
-                        let py_list = PyList::new(py, row_buffer.iter())?;
-                        batch_buffer.push(py_list);
-                        row_buffer.clear();
+                let opt_entry =
+                    Python::attach(|py| self.reader.next(py).map(|opt| opt.map(|e| e.unbind())))?;
+
+                match opt_entry {
+                    Some(entry) => {
+                        if let Some(py_list) = Python::attach(|py| {
+                            row_buffer.push(entry);
+                            if row_buffer.len() >= batch_size {
+                                let py_list = PyList::new(py, row_buffer.iter())?;
+                                row_buffer.clear();
+                                return Ok::<Option<Py<PyList>>, PyErr>(Some(py_list.unbind()));
+                            }
+                            Ok(None)
+                        })? {
+                            batch_buffer.push(py_list);
+                        }
 
                         if batch_buffer.len() >= concurrency {
-                            self.process_buffered_batches(py, &mut batch_buffer, report)?;
+                            Python::attach(|py| {
+                                let r = report_py.bind(py);
+                                self.process_buffered_batches_detached(py, &mut batch_buffer, r)
+                            })?;
                         }
                     }
+                    None => break,
                 }
-                None => break,
             }
-        }
+            Ok(())
+        });
 
-        // Flush remaining rows
+        result?;
+
         if !row_buffer.is_empty() {
             let py_list = PyList::new(py, row_buffer.iter())?;
-            batch_buffer.push(py_list);
+            batch_buffer.push(py_list.unbind());
         }
 
-        // Flush remaining batches
         if !batch_buffer.is_empty() {
-            self.process_buffered_batches(py, &mut batch_buffer, report)?;
+            let r = report_py.bind(py);
+            self.process_buffered_batches_detached(py, &mut batch_buffer, r)?;
         }
 
-        self.sync_report(py, report)?;
-        report.call_method0("_mark_completed")?;
+        let r = report_py.bind(py);
+        self.sync_report(py, r)?;
+        r.call_method0("_mark_completed")?;
 
         let metadata = self.writer.close(py)?;
         if let Some(ref ew) = self.error_writer {
@@ -325,15 +349,20 @@ impl NativePipe {
 }
 
 impl NativePipe {
-    fn process_buffered_batches(
+    fn process_buffered_batches_detached(
         &self,
         py: Python<'_>,
-        batch_buffer: &mut Vec<Bound<'_, PyList>>,
+        batch_buffer: &mut Vec<Py<PyList>>,
         report: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let batch_processor = self.batch_processor.bind(py);
 
-        let batches = std::mem::take(batch_buffer);
+        let batches_owned = std::mem::take(batch_buffer);
+        let batches: Vec<Bound<'_, PyList>> = batches_owned
+            .into_iter()
+            .map(|b| b.into_bound(py))
+            .collect();
+
         let results = self
             .executor
             .process_batches(py, batches, batch_processor)?;

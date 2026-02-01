@@ -51,6 +51,7 @@ class Pipe:
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
         telemetry_controller: TelemetryController | None = None,
         use_column_pruning: bool = True,
+        _skip_adapter_hooks: bool = False,
     ) -> None:
         """
         Initialize a new Pipe.
@@ -68,6 +69,10 @@ class Pipe:
             executor: Strategy for batch processing. Defaults to SingleThreadExecutor.
                 For advanced parallel execution, use `PipeManager`.
             telemetry_controller: Controller for observability (tracing).
+            use_column_pruning: Use Pydantic field names to prune unused columns
+                in the input adapter.
+            _skip_adapter_hooks: Internal flag to skip automatic extraction of hooks
+                from adapters.
         """
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
@@ -81,16 +86,18 @@ class Pipe:
                 self.input_adapter.set_required_columns(fields)
 
         bundled_pre_hooks = []
-        if self.input_adapter and hasattr(self.input_adapter, "get_hooks"):
-            bundled_pre_hooks.extend(self.input_adapter.get_hooks())
-
         bundled_post_hooks = []
-        if self.output_adapter and hasattr(self.output_adapter, "get_hooks"):
-            bundled_post_hooks.extend(self.output_adapter.get_hooks())
-        if self.error_output_adapter and hasattr(
-            self.error_output_adapter, "get_hooks"
-        ):
-            bundled_post_hooks.extend(self.error_output_adapter.get_hooks())
+
+        if not _skip_adapter_hooks:
+            if self.input_adapter and hasattr(self.input_adapter, "get_hooks"):
+                bundled_pre_hooks.extend(self.input_adapter.get_hooks())
+
+            if self.output_adapter and hasattr(self.output_adapter, "get_hooks"):
+                bundled_post_hooks.extend(self.output_adapter.get_hooks())
+            if self.error_output_adapter and hasattr(
+                self.error_output_adapter, "get_hooks"
+            ):
+                bundled_post_hooks.extend(self.error_output_adapter.get_hooks())
 
         self.pre_validation_hooks = bundled_pre_hooks + (pre_validation_hooks or [])
         self.post_validation_hooks = bundled_post_hooks + (post_validation_hooks or [])
