@@ -54,16 +54,28 @@ pub fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py
 }
 
 /// Infers the Arrow DataType from a Python object.
+/// Infers the Arrow DataType from a Python object.
+///
+/// Implements "Lax Typing": if it looks like a number/bool, treat it as such.
+/// This is crucial for Schema Unification across varying sources (CSV vs JSON).
 pub fn infer_type(val: &Bound<'_, PyAny>) -> DataType {
     if val.is_instance_of::<pyo3::types::PyBool>() {
-        DataType::Boolean
+        return DataType::Boolean;
     } else if val.is_instance_of::<pyo3::types::PyInt>() {
-        DataType::Int64
+        return DataType::Int64;
     } else if val.is_instance_of::<pyo3::types::PyFloat>() {
-        DataType::Float64
-    } else {
-        DataType::Utf8
+        return DataType::Float64;
+    } else if let Ok(s) = val.extract::<&str>() {
+        // "Lax" inference for strings
+        if s.parse::<i64>().is_ok() {
+            return DataType::Int64;
+        } else if s.parse::<f64>().is_ok() {
+            return DataType::Float64;
+        } else if s.eq_ignore_ascii_case("true") || s.eq_ignore_ascii_case("false") {
+            return DataType::Boolean;
+        }
     }
+    DataType::Utf8
 }
 
 pub fn make_builder(dt: &DataType, cap: usize) -> Box<dyn ArrayBuilder> {
@@ -91,12 +103,42 @@ pub fn append_val(
     }
 
     let any = builder.as_any_mut();
+
+    // Lax conversion logic trying to match builder type
     if let Some(b) = any.downcast_mut::<BooleanBuilder>() {
-        b.append_value(v.extract::<bool>()?);
+        if let Ok(val) = v.extract::<bool>() {
+            b.append_value(val);
+        } else if let Ok(s) = v.extract::<&str>() {
+            let truthy = s.eq_ignore_ascii_case("true") || s == "1";
+            b.append_value(truthy);
+        } else {
+            // Best effort fallback
+            b.append_null();
+        }
     } else if let Some(b) = any.downcast_mut::<Int64Builder>() {
-        b.append_value(v.extract::<i64>()?);
+        if let Ok(val) = v.extract::<i64>() {
+            b.append_value(val);
+        } else if let Ok(s) = v.extract::<&str>() {
+            if let Ok(parsed) = s.parse::<i64>() {
+                b.append_value(parsed);
+            } else {
+                b.append_null();
+            }
+        } else {
+            b.append_null();
+        }
     } else if let Some(b) = any.downcast_mut::<Float64Builder>() {
-        b.append_value(v.extract::<f64>()?);
+        if let Ok(val) = v.extract::<f64>() {
+            b.append_value(val);
+        } else if let Ok(s) = v.extract::<&str>() {
+            if let Ok(parsed) = s.parse::<f64>() {
+                b.append_value(parsed);
+            } else {
+                b.append_null();
+            }
+        } else {
+            b.append_null();
+        }
     } else if let Some(b) = any.downcast_mut::<StringBuilder>() {
         if let Ok(s) = v.extract::<&str>() {
             b.append_value(s);
@@ -130,29 +172,38 @@ pub fn build_record_batch(
     list: &Bound<'_, PyList>,
 ) -> PyResult<RecordBatch> {
     let num_rows = list.len();
-    let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
 
-    let mut dicts = Vec::with_capacity(num_rows);
-    for item in list.iter() {
-        dicts.push(item.cast::<PyDict>()?.clone());
-    }
+    // 1. Pre-allocate all builders
+    let mut builders: Vec<Box<dyn ArrayBuilder>> = schema
+        .fields()
+        .iter()
+        .map(|f| make_builder(f.data_type(), num_rows))
+        .collect();
 
+    // 2. Pre-create Python key strings (interned-like optimization)
+    // We bind them once to avoid re-creating PyString objects per row
     let key_objs: Vec<Bound<'_, PyString>> = schema
         .fields()
         .iter()
         .map(|f| PyString::new(py, f.name()))
         .collect();
 
-    for (i, field) in schema.fields().iter().enumerate() {
-        let mut builder = make_builder(field.data_type(), num_rows);
-        let key = &key_objs[i];
+    // 3. Iterate Rows ONCE (Row-Major Access)
+    // We iterate directly over the PyList, avoiding the intermediate Vec<PyDict> allocation
+    for item in list.iter() {
+        // cast is cheap, just a wrapper check
+        let dict = item.cast::<PyDict>()?;
 
-        for dict in &dicts {
+        // For each row, fill all columns (this keeps 'dict' hot in L1 cache)
+        for (i, key) in key_objs.iter().enumerate() {
             let val = dict.get_item(key)?;
-            append_val(builder.as_mut(), val, py)?;
+            // append_val handles the "Lax Typing" logic we added earlier
+            append_val(builders[i].as_mut(), val, py)?;
         }
-        columns.push(builder.finish());
     }
+
+    // 4. Finish all builders
+    let columns: Vec<ArrayRef> = builders.into_iter().map(|mut b| b.finish()).collect();
 
     RecordBatch::try_new(schema.clone(), columns).map_err(wrap_py_err)
 }

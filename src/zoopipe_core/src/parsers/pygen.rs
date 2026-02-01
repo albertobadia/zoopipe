@@ -2,7 +2,7 @@ use crate::error::PipeError;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyDict, PyList};
+use pyo3::types::{PyAnyMethods, PyList};
 use std::sync::Mutex;
 
 /// Adapter that allows any Python iterable to be used as a source.
@@ -93,20 +93,14 @@ impl PyGeneratorReader {
                 let current_pos = *pos;
                 *pos += 1;
 
-                let envelope = PyDict::new(py);
-
-                let id = if self.generate_ids {
-                    crate::utils::generate_entry_id(py)?
-                } else {
-                    py.None().into_bound(py)
-                };
-
-                envelope.set_item(self.keys.get_id(py), id)?;
-                envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-                envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-                envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-                envelope.set_item(self.keys.get_position(py), current_pos)?;
-                envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
+                let envelope = crate::utils::wrap_in_envelope(
+                    py,
+                    &self.keys,
+                    raw_data,
+                    self.status_pending.bind(py).clone(),
+                    current_pos,
+                    self.generate_ids,
+                )?;
 
                 Ok(Some(envelope.into_any()))
             }

@@ -2,10 +2,9 @@ use crate::io::SharedWriter;
 use crate::parsers::arrow_utils::{build_record_batch, infer_type};
 use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef};
 use iceberg::spec::{
-    DataContentType, DataFileBuilder, DataFileFormat, FormatVersion,
-    ManifestListWriter, ManifestWriterBuilder, NestedField,
-    Operation, PartitionSpec, PrimitiveType, Schema, Snapshot, SortOrder, Summary,
-    TableMetadataBuilder, Type,
+    DataContentType, DataFileBuilder, DataFileFormat, FormatVersion, ManifestListWriter,
+    ManifestWriterBuilder, NestedField, Operation, PartitionSpec, PrimitiveType, Schema, Snapshot,
+    SortOrder, Summary, TableMetadataBuilder, Type,
 };
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -30,7 +29,8 @@ pub struct SerializableDataFile {
 #[pyclass]
 pub struct IcebergWriter {
     table_location: String,
-    writer: Mutex<Option<ArrowWriter<SharedWriter>>>,
+    // Wrapped in Arc to allow cloning for py.allow_threads
+    writer: Arc<Mutex<Option<ArrowWriter<SharedWriter>>>>,
     schema: Mutex<Option<SchemaRef>>,
     record_count: Mutex<u64>,
     current_file_path: Mutex<Option<String>>,
@@ -42,7 +42,7 @@ impl IcebergWriter {
     pub fn new(table_location: String) -> Self {
         IcebergWriter {
             table_location,
-            writer: Mutex::new(None),
+            writer: Arc::new(Mutex::new(None)),
             schema: Mutex::new(None),
             record_count: Mutex::new(0),
             current_file_path: Mutex::new(None),
@@ -55,77 +55,100 @@ impl IcebergWriter {
             return Ok(());
         }
 
-        let mut writer_guard = self
-            .writer
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-        let mut schema_guard = self
-            .schema
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-
-        if writer_guard.is_none() {
-            // Infer schema from first batch
-            let first = list.get_item(0)?;
-            let dict = first.cast::<PyDict>()?;
-            let mut fields = Vec::new();
-            let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
-            keys.sort();
-
-            for key in &keys {
-                if let Some(val) = dict.get_item(key)? {
-                    let dt = infer_type(&val);
-                    fields.push(Field::new(key.clone(), dt, true));
-                } else {
-                    fields.push(Field::new(key.clone(), DataType::Utf8, true));
-                }
-            }
-            let arrow_schema = SchemaRef::new(ArrowSchema::new(fields));
-
-            // Generate a unique file name for this shard
-            let file_id = uuid::Uuid::new_v4();
-            let sep = if self.table_location.ends_with('/') {
-                ""
-            } else {
-                "/"
-            };
-            let file_path = format!("{}{sep}data/{}.parquet", self.table_location, file_id);
-
-            // Use get_writer which handles both local (BufWriter<File>) and cloud (RemoteWriter)
-            let boxed_writer = crate::io::get_writer(&file_path).map_err(wrap_py_err)?;
-
-            let shared_writer =
-                SharedWriter(std::sync::Arc::new(std::sync::Mutex::new(boxed_writer)));
-
-            let props = WriterProperties::builder()
-                .set_compression(parquet::basic::Compression::SNAPPY)
-                .set_max_row_group_size(8_192)
-                .build();
-
-            let writer = ArrowWriter::try_new(shared_writer, arrow_schema.clone(), Some(props))
-                .map_err(wrap_py_err)?;
-
-            *writer_guard = Some(writer);
-            *schema_guard = Some(arrow_schema);
-
-            let mut pg = self
-                .current_file_path
+        // 1. Initialization Phase (Needs GIL for infer_type and object creation)
+        {
+            let mut writer_guard = self
+                .writer
                 .lock()
                 .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-            *pg = Some(file_path);
-        }
 
-        let writer = writer_guard
-            .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("Writer not initialized"))?;
-        let arrow_schema = schema_guard
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("Schema not initialized"))?;
+            if writer_guard.is_none() {
+                let mut schema_guard = self
+                    .schema
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
 
-        let batch = build_record_batch(py, arrow_schema, list)?;
-        writer.write(&batch).map_err(wrap_py_err)?;
+                // Infer schema from first batch
+                let first = list.get_item(0)?;
+                let dict = first.cast::<PyDict>()?;
+                let mut fields = Vec::new();
+                let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
+                keys.sort();
 
+                for key in &keys {
+                    if let Some(val) = dict.get_item(key)? {
+                        let dt = infer_type(&val);
+                        fields.push(Field::new(key.clone(), dt, true));
+                    } else {
+                        fields.push(Field::new(key.clone(), DataType::Utf8, true));
+                    }
+                }
+                let arrow_schema = SchemaRef::new(ArrowSchema::new(fields));
+
+                // Generate a unique file name for this shard
+                let file_id = uuid::Uuid::new_v4();
+                let sep = if self.table_location.ends_with('/') {
+                    ""
+                } else {
+                    "/"
+                };
+                let file_path = format!("{}{sep}data/{}.parquet", self.table_location, file_id);
+
+                // Use get_writer which handles both local (BufWriter<File>) and cloud (RemoteWriter)
+                let boxed_writer = crate::io::get_writer(&file_path).map_err(wrap_py_err)?;
+
+                let shared_writer =
+                    SharedWriter(std::sync::Arc::new(std::sync::Mutex::new(boxed_writer)));
+
+                let props = WriterProperties::builder()
+                    .set_compression(parquet::basic::Compression::SNAPPY)
+                    .set_max_row_group_size(8_192)
+                    .build();
+
+                let writer = ArrowWriter::try_new(shared_writer, arrow_schema.clone(), Some(props))
+                    .map_err(wrap_py_err)?;
+
+                *writer_guard = Some(writer);
+                *schema_guard = Some(arrow_schema);
+
+                let mut pg = self
+                    .current_file_path
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+                *pg = Some(file_path);
+            }
+        } // Drop writer lock here so we can re-acquire it inside allow_threads
+
+        // 2. Data Conversion Phase (Needs GIL to read Python objects)
+        let arrow_schema = {
+            let schema_guard = self
+                .schema
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+            schema_guard
+                .as_ref()
+                .ok_or_else(|| PyRuntimeError::new_err("Schema not initialized"))?
+                .clone()
+        };
+
+        let batch = build_record_batch(py, &arrow_schema, list)?;
+
+        // 3. Write Phases (Release GIL -> Heavy Compression/IO)
+        let writer_arc = self.writer.clone();
         let count = list.len() as u64;
+
+        Python::detach(py, move || {
+            let mut writer_guard = writer_arc
+                .lock()
+                .map_err(|e| PyRuntimeError::new_err(format!("Lock failed: {}", e)))?;
+
+            let writer = writer_guard
+                .as_mut()
+                .ok_or_else(|| PyRuntimeError::new_err("Writer not initialized"))?;
+
+            writer.write(&batch).map_err(wrap_py_err)
+        })?;
+
         let mut count_guard = self
             .record_count
             .lock()

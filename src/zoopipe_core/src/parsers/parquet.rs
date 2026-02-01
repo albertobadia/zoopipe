@@ -446,7 +446,8 @@ impl MultiParquetReader {
 #[pyclass]
 pub struct ParquetWriter {
     path: String,
-    writer: Mutex<Option<ArrowWriter<SharedWriter>>>,
+    // Wrapped in Arc for GIL release
+    writer: Arc<Mutex<Option<ArrowWriter<SharedWriter>>>>,
     inner_writer: Mutex<Option<Arc<StdMutex<BoxedWriter>>>>,
     schema: Mutex<Option<SchemaRef>>,
 }
@@ -457,7 +458,7 @@ impl ParquetWriter {
     pub fn new(path: String) -> Self {
         ParquetWriter {
             path,
-            writer: Mutex::new(None),
+            writer: Arc::new(Mutex::new(None)),
             inner_writer: Mutex::new(None),
             schema: Mutex::new(None),
         }
@@ -469,73 +470,98 @@ impl ParquetWriter {
             return Ok(());
         }
 
-        let mut writer_guard = self
-            .writer
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-        let mut schema_guard = self
-            .schema
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-
-        if writer_guard.is_none() {
-            let first = list.get_item(0)?;
-            let dict = first.cast::<PyDict>()?;
-            let mut fields = Vec::new();
-            let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
-            keys.sort();
-
-            for key in &keys {
-                if let Some(val) = dict.get_item(key)? {
-                    let dt = infer_type(&val);
-                    fields.push(Field::new(key.clone(), dt, true));
-                } else {
-                    fields.push(Field::new(key.clone(), DataType::Utf8, true));
-                }
-            }
-            let schema = SchemaRef::new(Schema::new(fields));
-
-            let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
-            let boxed_writer = if self.path.starts_with("s3://") {
-                BoxedWriter::Remote(RemoteWriter::new(
-                    controller.store(),
-                    ObjectPath::from(controller.path()),
-                ))
-            } else {
-                let file = crate::io::create_local_file(&self.path).map_err(wrap_py_err)?;
-                BoxedWriter::File(std::io::BufWriter::new(file))
-            };
-
-            let shared_writer = Arc::new(StdMutex::new(boxed_writer));
-            let props = WriterProperties::builder()
-                .set_max_row_group_size(8_192)
-                .build();
-
-            *writer_guard = Some(
-                ArrowWriter::try_new(
-                    SharedWriter(shared_writer.clone()),
-                    schema.clone(),
-                    Some(props),
-                )
-                .map_err(wrap_py_err)?,
-            );
-            *schema_guard = Some(schema);
-            let mut inner_guard = self
-                .inner_writer
+        // 1. Init Phase (GIL held)
+        {
+            let mut writer_guard = self
+                .writer
                 .lock()
                 .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-            *inner_guard = Some(shared_writer);
-        }
 
-        let writer = writer_guard
-            .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("ParquetWriter failed to initialize"))?;
-        let schema = schema_guard
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("ParquetWriter schema failed to initialize"))?;
+            if writer_guard.is_none() {
+                let mut schema_guard = self
+                    .schema
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
 
-        let batch = build_record_batch(py, schema, list)?;
-        writer.write(&batch).map_err(wrap_py_err)?;
+                let first = list.get_item(0)?;
+                let dict = first.cast::<PyDict>()?;
+                let mut fields = Vec::new();
+                let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
+                keys.sort();
+
+                for key in &keys {
+                    if let Some(val) = dict.get_item(key)? {
+                        let dt = infer_type(&val);
+                        fields.push(Field::new(key.clone(), dt, true));
+                    } else {
+                        fields.push(Field::new(key.clone(), DataType::Utf8, true));
+                    }
+                }
+                let schema = SchemaRef::new(Schema::new(fields));
+
+                let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
+                let boxed_writer = if self.path.starts_with("s3://") {
+                    BoxedWriter::Remote(RemoteWriter::new(
+                        controller.store(),
+                        ObjectPath::from(controller.path()),
+                    ))
+                } else {
+                    let file = crate::io::create_local_file(&self.path).map_err(wrap_py_err)?;
+                    BoxedWriter::File(std::io::BufWriter::new(file))
+                };
+
+                let shared_writer = Arc::new(StdMutex::new(boxed_writer));
+                let props = WriterProperties::builder()
+                    .set_max_row_group_size(8_192)
+                    .build();
+
+                *writer_guard = Some(
+                    ArrowWriter::try_new(
+                        SharedWriter(shared_writer.clone()),
+                        schema.clone(),
+                        Some(props),
+                    )
+                    .map_err(wrap_py_err)?,
+                );
+                *schema_guard = Some(schema);
+                let mut inner_guard = self
+                    .inner_writer
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+                *inner_guard = Some(shared_writer);
+            }
+        } // Drop lock
+
+        // 2. Conversion (GIL held)
+        let schema = {
+            let schema_guard = self
+                .schema
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+            schema_guard
+                .as_ref()
+                .ok_or_else(|| {
+                    PyRuntimeError::new_err("ParquetWriter schema failed to initialize")
+                })?
+                .clone()
+        };
+
+        let batch = build_record_batch(py, &schema, list)?;
+
+        // 3. Write (GIL Released)
+        let writer_arc = self.writer.clone();
+        Python::detach(py, move || {
+            let mut writer_guard = writer_arc
+                .lock()
+                .map_err(|e| PyRuntimeError::new_err(format!("Lock failed: {}", e)))?;
+
+            let writer = writer_guard
+                .as_mut()
+                .ok_or_else(|| PyRuntimeError::new_err("ParquetWriter failed to initialize"))?;
+
+            writer.write(&batch).map_err(wrap_py_err)
+        })?;
+
         Ok(())
     }
 
