@@ -173,7 +173,7 @@ fn get_runtime_mutex() -> &'static Mutex<Option<Runtime>> {
 
 pub fn get_runtime_handle() -> tokio::runtime::Handle {
     let mutex = get_runtime_mutex();
-    let mut guard = mutex.lock().expect("Runtime mutex poisoned");
+    let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
 
     if guard.is_none() {
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -183,12 +183,16 @@ pub fn get_runtime_handle() -> tokio::runtime::Handle {
         *guard = Some(rt);
     }
 
-    guard.as_ref().unwrap().handle().clone()
+    guard
+        .as_ref()
+        .expect("Runtime was just initialized")
+        .handle()
+        .clone()
 }
 
 pub fn shutdown_runtime() {
     let mutex = get_runtime_mutex();
-    let mut guard = mutex.lock().expect("Runtime mutex poisoned");
+    let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
 
     if let Some(rt) = guard.take() {
         rt.shutdown_background();

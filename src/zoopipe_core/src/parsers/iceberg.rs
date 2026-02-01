@@ -100,17 +100,29 @@ impl IcebergWriter {
 
             *writer_guard = Some(writer);
             *schema_guard = Some(arrow_schema);
-            *self.current_file_path.lock().unwrap() = Some(file_path);
+
+            let mut pg = self
+                .current_file_path
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+            *pg = Some(file_path);
         }
 
-        let writer = writer_guard.as_mut().unwrap();
-        let arrow_schema = schema_guard.as_ref().unwrap();
+        let writer = writer_guard
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("Writer not initialized"))?;
+        let arrow_schema = schema_guard
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Schema not initialized"))?;
 
         let batch = build_record_batch(py, arrow_schema, list)?;
         writer.write(&batch).map_err(wrap_py_err)?;
 
         let count = list.len() as u64;
-        let mut count_guard = self.record_count.lock().unwrap();
+        let mut count_guard = self
+            .record_count
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         *count_guard += count;
 
         Ok(())
@@ -159,10 +171,15 @@ impl IcebergWriter {
                 None
             };
 
+            let record_count = *self
+                .record_count
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+
             let meta = SerializableDataFile {
                 file_path: path,
                 file_format: "parquet".to_string(),
-                record_count: *self.record_count.lock().unwrap(),
+                record_count,
                 file_size_in_bytes: size,
                 schema_json,
             };
@@ -281,7 +298,7 @@ pub fn commit_iceberg_transaction(
         "format-version": 1,
         "table-uuid": uuid::Uuid::new_v4().to_string(),
         "location": table_location,
-        "last-updated-ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+        "last-updated-ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
         "last-column-id": iceberg_fields.len(),
         "schema": {
             "type": "struct",

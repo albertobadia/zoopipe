@@ -8,9 +8,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;
 
-use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::message::Message;
 use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
 
@@ -79,12 +78,10 @@ impl KafkaReader {
             config.set("auto.offset.reset", "earliest");
         }
 
-        let consumer: StreamConsumer = {
-            let _guard = get_runtime_handle().enter();
-            config
-                .create()
-                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
-        };
+        let consumer: BaseConsumer = config
+            .create()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
         consumer
             .subscribe(&[&topic])
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
@@ -92,25 +89,26 @@ impl KafkaReader {
         let (tx, rx) = crossbeam_channel::bounded(1000);
 
         std::thread::spawn(move || {
-            let rt = get_runtime_handle();
-            rt.block_on(async move {
-                let mut stream = consumer.stream();
-                while let Some(msg_res) = stream.next().await {
-                    match msg_res {
-                        Ok(msg) => {
-                            let value = msg.payload().unwrap_or_default().to_vec();
-                            let key = msg.key().map(|k| k.to_vec());
-                            if tx.send(KafkaData::Message(value, key)).is_err() {
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
+            loop {
+                match consumer.poll(Duration::from_millis(100)) {
+                    Some(Ok(msg)) => {
+                        let value = msg.payload().unwrap_or_default().to_vec();
+                        let key = msg.key().map(|k| k.to_vec());
+                        if tx.send(KafkaData::Message(value, key)).is_err() {
                             break;
                         }
                     }
+                    Some(Err(e)) => {
+                        let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
+                        break;
+                    }
+                    None => {
+                        if tx.is_full() {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                    }
                 }
-            });
+            }
         });
 
         let models = py.import("zoopipe.structs")?;
@@ -134,14 +132,20 @@ impl KafkaReader {
         let py = slf.py();
         let receiver = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
 
-        let result = py.detach(|| receiver.recv());
+        loop {
+            let result = py.detach(|| receiver.recv_timeout(Duration::from_millis(250)));
 
-        match result {
-            Ok(KafkaData::Message(value_bytes, key_bytes)) => {
-                slf.create_envelope(py, value_bytes, key_bytes)
+            match result {
+                Ok(KafkaData::Message(value_bytes, key_bytes)) => {
+                    return slf.create_envelope(py, value_bytes, key_bytes);
+                }
+                Ok(KafkaData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    py.check_signals()?;
+                    continue;
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Ok(None),
             }
-            Ok(KafkaData::Error(e)) => Err(PyRuntimeError::new_err(e)),
-            Err(_) => Ok(None),
         }
     }
 }
@@ -240,7 +244,9 @@ impl KafkaWriter {
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let bytes = self.extract_bytes(py, data)?;
+        let json = py.import("json")?;
+        let dumps = json.getattr("dumps")?;
+        let bytes = self.extract_bytes(data, Some(&dumps))?;
         let topic = self.topic.clone();
         let producer = self.producer.clone();
 
@@ -262,10 +268,12 @@ impl KafkaWriter {
     pub fn write_batch(&self, py: Python<'_>, entries: Bound<'_, PyAny>) -> PyResult<()> {
         let iterator = entries.try_iter()?;
         let mut futures = Vec::new();
+        let json = py.import("json")?;
+        let dumps = json.getattr("dumps")?;
 
         for entry in iterator {
             let entry = entry?;
-            let bytes = self.extract_bytes(py, entry)?;
+            let bytes = self.extract_bytes(entry, Some(&dumps))?;
             let topic = self.topic.clone();
             let producer = self.producer.clone();
 
@@ -308,7 +316,11 @@ impl KafkaWriter {
 }
 
 impl KafkaWriter {
-    fn extract_bytes(&self, py: Python<'_>, entry: Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    fn extract_bytes<'py>(
+        &self,
+        entry: Bound<'py, PyAny>,
+        json_dumps: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Vec<u8>> {
         let raw_data = if let Ok(dict) = entry.cast::<PyDict>() {
             if let Some(rd) = dict.get_item("raw_data")? {
                 rd
@@ -324,10 +336,14 @@ impl KafkaWriter {
         } else if let Ok(s) = raw_data.cast::<PyString>() {
             Ok(s.to_str()?.as_bytes().to_vec())
         } else if raw_data.is_instance_of::<PyDict>() {
-            let json = py.import("json")?;
-            let dumps = json.getattr("dumps")?;
-            let s: String = dumps.call1((&raw_data,))?.extract()?;
-            Ok(s.into_bytes())
+            if let Some(dumps) = json_dumps {
+                let s: String = dumps.call1((&raw_data,))?.extract()?;
+                Ok(s.into_bytes())
+            } else {
+                // Fallback if no dumper provided (shouldn't happen in optimized path)
+                let s = raw_data.to_string();
+                Ok(s.into_bytes())
+            }
         } else {
             Ok(raw_data.to_string().into_bytes())
         }

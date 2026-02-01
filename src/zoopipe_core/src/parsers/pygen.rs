@@ -180,11 +180,17 @@ impl PyGeneratorWriter {
         let py = slf.py();
         let receiver = slf.receiver.clone();
 
-        let res = py.detach(|| receiver.recv());
+        loop {
+            let res = py.detach(|| receiver.recv_timeout(std::time::Duration::from_millis(250)));
 
-        match res {
-            Ok(item) => Ok(Some(item.into_bound(py))),
-            Err(_) => Ok(None),
+            match res {
+                Ok(item) => return Ok(Some(item.into_bound(py))),
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    py.check_signals()?;
+                    continue;
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Ok(None),
+            }
         }
     }
 }

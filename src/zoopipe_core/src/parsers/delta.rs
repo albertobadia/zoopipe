@@ -48,8 +48,13 @@ impl DeltaReader {
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
         let py = slf.py();
         slf.ensure_initialized(py)?;
-        let binding = slf.internal_reader.lock().unwrap();
-        let reader = binding.as_ref().unwrap();
+        let binding = slf
+            .internal_reader
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+        let reader = binding
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Reader not initialized"))?;
         reader.get_next_item(py)
     }
 
@@ -59,8 +64,13 @@ impl DeltaReader {
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         self.ensure_initialized(py)?;
-        let binding = self.internal_reader.lock().unwrap();
-        let reader = binding.as_ref().unwrap();
+        let binding = self
+            .internal_reader
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+        let reader = binding
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Reader not initialized"))?;
         reader.read_batch(py, batch_size)
     }
 }
@@ -228,7 +238,10 @@ impl DeltaWriter {
 
             let writer = crate::parsers::parquet::ParquetWriter::new(full_path.clone());
             *writer_guard = Some(writer);
-            *self.current_file_path.lock().unwrap() = Some(file_name);
+            *self
+                .current_file_path
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))? = Some(file_name);
         }
 
         if let Some(writer) = writer_guard.as_ref() {
@@ -244,7 +257,11 @@ impl DeltaWriter {
             .lock()
             .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
 
-        let file_name_opt = self.current_file_path.lock().unwrap().clone();
+        let file_name_opt = self
+            .current_file_path
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?
+            .clone();
 
         if let (Some(writer), Some(file_name)) = (writer_guard.take(), file_name_opt) {
             writer.close()?;
@@ -258,8 +275,8 @@ impl DeltaWriter {
             let size = crate::get_file_size_rust(full_path.clone())? as i64;
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64;
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
 
             let add = Add {
                 path: file_name,

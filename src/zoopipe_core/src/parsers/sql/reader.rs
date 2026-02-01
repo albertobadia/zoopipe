@@ -160,7 +160,9 @@ impl SQLReader {
         let rx = self.ensure_receiver(state)?;
 
         loop {
-            match rx.recv() {
+            let result = py.detach(|| rx.recv_timeout(std::time::Duration::from_millis(250)));
+
+            match result {
                 Ok(SQLData::Metadata(cols)) => {
                     let py_cols: Vec<Py<PyString>> = cols
                         .into_iter()
@@ -199,7 +201,11 @@ impl SQLReader {
                     )?));
                 }
                 Ok(SQLData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
-                Err(_) => return Ok(None),
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    py.check_signals()?;
+                    continue;
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Ok(None),
             }
         }
     }

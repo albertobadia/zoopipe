@@ -378,7 +378,10 @@ impl MultiParquetReader {
             // First, try to get an item from the current reader if it exists
             let mut exhausted = false;
             {
-                let mut reader_guard = self.current_reader.lock().unwrap();
+                let mut reader_guard = self
+                    .current_reader
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
                 if let Some(reader) = reader_guard.as_ref() {
                     let mut state = reader.state.lock().map_err(|_| PipeError::MutexLock)?;
                     match reader.next_internal(py, &mut state)? {
@@ -402,14 +405,20 @@ impl MultiParquetReader {
             }
 
             if exhausted {
-                *self.current_path_idx.lock().unwrap() += 1;
+                *self
+                    .current_path_idx
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))? += 1;
                 // continue loop to open next file
                 continue;
             }
 
             // If we are here, we need to open a new file or we are finished
             let (path, _idx) = {
-                let idx_guard = self.current_path_idx.lock().unwrap();
+                let idx_guard = self
+                    .current_path_idx
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
                 let idx = *idx_guard;
                 if idx >= self.paths.len() {
                     return Ok(None);
@@ -420,7 +429,10 @@ impl MultiParquetReader {
             let reader =
                 ParquetReader::new(py, path, self.generate_ids, self.batch_size, None, 0, None)?;
 
-            let mut reader_guard = self.current_reader.lock().unwrap();
+            let mut reader_guard = self
+                .current_reader
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
             *reader_guard = Some(reader);
             // continue loop to read from the newly opened reader
         }

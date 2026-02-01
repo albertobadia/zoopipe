@@ -2,6 +2,7 @@ use crate::utils::wrap_py_err;
 use arrow::array::*;
 use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 
@@ -184,12 +185,18 @@ pub fn record_batch_to_py_envelopes<'py>(
                 let arr = col
                     .as_any()
                     .downcast_ref::<Int64Array>()
-                    .expect("Type mismatch");
+                    .ok_or_else(|| PyRuntimeError::new_err("Type mismatch for Int64Array"))?;
                 for i in 0..num_rows {
                     if arr.is_null(i) {
                         py_col.push(py.None());
                     } else {
-                        py_col.push(arr.value(i).into_pyobject(py).unwrap().into_any().unbind());
+                        py_col.push(
+                            arr.value(i)
+                                .into_pyobject(py)
+                                .map_err(wrap_py_err)?
+                                .into_any()
+                                .unbind(),
+                        );
                     }
                 }
             }
@@ -197,12 +204,18 @@ pub fn record_batch_to_py_envelopes<'py>(
                 let arr = col
                     .as_any()
                     .downcast_ref::<Float64Array>()
-                    .expect("Type mismatch");
+                    .ok_or_else(|| PyRuntimeError::new_err("Type mismatch for Float64Array"))?;
                 for i in 0..num_rows {
                     if arr.is_null(i) {
                         py_col.push(py.None());
                     } else {
-                        py_col.push(arr.value(i).into_pyobject(py).unwrap().into_any().unbind());
+                        py_col.push(
+                            arr.value(i)
+                                .into_pyobject(py)
+                                .map_err(wrap_py_err)?
+                                .into_any()
+                                .unbind(),
+                        );
                     }
                 }
             }
@@ -210,12 +223,18 @@ pub fn record_batch_to_py_envelopes<'py>(
                 let arr = col
                     .as_any()
                     .downcast_ref::<StringArray>()
-                    .expect("Type mismatch");
+                    .ok_or_else(|| PyRuntimeError::new_err("Type mismatch for StringArray"))?;
                 for i in 0..num_rows {
                     if arr.is_null(i) {
                         py_col.push(py.None());
                     } else {
-                        py_col.push(arr.value(i).into_pyobject(py).unwrap().into_any().unbind());
+                        py_col.push(
+                            arr.value(i)
+                                .into_pyobject(py)
+                                .map_err(wrap_py_err)?
+                                .into_any()
+                                .unbind(),
+                        );
                     }
                 }
             }
@@ -223,7 +242,7 @@ pub fn record_batch_to_py_envelopes<'py>(
                 let arr = col
                     .as_any()
                     .downcast_ref::<BooleanArray>()
-                    .expect("Type mismatch");
+                    .ok_or_else(|| PyRuntimeError::new_err("Type mismatch for BooleanArray"))?;
                 for i in 0..num_rows {
                     if arr.is_null(i) {
                         py_col.push(py.None());
