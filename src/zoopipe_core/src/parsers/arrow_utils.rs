@@ -6,10 +6,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 
-/// Helper to convert a single value from an Arrow array to a Python object.
-///
-/// Handles various data types by downcasting the generic Array trait
-/// to specific implementations and bridging them to PyO3.
+/// Convert a single value from an Arrow array to a Python object.
 pub fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<PyAny>> {
     if array.is_null(row) {
         return Ok(py.None());
@@ -53,11 +50,7 @@ pub fn arrow_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py
     }
 }
 
-/// Infers the Arrow DataType from a Python object.
-/// Infers the Arrow DataType from a Python object.
-///
-/// Implements "Lax Typing": if it looks like a number/bool, treat it as such.
-/// This is crucial for Schema Unification across varying sources (CSV vs JSON).
+/// Infer Arrow DataType from a Python object using "Lax Typing".
 pub fn infer_type(val: &Bound<'_, PyAny>) -> DataType {
     if val.is_instance_of::<pyo3::types::PyBool>() {
         return DataType::Boolean;
@@ -65,15 +58,6 @@ pub fn infer_type(val: &Bound<'_, PyAny>) -> DataType {
         return DataType::Int64;
     } else if val.is_instance_of::<pyo3::types::PyFloat>() {
         return DataType::Float64;
-    } else if let Ok(s) = val.extract::<&str>() {
-        // "Lax" inference for strings
-        if s.parse::<i64>().is_ok() {
-            return DataType::Int64;
-        } else if s.parse::<f64>().is_ok() {
-            return DataType::Float64;
-        } else if s.eq_ignore_ascii_case("true") || s.eq_ignore_ascii_case("false") {
-            return DataType::Boolean;
-        }
     }
     DataType::Utf8
 }
@@ -104,7 +88,7 @@ pub fn append_val(
 
     let any = builder.as_any_mut();
 
-    // Lax conversion logic trying to match builder type
+    // Lax conversion
     if let Some(b) = any.downcast_mut::<BooleanBuilder>() {
         if let Ok(val) = v.extract::<bool>() {
             b.append_value(val);
@@ -112,7 +96,6 @@ pub fn append_val(
             let truthy = s.eq_ignore_ascii_case("true") || s == "1";
             b.append_value(truthy);
         } else {
-            // Best effort fallback
             b.append_null();
         }
     } else if let Some(b) = any.downcast_mut::<Int64Builder>() {
@@ -162,48 +145,72 @@ fn append_null(builder: &mut dyn ArrayBuilder) {
     }
 }
 
-/// Efficiently builds an Arrow RecordBatch from a list of Python dictionaries.
-///
-/// It utilizes pre-allocated builders and batch processing to minimize
-/// overhead when converting large datasets from Python to Arrow.
+/// Build an Arrow RecordBatch from a list of Python dictionaries.
 pub fn build_record_batch(
     py: Python<'_>,
     schema: &SchemaRef,
     list: &Bound<'_, PyList>,
+    reused_builders: Option<&mut Vec<Box<dyn ArrayBuilder>>>,
 ) -> PyResult<RecordBatch> {
     let num_rows = list.len();
 
-    // 1. Pre-allocate all builders
-    let mut builders: Vec<Box<dyn ArrayBuilder>> = schema
-        .fields()
-        .iter()
-        .map(|f| make_builder(f.data_type(), num_rows))
-        .collect();
+    let mut _new_builders: Vec<Box<dyn ArrayBuilder>> = Vec::new();
+    let builders = match reused_builders {
+        Some(b) => {
+            if b.is_empty() {
+                *b = schema
+                    .fields()
+                    .iter()
+                    .map(|f| make_builder(f.data_type(), num_rows))
+                    .collect();
+            }
+            b
+        }
+        None => {
+            _new_builders = schema
+                .fields()
+                .iter()
+                .map(|f| make_builder(f.data_type(), num_rows))
+                .collect();
+            &mut _new_builders
+        }
+    };
 
-    // 2. Pre-create Python key strings (interned-like optimization)
-    // We bind them once to avoid re-creating PyString objects per row
     let key_objs: Vec<Bound<'_, PyString>> = schema
         .fields()
         .iter()
         .map(|f| PyString::new(py, f.name()))
         .collect();
 
-    // 3. Iterate Rows ONCE (Row-Major Access)
-    // We iterate directly over the PyList, avoiding the intermediate Vec<PyDict> allocation
-    for item in list.iter() {
-        // cast is cheap, just a wrapper check
-        let dict = item.cast::<PyDict>()?;
+    // Iterate Rows
 
-        // For each row, fill all columns (this keeps 'dict' hot in L1 cache)
-        for (i, key) in key_objs.iter().enumerate() {
-            let val = dict.get_item(key)?;
-            // append_val handles the "Lax Typing" logic we added earlier
-            append_val(builders[i].as_mut(), val, py)?;
+    if !list.is_empty() {
+        let first = list.get_item(0)?;
+        if first.is_instance_of::<PyDict>() {
+            for (item_idx, item) in list.iter().enumerate() {
+                if let Ok(dict) = item.cast::<PyDict>() {
+                    for (i, key) in key_objs.iter().enumerate() {
+                        let val = dict.get_item(key)?;
+                        append_val(builders[i].as_mut(), val, py)?;
+                    }
+                } else {
+                    return Err(PyRuntimeError::new_err(format!(
+                        "Mixed types in batch: expected Dict at index {}",
+                        item_idx
+                    )));
+                }
+            }
+        } else {
+            for item in list.iter() {
+                for (i, key) in key_objs.iter().enumerate() {
+                    let val = item.getattr(key).ok();
+                    append_val(builders[i].as_mut(), val, py)?;
+                }
+            }
         }
     }
 
-    // 4. Finish all builders
-    let columns: Vec<ArrayRef> = builders.into_iter().map(|mut b| b.finish()).collect();
+    let columns: Vec<ArrayRef> = builders.iter_mut().map(|b| b.finish()).collect();
 
     RecordBatch::try_new(schema.clone(), columns).map_err(wrap_py_err)
 }
@@ -228,7 +235,7 @@ pub fn record_batch_to_py_envelopes<'py>(
     let columns = batch.columns();
     let mut py_columns: Vec<Vec<Py<PyAny>>> = Vec::with_capacity(columns.len());
 
-    // Column-wise conversion to minimize dispatch overhead
+    // Column-wise conversion
     for col in columns {
         let mut py_col = Vec::with_capacity(num_rows);
         match col.data_type() {
@@ -308,7 +315,6 @@ pub fn record_batch_to_py_envelopes<'py>(
                 }
             }
             _ => {
-                // Fallback for other types
                 for i in 0..num_rows {
                     py_col.push(arrow_to_py(py, col, i)?);
                 }

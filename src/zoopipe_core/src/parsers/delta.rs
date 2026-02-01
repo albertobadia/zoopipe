@@ -18,18 +18,20 @@ pub struct DeltaReader {
     internal_reader: Mutex<Option<MultiParquetReader>>,
     batch_size: usize,
     files: Option<Vec<String>>,
+    projection: Option<Vec<String>>,
 }
 
 #[pymethods]
 impl DeltaReader {
     #[new]
-    #[pyo3(signature = (table_uri, version=None, storage_options=None, batch_size=1024, files=None))]
+    #[pyo3(signature = (table_uri, version=None, storage_options=None, batch_size=1024, files=None, projection=None))]
     pub fn new(
         table_uri: String,
         version: Option<i64>,
         storage_options: Option<HashMap<String, String>>,
         batch_size: usize,
         files: Option<Vec<String>>,
+        projection: Option<Vec<String>>,
     ) -> Self {
         DeltaReader {
             table_uri,
@@ -38,6 +40,7 @@ impl DeltaReader {
             internal_reader: Mutex::new(None),
             batch_size,
             files,
+            projection,
         }
     }
 
@@ -121,7 +124,7 @@ impl DeltaReader {
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
         };
 
-        let reader = MultiParquetReader::new(files, true, self.batch_size);
+        let reader = MultiParquetReader::new(files, true, self.batch_size, self.projection.clone());
         *guard = Some(reader);
 
         Ok(())

@@ -17,8 +17,8 @@ class IcebergInputAdapter(BaseInputAdapter):
         generate_ids: bool = True,
         batch_size: int = 1024,
     ):
+        super().__init__()
         self.table_location = table_location
-        # If files not provided, discover them
         if files is None:
             self.files = get_iceberg_data_files(table_location)
         else:
@@ -48,14 +48,14 @@ class IcebergInputAdapter(BaseInputAdapter):
             end = (i + 1) * files_per_worker if i < workers - 1 else num_files
             assigned_files = self.files[start:end]
 
-            shards.append(
-                self.__class__(
-                    table_location=self.table_location,
-                    files=assigned_files,
-                    generate_ids=self.generate_ids,
-                    batch_size=self.batch_size,
-                )
+            shard = self.__class__(
+                table_location=self.table_location,
+                files=assigned_files,
+                generate_ids=self.generate_ids,
+                batch_size=self.batch_size,
             )
+            shard.required_columns = self.required_columns
+            shards.append(shard)
         return shards
 
     def get_native_reader(self) -> MultiParquetReader:
@@ -63,6 +63,7 @@ class IcebergInputAdapter(BaseInputAdapter):
             paths=self.files,
             generate_ids=self.generate_ids,
             batch_size=self.batch_size,
+            projection=self.required_columns,
         )
 
 

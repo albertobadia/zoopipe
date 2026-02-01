@@ -27,20 +27,7 @@ class CSVInputAdapter(BaseInputAdapter):
         start_byte: int = 0,
         end_byte: int | None = None,
     ):
-        """
-        Initialize the CSVInputAdapter.
-
-        Args:
-            source: Path to the CSV file or S3 URI.
-            delimiter: Column separator.
-            quotechar: Character used for quoting fields.
-            skip_rows: Number of rows to skip at the beginning.
-            fieldnames: Optional list of column names.
-            generate_ids: Whether to generate unique IDs for each record.
-            limit: Maximum number of rows to read (optional).
-            start_byte: Byte offset to start reading from.
-            end_byte: Byte offset to stop reading at.
-        """
+        super().__init__()
         self.source_path = str(source)
         self.delimiter = delimiter
         self.quotechar = quotechar
@@ -73,8 +60,9 @@ class CSVInputAdapter(BaseInputAdapter):
                     except StopIteration:
                         final_fieldnames = []
 
-        return [
-            self.__class__(
+        shards = []
+        for start, end in ranges:
+            shard = self.__class__(
                 source=self.source_path,
                 delimiter=self.delimiter,
                 quotechar=self.quotechar,
@@ -85,11 +73,11 @@ class CSVInputAdapter(BaseInputAdapter):
                 start_byte=start,
                 end_byte=end,
             )
-            for start, end in ranges
-        ]
+            shard.required_columns = self.required_columns
+            shards.append(shard)
+        return shards
 
     def get_native_reader(self) -> CSVReader:
-        # Pass start_byte and end_byte
         return CSVReader(
             self.source_path,
             delimiter=ord(self.delimiter),
@@ -100,6 +88,7 @@ class CSVInputAdapter(BaseInputAdapter):
             limit=self.limit,
             start_byte=self.start_byte,
             end_byte=self.end_byte,
+            projection=self.required_columns,
         )
 
     @staticmethod

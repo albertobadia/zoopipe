@@ -18,13 +18,7 @@ class ArrowInputAdapter(BaseInputAdapter):
         source: typing.Union[str, pathlib.Path],
         generate_ids: bool = True,
     ):
-        """
-        Initialize the ArrowInputAdapter.
-
-        Args:
-            source: Path to the Arrow file.
-            generate_ids: Whether to generate unique IDs for each record.
-        """
+        super().__init__()
         self.source_path = str(source)
         self.generate_ids = generate_ids
 
@@ -32,6 +26,7 @@ class ArrowInputAdapter(BaseInputAdapter):
         return ArrowReader(
             self.source_path,
             generate_ids=self.generate_ids,
+            projection=self.required_columns,
         )
 
 

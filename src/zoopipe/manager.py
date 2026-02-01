@@ -169,18 +169,14 @@ class PipeManager:
         Create a PipeManager that runs the given pipe in parallel across
         `workers` shards.
         """
-        # 1. Collect Coordinators
         coordinators = []
 
-        # Input coordinator (handles sharding)
         input_coord = pipe.input_adapter.get_coordinator()
         if input_coord:
             coordinators.append(input_coord)
 
-        # Output coordinator
         output_coord = pipe.output_adapter.get_coordinator()
 
-        # If user wants merging and it's a file output, inject FileMergeCoordinator
         target_path = getattr(pipe.output_adapter, "output_path", None)
         if merge and target_path:
             output_coord = FileMergeCoordinator(target_path)
@@ -190,7 +186,6 @@ class PipeManager:
 
         composite = CompositeCoordinator(coordinators)
 
-        # 2. Prepare Shards
         input_shards = composite.prepare_shards(pipe.input_adapter, workers)
         output_shards = composite.prepare_shards(pipe.output_adapter, workers)
 
@@ -214,6 +209,7 @@ class PipeManager:
                 post_validation_hooks=pipe.post_validation_hooks,
                 report_update_interval=pipe.report_update_interval,
                 executor=exec_strategy,
+                use_column_pruning=pipe.use_column_pruning,
             )
             pipes.append(sharded_pipe)
 

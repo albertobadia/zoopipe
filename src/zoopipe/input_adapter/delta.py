@@ -30,6 +30,7 @@ class DeltaInputAdapter(BaseInputAdapter):
             batch_size: Number of records to yield per batch.
             files: Optional subset of files to read (used for splitting).
         """
+        super().__init__()
         self.table_uri = table_uri
         self.version = version
         self.storage_options = storage_options
@@ -45,6 +46,7 @@ class DeltaInputAdapter(BaseInputAdapter):
                 self.storage_options,
                 self.batch_size,
                 self.files,
+                projection=self.required_columns,
             )
         return self._reader
 
@@ -67,7 +69,6 @@ class DeltaInputAdapter(BaseInputAdapter):
         if n <= 1:
             return [self]
 
-        # Use explicitly provided files or list them from the table
         all_files = self.files
         if all_files is None:
             all_files = get_delta_files(
@@ -78,51 +79,43 @@ class DeltaInputAdapter(BaseInputAdapter):
 
         if not all_files:
             # Empty table or no files found
-            return [
-                DeltaInputAdapter(
-                    self.table_uri,
-                    self.version,
-                    self.storage_options,
-                    self.batch_size,
-                    files=[],
-                )
-                for _ in range(n)
-            ]
+            shard = DeltaInputAdapter(
+                self.table_uri,
+                self.version,
+                self.storage_options,
+                self.batch_size,
+                files=[],
+            )
+            shard.required_columns = self.required_columns
+            return [shard] * n
 
-        # Partition files into n chunks
         total_files = len(all_files)
         chunk_size = math.ceil(total_files / n)
         chunks = [
             all_files[i : i + chunk_size] for i in range(0, total_files, chunk_size)
         ]
 
-        # If we have fewer chunks than n (e.g. fewer files than splits),
-        # pad with empty adapters.
-        # Usually returning valid chunks is better, but to satisfy "split into n",
-        # we might need to be exact if the engine depends on it.
-        # Here we return what we have, up to n.
         adapters = []
         for file_chunk in chunks:
-            adapters.append(
-                DeltaInputAdapter(
-                    self.table_uri,
-                    self.version,
-                    self.storage_options,
-                    self.batch_size,
-                    files=file_chunk,
-                )
+            shard = DeltaInputAdapter(
+                self.table_uri,
+                self.version,
+                self.storage_options,
+                self.batch_size,
+                files=file_chunk,
             )
+            shard.required_columns = self.required_columns
+            adapters.append(shard)
 
-        # Fill remaining slots with empty adapters if requested n is larger than files
         while len(adapters) < n:
-            adapters.append(
-                DeltaInputAdapter(
-                    self.table_uri,
-                    self.version,
-                    self.storage_options,
-                    self.batch_size,
-                    files=[],
-                )
+            shard = DeltaInputAdapter(
+                self.table_uri,
+                self.version,
+                self.storage_options,
+                self.batch_size,
+                files=[],
             )
+            shard.required_columns = self.required_columns
+            adapters.append(shard)
 
         return adapters

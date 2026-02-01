@@ -21,14 +21,7 @@ class JSONInputAdapter(BaseInputAdapter):
         start_byte: int = 0,
         end_byte: int | None = None,
     ):
-        """
-        Initialize the JSONInputAdapter.
-
-        Args:
-            source: Path to the JSONLines file.
-            start_byte: Byte offset to start reading from.
-            end_byte: Byte offset to stop reading at.
-        """
+        super().__init__()
         self.source_path = str(source)
         self.start_byte = start_byte
         self.end_byte = end_byte
@@ -45,20 +38,23 @@ class JSONInputAdapter(BaseInputAdapter):
         """
         file_size = get_file_size(self.source_path)
         ranges = calculate_byte_ranges(file_size, workers)
-        return [
-            self.__class__(
+        shards = []
+        for start, end in ranges:
+            shard = self.__class__(
                 source=self.source_path,
                 start_byte=start,
                 end_byte=end,
             )
-            for start, end in ranges
-        ]
+            shard.required_columns = self.required_columns
+            shards.append(shard)
+        return shards
 
     def get_native_reader(self) -> JSONReader:
         return JSONReader(
             self.source_path,
             start_byte=self.start_byte,
             end_byte=self.end_byte,
+            projection=self.required_columns,
         )
 
 

@@ -10,6 +10,7 @@ use crate::utils::interning::InternedKeys;
 use itoa;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 use ryu;
+use std::collections::HashSet;
 
 struct CSVReaderState {
     reader: SmartReader<StringRecord>,
@@ -17,7 +18,6 @@ struct CSVReaderState {
     limit: Option<usize>,
 }
 
-// Helper struct for byte-bounded iteration
 struct BoundedCsvIter<R: std::io::Read> {
     iter: csv::StringRecordsIntoIter<R>,
     start_byte: u64,
@@ -29,7 +29,6 @@ impl<R: std::io::Read> Iterator for BoundedCsvIter<R> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(end) = self.end_byte {
-            // Position is relative to the start of the reader (start_byte)
             let current_absolute_pos = self.start_byte + self.iter.reader().position().byte();
             if current_absolute_pos >= end {
                 return None;
@@ -53,13 +52,14 @@ pub struct CSVReader {
     pub(crate) headers: Vec<Py<PyString>>,
     pub(crate) status_pending: Py<PyAny>,
     pub(crate) generate_ids: bool,
+    projection: Option<HashSet<String>>,
     keys: InternedKeys,
 }
 
 #[pymethods]
 impl CSVReader {
     #[new]
-    #[pyo3(signature = (path, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true, limit=None, start_byte=0, end_byte=None))]
+    #[pyo3(signature = (path, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true, limit=None, start_byte=0, end_byte=None, projection=None))]
     fn new(
         py: Python<'_>,
         path: String,
@@ -71,8 +71,8 @@ impl CSVReader {
         limit: Option<usize>,
         start_byte: u64,
         end_byte: Option<u64>,
+        projection: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        // 1. Open and seek
         let mut boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err)
         {
             if start_byte > 0 {
@@ -89,7 +89,6 @@ impl CSVReader {
             return Err(PipeError::Other(format!("Failed to open file: {}", path)).into());
         };
 
-        // 2. Align to next valid record
         let expected_count = if let Some(fields) = &fieldnames {
             fields.len()
         } else {
@@ -187,12 +186,13 @@ impl CSVReader {
             headers: headers_vec,
             status_pending,
             generate_ids,
+            projection: projection.map(|v: Vec<String>| v.into_iter().collect::<HashSet<String>>()),
             keys: InternedKeys::new(py),
         })
     }
 
     #[staticmethod]
-    #[pyo3(signature = (data, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true, limit=None))]
+    #[pyo3(signature = (data, delimiter=b',', quote=b'"', skip_rows=0, fieldnames=None, generate_ids=true, limit=None, projection=None))]
     fn from_bytes(
         py: Python<'_>,
         data: Vec<u8>,
@@ -202,6 +202,7 @@ impl CSVReader {
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
         limit: Option<usize>,
+        projection: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
@@ -256,6 +257,7 @@ impl CSVReader {
             headers,
             status_pending,
             generate_ids,
+            projection: projection.map(|v: Vec<String>| v.into_iter().collect::<HashSet<String>>()),
             keys: InternedKeys::new(py),
         })
     }
@@ -344,7 +346,13 @@ impl CSVReader {
 
                 let raw_data = PyDict::new(py);
                 for (header_py, value) in self.headers.iter().zip(record.iter()) {
-                    raw_data.set_item(header_py.bind(py), value)?;
+                    let h_bound = header_py.bind(py);
+                    if let Some(ref proj) = self.projection
+                        && !proj.contains(h_bound.to_str().unwrap_or(""))
+                    {
+                        continue;
+                    }
+                    raw_data.set_item(h_bound, value)?;
                 }
 
                 let env = crate::utils::wrap_in_envelope(

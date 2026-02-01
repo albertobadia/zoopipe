@@ -14,6 +14,8 @@ class ParquetOutputAdapter(BaseOutputAdapter):
     making it ideal for large-scale analytical processing.
     """
 
+    supports_objects: bool = True
+
     def __init__(
         self,
         path: typing.Union[str, pathlib.Path],

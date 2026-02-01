@@ -34,6 +34,7 @@ pub struct IcebergWriter {
     schema: Mutex<Option<SchemaRef>>,
     record_count: Mutex<u64>,
     current_file_path: Mutex<Option<String>>,
+    builder_cache: Mutex<Option<Vec<Box<dyn arrow::array::ArrayBuilder>>>>,
 }
 
 #[pymethods]
@@ -46,6 +47,7 @@ impl IcebergWriter {
             schema: Mutex::new(None),
             record_count: Mutex::new(0),
             current_file_path: Mutex::new(None),
+            builder_cache: Mutex::new(Some(Vec::new())),
         }
     }
 
@@ -68,9 +70,21 @@ impl IcebergWriter {
                     .lock()
                     .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
 
-                // Infer schema from first batch
                 let first = list.get_item(0)?;
-                let dict = first.cast::<PyDict>()?;
+
+                let dict_obj = if first.is_instance_of::<PyDict>() {
+                    first.into_any() // Already a dict
+                } else {
+                    // Strictly Pydantic v2
+                    first.call_method0("model_dump")?
+                };
+
+                let dict = dict_obj.cast::<PyDict>().map_err(|_| {
+                    PyRuntimeError::new_err(
+                        "Could not infer schema: Item is not a dict and has no model_dump()",
+                    )
+                })?;
+
                 let mut fields = Vec::new();
                 let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
                 keys.sort();
@@ -131,7 +145,11 @@ impl IcebergWriter {
                 .clone()
         };
 
-        let batch = build_record_batch(py, &arrow_schema, list)?;
+        let mut cache_guard = self
+            .builder_cache
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+        let batch = build_record_batch(py, &arrow_schema, list, cache_guard.as_mut())?;
 
         // 3. Write Phases (Release GIL -> Heavy Compression/IO)
         let writer_arc = self.writer.clone();

@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::PipeError;
 use crate::utils::interning::InternedKeys;
-use pyo3::types::{PyAnyMethods, PyList};
+use pyo3::types::{PyAnyMethods, PyDict, PyList};
+use std::collections::HashSet;
 
 struct JSONReaderState {
     reader: SmartReader<Value>,
@@ -16,7 +17,6 @@ struct JSONReaderState {
     position: usize,
 }
 
-// Helper struct for byte-bounded JSON iteration
 struct BoundedJsonIter<I> {
     iter: I,
     count: Arc<std::sync::atomic::AtomicU64>,
@@ -82,14 +82,21 @@ impl JSONReaderState {
 pub struct JSONReader {
     state: Mutex<JSONReaderState>,
     pub(crate) status_pending: Py<PyAny>,
+    projection: Option<HashSet<String>>,
     keys: InternedKeys,
 }
 
 #[pymethods]
 impl JSONReader {
     #[new]
-    #[pyo3(signature = (path, start_byte=0, end_byte=None))]
-    fn new(py: Python<'_>, path: String, start_byte: u64, end_byte: Option<u64>) -> PyResult<Self> {
+    #[pyo3(signature = (path, start_byte=0, end_byte=None, projection=None))]
+    fn new(
+        py: Python<'_>,
+        path: String,
+        start_byte: u64,
+        end_byte: Option<u64>,
+        projection: Option<Vec<String>>,
+    ) -> PyResult<Self> {
         let boxed_reader = if let Ok(mut r) = crate::io::get_reader(&path).map_err(wrap_py_err) {
             if start_byte > 0 {
                 if path.ends_with(".gz") || path.ends_with(".zst") {
@@ -99,7 +106,6 @@ impl JSONReader {
                     .into());
                 }
                 r.seek(SeekFrom::Start(start_byte)).map_err(wrap_py_err)?;
-                // Skip partial line
                 let mut dummy = String::new();
                 r.read_line(&mut dummy).map_err(wrap_py_err)?;
             }
@@ -133,12 +139,18 @@ impl JSONReader {
                 position: 0,
             }),
             status_pending,
+            projection: projection.map(|v: Vec<String>| v.into_iter().collect::<HashSet<String>>()),
             keys: InternedKeys::new(py),
         })
     }
 
     #[staticmethod]
-    fn from_bytes(py: Python<'_>, data: Vec<u8>) -> PyResult<Self> {
+    #[pyo3(signature = (data, projection=None))]
+    fn from_bytes(
+        py: Python<'_>,
+        data: Vec<u8>,
+        projection: Option<Vec<String>>,
+    ) -> PyResult<Self> {
         let boxed_reader = BoxedReader::Cursor(std::io::Cursor::new(data));
 
         let reader = SmartReader::new("", boxed_reader, |r| {
@@ -158,6 +170,7 @@ impl JSONReader {
                 position: 0,
             }),
             status_pending,
+            projection: projection.map(|v: Vec<String>| v.into_iter().collect::<HashSet<String>>()),
             keys: InternedKeys::new(py),
         })
     }
@@ -215,22 +228,33 @@ impl JSONReader {
         value: Value,
         position: usize,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let raw_data = serde_to_py(py, value)?;
+        let raw_data = if let Value::Object(obj) = value {
+            let dict = PyDict::new(py);
+            for (k, v) in obj {
+                if let Some(ref proj) = self.projection
+                    && !proj.contains(&k)
+                {
+                    continue;
+                }
+                dict.set_item(k, serde_to_py(py, v)?)?;
+            }
+            dict.as_any().clone()
+        } else {
+            serde_to_py(py, value)?
+        };
+
         crate::utils::wrap_in_envelope(
             py,
             &self.keys,
             raw_data,
             self.status_pending.bind(py).clone(),
             position,
-            true, // JSON reader usually generates IDs
+            true,
         )
     }
 }
 
-/// flexible JSON writer that supports standard arrays and JSONLines output.
-///
-/// It provides high-performance serialization of Python objects directly
-/// into JSON format, with support for pretty-printing and chunked I/O.
+/// JSON writer that supports standard arrays and JSONLines output.
 #[pyclass]
 pub struct JSONWriter {
     writer: Mutex<crate::io::BoxedWriter>,

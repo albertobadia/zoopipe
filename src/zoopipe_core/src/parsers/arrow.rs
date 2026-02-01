@@ -11,6 +11,7 @@ use object_store::path::Path as ObjectPath;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::{Arc, Mutex};
@@ -34,6 +35,7 @@ pub struct ArrowReader {
     status_pending: Py<PyAny>,
     generate_ids: bool,
     keys: InternedKeys,
+    projection: Option<HashSet<String>>,
 }
 
 use crate::utils::interning::InternedKeys;
@@ -41,8 +43,13 @@ use crate::utils::interning::InternedKeys;
 #[pymethods]
 impl ArrowReader {
     #[new]
-    #[pyo3(signature = (path, generate_ids=true))]
-    fn new(py: Python<'_>, path: String, generate_ids: bool) -> PyResult<Self> {
+    #[pyo3(signature = (path, generate_ids=true, projection=None))]
+    fn new(
+        py: Python<'_>,
+        path: String,
+        generate_ids: bool,
+        projection: Option<Vec<String>>,
+    ) -> PyResult<Self> {
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
             BoxedReader::Remote(RemoteReader::new(
@@ -63,7 +70,6 @@ impl ArrowReader {
             }
         });
 
-        // Get schema from a temporary reader to extract headers
         let temp_reader = if path.starts_with("s3://") {
             BoxedReader::Remote(RemoteReader::new(
                 controller.store(),
@@ -96,6 +102,8 @@ impl ArrowReader {
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
+            projection: projection
+                .map(|v| v.into_iter().collect::<std::collections::HashSet<String>>()),
         })
     }
 
@@ -116,12 +124,10 @@ impl ArrowReader {
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
 
-        // Optimization: If no current partial batch, try to read a full one directly
         if state.current_batch.is_none() {
             if let Some(batch_res) = state.reader.next() {
                 let batch: RecordBatch = batch_res.map_err(PyRuntimeError::new_err)?;
 
-                // If the fresh batch fits entirely in the requested size, fast-path it
                 if batch.num_rows() <= batch_size {
                     let current_pos = state.position;
                     state.position += batch.num_rows();
@@ -137,7 +143,6 @@ impl ArrowReader {
                     return Ok(Some(envelopes));
                 }
 
-                // Otherwise, store it to be consumed partially via next_internal
                 state.current_batch = Some((batch, 0));
             } else {
                 return Ok(None);
@@ -185,6 +190,11 @@ impl ArrowReader {
 
             let raw_data = PyDict::new(py);
             for (i, header) in self.headers.iter().enumerate() {
+                if let Some(proj) = &self.projection
+                    && !proj.contains(header.bind(py).to_str()?)
+                {
+                    continue;
+                }
                 let col = batch.column(i);
                 let val = arrow_to_py(py, col, *row_idx)?;
                 raw_data.set_item(header.bind(py), val)?;
@@ -211,10 +221,7 @@ impl ArrowReader {
     }
 }
 
-/// Optimized Arrow IPC writer for high-performance data serialization.
-///
-/// It provides the fastest egress path by writing data in the native
-/// Arrow format, which matches the internal pipeline representation.
+/// Arrow IPC writer for data serialization.
 #[pyclass]
 pub struct ArrowWriter {
     path: String,
@@ -307,7 +314,7 @@ impl ArrowWriter {
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("ArrowWriter schema failed to initialize"))?;
 
-        let batch = build_record_batch(py, schema, list)?;
+        let batch = build_record_batch(py, schema, list, None)?;
         writer.write(&batch).map_err(wrap_py_err)?;
         Ok(())
     }

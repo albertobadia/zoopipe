@@ -27,14 +27,17 @@ pub struct ExcelReader {
     status_pending: Py<PyAny>,
     generate_ids: bool,
     keys: InternedKeys,
+    projection: Option<HashSet<String>>,
 }
+
+use std::collections::HashSet;
 
 use crate::utils::interning::InternedKeys;
 
 #[pymethods]
 impl ExcelReader {
     #[new]
-    #[pyo3(signature = (path, sheet=None, skip_rows=0, fieldnames=None, generate_ids=true))]
+    #[pyo3(signature = (path, sheet=None, skip_rows=0, fieldnames=None, generate_ids=true, projection=None))]
     fn new(
         py: Python<'_>,
         path: String,
@@ -42,6 +45,7 @@ impl ExcelReader {
         skip_rows: usize,
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
+        projection: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
@@ -122,6 +126,7 @@ impl ExcelReader {
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
+            projection: projection.map(|v| v.into_iter().collect::<HashSet<String>>()),
         })
     }
 
@@ -191,6 +196,11 @@ impl ExcelReader {
             state.position += 1;
             let raw_data = PyDict::new(py);
             for (header_py, cell) in self.headers.iter().zip(row.iter()) {
+                if let Some(proj) = &self.projection
+                    && !proj.contains(header_py.bind(py).to_str()?)
+                {
+                    continue;
+                }
                 let value = data_to_py_value(py, cell)?;
                 raw_data.set_item(header_py.bind(py), value)?;
             }
@@ -256,10 +266,7 @@ struct ExcelWriterState {
     path: String,
 }
 
-/// optimized Excel writer for creating standard .xlsx workbooks.
-///
-/// It provides a clean API for producing formatted Excel files with
-/// automatic header generation and custom worksheet names.
+/// Excel writer for creating standard .xlsx workbooks.
 #[pyclass]
 pub struct ExcelWriter {
     state: Mutex<ExcelWriterState>,

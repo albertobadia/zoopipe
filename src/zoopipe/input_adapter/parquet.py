@@ -22,16 +22,7 @@ class ParquetInputAdapter(BaseInputAdapter):
         offset: int = 0,
         row_groups: typing.List[int] | None = None,
     ):
-        """
-        Initialize the ParquetInputAdapter.
-
-        Args:
-            source: Path to the Parquet file.
-            generate_ids: Whether to generate unique IDs for each record.
-            batch_size: Number of records to read at once from the file.
-            limit: Maximum number of rows to read.
-            offset: Number of rows to skip.
-        """
+        super().__init__()
         self.source_path = str(source)
         self.generate_ids = generate_ids
         self.batch_size = batch_size
@@ -52,7 +43,6 @@ class ParquetInputAdapter(BaseInputAdapter):
         if workers <= 1:
             return [self]
 
-        # Distribute row groups among workers
         groups_per_worker = num_groups // workers
         shards = []
         for i in range(workers):
@@ -69,6 +59,7 @@ class ParquetInputAdapter(BaseInputAdapter):
                     row_groups=assigned_groups,
                 )
             )
+            shards[-1].required_columns = self.required_columns
         return shards
 
     def get_native_reader(self) -> ParquetReader:
@@ -79,6 +70,7 @@ class ParquetInputAdapter(BaseInputAdapter):
             limit=self.limit,
             offset=self.offset,
             row_groups=self.row_groups,
+            projection=self.required_columns,
         )
 
 

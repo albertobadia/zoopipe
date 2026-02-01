@@ -13,6 +13,9 @@ class BaseInputAdapter(abc.ABC):
     and optional hooks that are specific to the data source.
     """
 
+    def __init__(self):
+        self.required_columns: typing.List[str] | None = None
+
     @abc.abstractmethod
     def get_native_reader(self) -> typing.Any:
         """
@@ -22,6 +25,13 @@ class BaseInputAdapter(abc.ABC):
         to be compatible with the NativePipe.
         """
         raise NotImplementedError
+
+    def set_required_columns(self, columns: typing.List[str]) -> None:
+        """
+        Set the list of columns that are strictly required by the pipeline.
+        Adapters can use this to optimize I/O by only reading these columns.
+        """
+        self.required_columns = columns
 
     def get_hooks(self) -> list[typing.Any]:
         """

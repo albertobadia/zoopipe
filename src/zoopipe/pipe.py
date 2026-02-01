@@ -50,6 +50,7 @@ class Pipe:
         report_update_interval: int = 1,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
         telemetry_controller: TelemetryController | None = None,
+        use_column_pruning: bool = True,
     ) -> None:
         """
         Initialize a new Pipe.
@@ -72,6 +73,12 @@ class Pipe:
         self.output_adapter = output_adapter
         self.error_output_adapter = error_output_adapter
         self.schema_model = schema_model
+        self.use_column_pruning = use_column_pruning
+
+        if self.use_column_pruning and self.schema_model and self.input_adapter:
+            if hasattr(self.schema_model, "model_fields"):
+                fields = list(self.schema_model.model_fields.keys())
+                self.input_adapter.set_required_columns(fields)
 
         bundled_pre_hooks = []
         if self.input_adapter and hasattr(self.input_adapter, "get_hooks"):
@@ -122,16 +129,24 @@ class Pipe:
     def _validate_batch(self, entries: list[dict]) -> None:
         try:
             raw_data_list = [e["raw_data"] for e in entries]
-            validated_list = self._batch_validator.validate_python(raw_data_list)
+            validated_list = self._batch_validator.validate_python(raw_data_list)  # type: ignore
+
             for entry, processed in zip(entries, validated_list):
                 entry["validated_data"] = processed.model_dump()
                 entry["status"] = self._status_validated
+
         except ValidationError as e:
             for error in e.errors():
-                entry_index = error["loc"][0]
+                entry_index = error["loc"][0]  # type: ignore
                 entry = entries[entry_index]
                 entry["status"] = self._status_failed
-                entry["errors"].append({"msg": str(error), "type": "validation_error"})
+                entry["errors"].append(
+                    {
+                        "msg": error["msg"],
+                        "type": "validation_error",
+                        "loc": error["loc"],
+                    }
+                )
 
     @property
     def report(self) -> PipeReport:
