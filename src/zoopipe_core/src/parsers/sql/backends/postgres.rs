@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use tokio_postgres::Client;
 
 use super::super::backend::SqlBackend;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 
 pub struct PostgresCopyBackend {
     uri: String,
@@ -31,7 +31,7 @@ impl PostgresCopyBackend {
             return Ok(client.clone());
         }
 
-        let client = get_runtime().block_on(async {
+        let client = get_runtime_handle().block_on(async {
             let (client, connection) = tokio_postgres::connect(&self.uri, tokio_postgres::NoTls)
                 .await
                 .map_err(|e| {
@@ -91,7 +91,7 @@ impl SqlBackend for PostgresCopyBackend {
             fields.join(", ")
         );
 
-        get_runtime().block_on(async {
+        get_runtime_handle().block_on(async {
             let sink = client
                 .copy_in(&copy_query)
                 .await

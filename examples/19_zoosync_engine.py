@@ -36,23 +36,15 @@ def main():
         engine=ZoosyncPoolEngine(),
         workers=8,
     )
-    manager.start()
+    print("Running with Zoosync Engine (handling sharding and merging)...")
+    success = manager.run(wait=True, merge=True)
 
-    print("Waiting for completion...")
-    while manager.is_running:
-        report = manager.report
-        print(
-            f"Processed: {report.total_processed} | Speed: "
-            f"{report.items_per_second:.2f} items/s | RAM: "
-            f"{report.ram_bytes / 1024 / 1024:.2f} MB",
-            end="\r",
-        )
-        manager.wait(timeout=0.5)
+    if success:
+        print("\nFinished!")
+        print(f"Final Report: {manager.report}")
+    else:
+        print("\nFailed!")
 
-    print("\nFinished!")
-    print(f"Final Report: {manager.report}")
-
-    manager.merge()
     manager.shutdown()
 
 

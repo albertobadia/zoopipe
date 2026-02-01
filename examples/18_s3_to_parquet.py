@@ -1,5 +1,3 @@
-import time
-
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import CSVInputAdapter, MultiThreadExecutor, ParquetOutputAdapter, Pipe
@@ -38,16 +36,8 @@ def main():
     )
 
     print(f"Starting Cloud ETL: {input_uri} -> {output_uri}")
-    pipe.start()
-
     try:
-        while not pipe.report.is_finished:
-            print(
-                f"Processed: {pipe.report.total_processed} | "
-                f"Speed: {pipe.report.items_per_second:.2f} rows/s | "
-                f"RAM: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB"
-            )
-            time.sleep(1)
+        pipe.run()
     except KeyboardInterrupt:
         pipe.stop()
 

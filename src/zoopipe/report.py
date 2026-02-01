@@ -1,9 +1,9 @@
-import enum
 import logging
 import sys
 import threading
-import typing
 from datetime import datetime
+
+from zoopipe.structs import PipeStatus
 
 
 def get_logger(name: str = "zoopipe") -> logging.Logger:
@@ -22,55 +22,6 @@ def get_logger(name: str = "zoopipe") -> logging.Logger:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
     return logger
-
-
-class EntryStatus(enum.Enum):
-    """
-    Status of an individual data entry in the pipeline lifecycle.
-
-    - PENDING: Initial state after ingestion.
-    - VALIDATED: Successfully passed schema validation.
-    - FAILED: Encountered validation errors or processing issues.
-    """
-
-    PENDING = "pending"
-    VALIDATED = "validated"
-    FAILED = "failed"
-
-
-class EntryTypedDict(typing.TypedDict):
-    """
-    Structure of the record envelope as it flows through the pipeline.
-
-    The envelope contains not only the actual business data but also
-    operational metadata, unique identification, and error tracking.
-    """
-
-    id: typing.Any
-    position: int | None
-    status: EntryStatus
-    raw_data: dict[str, typing.Any]
-    validated_data: dict[str, typing.Any] | None
-    errors: list[dict[str, typing.Any]]
-    metadata: dict[str, typing.Any]
-
-
-class PipeStatus(enum.Enum):
-    """
-    Lifecycle status of a Pipe or PipeManager execution.
-
-    - PENDING: Execution hasn't started yet.
-    - RUNNING: Actively processing batches.
-    - COMPLETED: Finished successfully (all source data consumed).
-    - FAILED: Partially finished due to an unhandled exception.
-    - ABORTED: Stopped manually by the user.
-    """
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    ABORTED = "aborted"
 
 
 class PipeReport:
@@ -184,6 +135,42 @@ class PipeReport:
             f"fps={self.items_per_second:.2f} "
             f"duration={self.duration:.2f}s>"
         )
+
+    @classmethod
+    def aggregate(cls, reports: list["PipeReport"]) -> "PipeReport":
+        """
+        Aggregate multiple reports into a single summary report.
+        """
+        if not reports:
+            return cls(status=PipeStatus.PENDING)
+
+        agg = cls()
+
+        # Filter out None start_times
+        start_times = [r.start_time for r in reports if r.start_time]
+        agg.start_time = min(start_times) if start_times else None
+
+        for r in reports:
+            agg.total_processed += r.total_processed
+            agg.success_count += r.success_count
+            agg.error_count += r.error_count
+            agg.ram_bytes += r.ram_bytes
+
+        all_finished = all(r.is_finished for r in reports)
+        any_error = any(r.has_error for r in reports)
+        any_running = any(r.status == PipeStatus.RUNNING for r in reports)
+
+        if all_finished:
+            agg.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
+            end_times = [r.end_time for r in reports if r.end_time]
+            agg.end_time = max(end_times) if end_times else datetime.now()
+            agg._finished_event.set()
+        elif any_running:
+            agg.status = PipeStatus.RUNNING
+        else:
+            agg.status = PipeStatus.PENDING
+
+        return agg
 
     def __getstate__(self) -> dict:
         """Serialize the report state, excluding non-picklable lock objects."""

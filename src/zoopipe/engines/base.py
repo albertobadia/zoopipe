@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from zoopipe.report import PipeReport
+from zoopipe.structs import WorkerResult
+
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
-    from zoopipe.report import PipeReport
 
 
 class BaseEngine(ABC):
@@ -17,8 +17,13 @@ class BaseEngine(ABC):
     (locally, distributed, etc.).
     """
 
+    def __init__(self):
+        self._report = PipeReport()
+        self._start_time = None
+        self._cached_report = None
+
     @abstractmethod
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         """Execute the given list of pipes."""
         pass
 
@@ -39,10 +44,34 @@ class BaseEngine(ABC):
         pass
 
     @property
-    @abstractmethod
     def report(self) -> PipeReport:
         """Get an aggregated report of the current execution."""
-        pass
+        # 1. If we have a finished cache, definitely return it
+        if self._cached_report and self._cached_report.is_finished:
+            return self._cached_report
+
+        # 2. Try to get fresh reports from the engine
+        try:
+            p_reports = self.pipe_reports
+            if p_reports:
+                aggregated = PipeReport.aggregate(p_reports)
+                if self._start_time:
+                    aggregated.start_time = self._start_time
+
+                # Update cache
+                self._cached_report = aggregated
+                return aggregated
+        except (AttributeError, RuntimeError):
+            pass
+
+        # 3. Fallback to last known cached report or the default initial report
+        return self._cached_report or self._report
+
+    def _reset_report(self) -> None:
+        """Reset the internal report state for a new execution."""
+        self._report = PipeReport()
+        self._start_time = None
+        self._cached_report = None
 
     @property
     def pipe_reports(self) -> list[PipeReport]:
@@ -50,4 +79,17 @@ class BaseEngine(ABC):
         raise AttributeError("Engine does not support per-pipe reports")
 
     def get_pipe_report(self, pipe_index: int) -> PipeReport:
-        raise AttributeError("Engine does not support per-pipe reports")
+        """Get report for a specific pipe by index."""
+        reports = self.pipe_reports
+        if not reports:
+            raise RuntimeError("Engine has not been started")
+        if 0 <= pipe_index < len(reports):
+            return reports[pipe_index]
+        raise IndexError(f"Pipe index {pipe_index} out of range")
+
+    def get_results(self) -> list[WorkerResult]:
+        """
+        Collect results from all workers.
+        Returns a list of WorkerResult objects.
+        """
+        return []

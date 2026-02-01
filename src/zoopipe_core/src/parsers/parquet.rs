@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 use std::fs::File;
 use std::io::BufReader;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Mutex as StdMutex};
 
 struct ParquetReaderState {
@@ -141,7 +142,7 @@ impl ParquetReader {
             }
         });
 
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
@@ -218,6 +219,55 @@ impl ParquetReader {
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+
+        // Optimization: Fast-path for full batches
+        if state.current_batch.is_none() && state.rows_to_skip == 0 {
+            // Peek at limit check
+            let can_read_full_batch = if let Some(limit) = state.rows_to_read {
+                state.rows_read < limit
+            } else {
+                true
+            };
+
+            if can_read_full_batch {
+                match state.reader.next() {
+                    Some(Ok(batch)) => {
+                        let batch_len = batch.num_rows();
+
+                        // Check if batch fits in request AND within global limit
+                        let fits_in_request = batch_len <= batch_size;
+                        let fits_in_limit = if let Some(limit) = state.rows_to_read {
+                            state.rows_read + batch_len <= limit
+                        } else {
+                            true
+                        };
+
+                        if fits_in_request && fits_in_limit {
+                            let current_pos = state.position;
+                            state.position += batch_len;
+                            state.rows_read += batch_len;
+
+                            let envelopes =
+                                crate::parsers::arrow_utils::record_batch_to_py_envelopes(
+                                    py,
+                                    batch,
+                                    &self.keys,
+                                    self.status_pending.bind(py),
+                                    self.generate_ids,
+                                    current_pos,
+                                )?;
+                            return Ok(Some(envelopes));
+                        } else {
+                            // Too big or hits limit -> process row-by-row
+                            state.current_batch = Some((batch, 0));
+                        }
+                    }
+                    Some(Err(_e)) => return Ok(None), // Error handled in loop
+                    None => return Ok(None),
+                }
+            }
+        }
+
         let batch = PyList::empty(py);
 
         for _ in 0..batch_size {
@@ -251,24 +301,140 @@ impl ParquetReader {
                     raw_data.set_item(header.bind(py), val)?;
                 }
 
-                let envelope = PyDict::new(py);
-                let id = if self.generate_ids {
-                    crate::utils::generate_entry_id(py)?
-                } else {
-                    py.None().into_bound(py)
-                };
+                let env = crate::utils::wrap_in_envelope(
+                    py,
+                    &self.keys,
+                    raw_data.into_any(),
+                    self.status_pending.bind(py).clone(),
+                    pos,
+                    self.generate_ids,
+                )?;
 
-                envelope.set_item(self.keys.get_id(py), id)?;
-                envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-                envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-                envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-                envelope.set_item(self.keys.get_position(py), pos)?;
-                envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-                Ok(Some(envelope.into_any()))
+                Ok(Some(env))
             }
             Some(Err(_e)) => Ok(None),
             None => Ok(None),
+        }
+    }
+}
+
+#[pyclass]
+pub struct MultiParquetReader {
+    paths: Vec<String>,
+    current_reader: Mutex<Option<ParquetReader>>,
+    current_path_idx: Mutex<usize>,
+    generate_ids: bool,
+    batch_size: usize,
+    history_position: AtomicUsize,
+}
+
+#[pymethods]
+impl MultiParquetReader {
+    #[new]
+    pub fn new(paths: Vec<String>, generate_ids: bool, batch_size: usize) -> Self {
+        MultiParquetReader {
+            paths,
+            current_reader: Mutex::new(None),
+            current_path_idx: Mutex::new(0),
+            generate_ids,
+            batch_size,
+            history_position: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
+        let py = slf.py();
+        slf.get_next_item(py)
+    }
+
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let batch = PyList::empty(py);
+        for _ in 0..batch_size {
+            if let Some(item) = self.get_next_item(py)? {
+                batch.append(item)?;
+            } else {
+                break;
+            }
+        }
+
+        if batch.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
+        }
+    }
+}
+
+impl MultiParquetReader {
+    pub(crate) fn get_next_item<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        loop {
+            // First, try to get an item from the current reader if it exists
+            let mut exhausted = false;
+            {
+                let mut reader_guard = self
+                    .current_reader
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+                if let Some(reader) = reader_guard.as_ref() {
+                    let mut state = reader.state.lock().map_err(|_| PipeError::MutexLock)?;
+                    match reader.next_internal(py, &mut state)? {
+                        Some(val) => {
+                            let pos = self.history_position.fetch_add(1, Ordering::Relaxed);
+                            if let Ok(dict) = val.cast::<PyDict>() {
+                                dict.set_item("_pos", pos)?;
+                            }
+                            return Ok(Some(val));
+                        }
+                        None => {
+                            // Current reader exhausted
+                            exhausted = true;
+                        }
+                    }
+                }
+
+                if exhausted {
+                    *reader_guard = None;
+                }
+            }
+
+            if exhausted {
+                *self
+                    .current_path_idx
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))? += 1;
+                // continue loop to open next file
+                continue;
+            }
+
+            // If we are here, we need to open a new file or we are finished
+            let (path, _idx) = {
+                let idx_guard = self
+                    .current_path_idx
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+                let idx = *idx_guard;
+                if idx >= self.paths.len() {
+                    return Ok(None);
+                }
+                (self.paths[idx].clone(), idx)
+            };
+
+            let reader =
+                ParquetReader::new(py, path, self.generate_ids, self.batch_size, None, 0, None)?;
+
+            let mut reader_guard = self
+                .current_reader
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+            *reader_guard = Some(reader);
+            // continue loop to read from the newly opened reader
         }
     }
 }
@@ -379,7 +545,7 @@ impl ParquetWriter {
             .lock()
             .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(w) = writer_guard.take() {
-            let _: parquet::file::metadata::ParquetMetaData = w.close().map_err(wrap_py_err)?;
+            let _metadata = w.close().map_err(wrap_py_err)?;
         }
         let mut inner_guard = self
             .inner_writer

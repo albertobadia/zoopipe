@@ -1,6 +1,7 @@
 import time
 
 from faker import Faker
+
 from zoopipe.zoopipe_rust_core import SQLWriter
 
 POSTGRES_URI = "postgresql://zoopipe:zoopipe@localhost:5433/zoopipe_test"

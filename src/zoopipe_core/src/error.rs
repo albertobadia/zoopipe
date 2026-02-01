@@ -13,9 +13,6 @@ pub enum PipeError {
     #[error("SQL error: {0}")]
     Sql(#[from] sqlx::Error),
 
-    #[error("DuckDB error: {0}")]
-    DuckDb(#[from] duckdb::Error),
-
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

@@ -1,16 +1,30 @@
 import logging
 import threading
+from typing import Callable
 
 from pydantic import TypeAdapter, ValidationError
 
 from zoopipe.hooks.base import BaseHook, HookStore
-from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
-from zoopipe.report import EntryStatus, PipeReport, get_logger
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.output_adapter.base import BaseOutputAdapter
+from zoopipe.report import PipeReport, get_logger
+from zoopipe.structs import EntryStatus
+from zoopipe.utils.progress import monitor_progress
+from zoopipe.utils.telemetry import TelemetryController
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
     SingleThreadExecutor,
 )
+
+
+def _default_progress_reporter(report: "PipeReport") -> None:
+    print(
+        f"Processed: {report.total_processed} | "
+        f"Speed: {report.items_per_second:.2f} items/s | "
+        f"RAM: {report.ram_bytes / 1024 / 1024:.2f} MB",
+        end="\r",
+    )
 
 
 class Pipe:
@@ -26,15 +40,16 @@ class Pipe:
 
     def __init__(
         self,
-        input_adapter: InputAdapterProtocol | None = None,
-        output_adapter: OutputAdapterProtocol | None = None,
-        error_output_adapter: OutputAdapterProtocol | None = None,
+        input_adapter: BaseInputAdapter | None = None,
+        output_adapter: BaseOutputAdapter | None = None,
+        error_output_adapter: BaseOutputAdapter | None = None,
         schema_model: type | None = None,
         pre_validation_hooks: list[BaseHook] | None = None,
         post_validation_hooks: list[BaseHook] | None = None,
         logger: logging.Logger | None = None,
         report_update_interval: int = 1,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
+        telemetry_controller: TelemetryController | None = None,
     ) -> None:
         """
         Initialize a new Pipe.
@@ -51,6 +66,7 @@ class Pipe:
                 progress report.
             executor: Strategy for batch processing. Defaults to SingleThreadExecutor.
                 For advanced parallel execution, use `PipeManager`.
+            telemetry_controller: Controller for observability (tracing).
         """
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
@@ -73,6 +89,7 @@ class Pipe:
         self.post_validation_hooks = bundled_post_hooks + (post_validation_hooks or [])
 
         self.logger = logger or get_logger()
+        self.telemetry = telemetry_controller or TelemetryController()
 
         self.report_update_interval = report_update_interval
         self.executor = executor or SingleThreadExecutor()
@@ -88,18 +105,19 @@ class Pipe:
         self._status_failed = EntryStatus.FAILED
 
     def _process_batch(self, entries: list[dict]) -> list[dict]:
-        local_store: HookStore = {}
+        with self.telemetry.trace_batch(len(entries)):
+            local_store: HookStore = {}
 
-        for hook in self.pre_validation_hooks:
-            entries = hook.execute(entries, local_store)
+            for hook in self.pre_validation_hooks:
+                entries = hook.execute(entries, local_store)
 
-        if self._validator:
-            self._validate_batch(entries)
+            if self._validator:
+                self._validate_batch(entries)
 
-        for hook in self.post_validation_hooks:
-            entries = hook.execute(entries, local_store)
+            for hook in self.post_validation_hooks:
+                entries = hook.execute(entries, local_store)
 
-        return entries
+            return entries
 
     def _validate_batch(self, entries: list[dict]) -> None:
         try:
@@ -119,6 +137,36 @@ class Pipe:
     def report(self) -> PipeReport:
         """Get the current progress report of the pipeline."""
         return self._report
+
+    def run(
+        self,
+        wait: bool = True,
+        timeout: float | None = None,
+        on_report_update: Callable[["PipeReport"], None]
+        | None = _default_progress_reporter,
+    ) -> bool:
+        """
+        Start execution and optionally wait for completion.
+
+        Args:
+            wait: If True, blocks until finished.
+            timeout: Max time to wait.
+            on_report_update: Callback for progress updates.
+        """
+        try:
+            self.start()
+            if not wait:
+                return True
+
+            return monitor_progress(
+                waitable=self,
+                report_source=self,
+                timeout=timeout,
+                on_report_update=on_report_update,
+            )
+        except Exception as e:
+            self.logger.error(f"Pipe run failed: {e}")
+            raise
 
     def start(self, wait: bool = False) -> None:
         """
@@ -163,7 +211,12 @@ class Pipe:
             for hook in self.post_validation_hooks:
                 hook.setup(self._store)
 
-            native_pipe.run()
+            with self.telemetry.trace_span("rust_execution"):
+                metadata = native_pipe.run()
+            if metadata and hasattr(self.output_adapter, "_writer"):
+                # We can store the metadata on the adapter
+                # for later retrieval by the coordinator
+                self.output_adapter._metadata = metadata
         except Exception as e:
             self.logger.error(f"Pipeline execution failed: {e}")
             self._report._mark_failed(e)
@@ -188,6 +241,17 @@ class Pipe:
                 self.logger.warning(
                     "Pipeline thread did not finish cleanly within timeout"
                 )
+
+    @staticmethod
+    def shutdown_engine() -> None:
+        """
+        Shutdown the underlying Rust engine (Tokio runtime).
+        This is called automatically at exit, but can be
+        called manually to free resources.
+        """
+        from zoopipe.zoopipe_rust_core import shutdown
+
+        shutdown()
 
     def wait(self, timeout: float | None = None) -> bool:
         """
