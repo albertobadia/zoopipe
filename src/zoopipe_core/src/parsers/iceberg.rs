@@ -2,9 +2,13 @@ use crate::io::SharedWriter;
 use crate::parsers::arrow_utils::{build_record_batch, infer_type};
 use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef};
 use iceberg::spec::{
-    FormatVersion, NestedField, PartitionSpec, PrimitiveType, Schema, SortOrder,
+    DataContentType, DataFileBuilder, DataFileFormat, FormatVersion,
+    ManifestListWriter, ManifestWriterBuilder, NestedField,
+    Operation, PartitionSpec, PrimitiveType, Schema, Snapshot, SortOrder, Summary,
     TableMetadataBuilder, Type,
 };
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
@@ -12,7 +16,6 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
 
 use crate::utils::wrap_py_err;
 
@@ -319,14 +322,108 @@ pub fn commit_iceberg_transaction(
         .map_err(wrap_py_err)?;
 
     let builder = TableMetadataBuilder::new(
-        iceberg_schema,
-        partition_spec,
+        iceberg_schema.clone(),
+        partition_spec.clone(),
         sort_order,
         table_location.clone(),
         FormatVersion::V1,
         catalog_properties,
     )
     .map_err(wrap_py_err)?;
+
+    let snapshot_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    // 3. Write Manifest File
+    let manifest_file_id = uuid::Uuid::new_v4();
+    let manifest_path = format!("{}/metadata/{}-m0.avro", table_location, manifest_file_id);
+
+    let rt = crate::io::get_runtime_handle();
+    let manifest_file = rt.block_on(async {
+        let file_io = iceberg::io::FileIOBuilder::new("file")
+            .build()
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to build FileIO: {}", e)))?;
+
+        let output_file = file_io
+            .new_output(&manifest_path)
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to create output file: {}", e)))?;
+
+        let mut writer = ManifestWriterBuilder::new(
+            output_file,
+            Some(snapshot_id),
+            None,
+            Arc::new(iceberg_schema.clone()),
+            partition_spec.clone(),
+        )
+        .build_v1();
+
+        for df in all_data_files {
+            let iceberg_df = DataFileBuilder::default()
+                .content(DataContentType::Data)
+                .file_path(df.file_path)
+                .file_format(DataFileFormat::Parquet)
+                .record_count(df.record_count)
+                .file_size_in_bytes(df.file_size_in_bytes)
+                .build()
+                .map_err(wrap_py_err)?;
+
+            writer.add_file(iceberg_df, snapshot_id).map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to add data file to manifest: {}", e))
+            })?;
+        }
+
+        writer
+            .write_manifest_file()
+            .await
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to write manifest file: {}", e)))
+    })?;
+
+    // Create Manifest List
+    let manifest_list_path = format!(
+        "{}/metadata/snap-{}-1-{}.avro",
+        table_location,
+        snapshot_id,
+        uuid::Uuid::new_v4()
+    );
+
+    rt.block_on(async {
+        let file_io = iceberg::io::FileIOBuilder::new("file")
+            .build()
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to build FileIO: {}", e)))?;
+        let output_file = file_io.new_output(&manifest_list_path).map_err(|e| {
+            PyRuntimeError::new_err(format!("Failed to create manifest list output file: {}", e))
+        })?;
+
+        let mut manifest_list_writer = ManifestListWriter::v1(output_file, snapshot_id, None);
+        manifest_list_writer
+            .add_manifests(std::iter::once(manifest_file))
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to add manifest to list: {}", e))
+            })?;
+        manifest_list_writer.close().await.map_err(|e| {
+            PyRuntimeError::new_err(format!("Failed to write manifest list file: {}", e))
+        })?;
+        Ok::<(), PyErr>(())
+    })?;
+
+    // Create Snapshot
+    let snapshot = Snapshot::builder()
+        .with_snapshot_id(snapshot_id)
+        .with_sequence_number(0)
+        .with_timestamp_ms(snapshot_id) // using snapshot_id as timestamp_ms since it was created that way
+        .with_manifest_list(manifest_list_path)
+        .with_summary(Summary {
+            operation: Operation::Append,
+            additional_properties: std::collections::HashMap::new(),
+        })
+        .build();
+
+    // Add snapshot to metadata
+    let builder = builder
+        .set_branch_snapshot(snapshot, "main")
+        .map_err(wrap_py_err)?;
 
     let build_result = builder.build().map_err(wrap_py_err)?;
     let json_content = serde_json::to_string_pretty(&build_result.metadata).map_err(wrap_py_err)?;
