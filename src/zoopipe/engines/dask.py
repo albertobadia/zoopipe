@@ -60,7 +60,6 @@ class DaskEngine(BaseEngine):
         try:
             self.client = get_client(address) if address else get_client()
         except (ValueError, RuntimeError):
-            # No client running, create one
             self.client = Client(address=address, **kwargs)
 
         # Prepare environment
@@ -77,7 +76,6 @@ class DaskEngine(BaseEngine):
         """
         deps = get_core_dependencies()
 
-        # Install dependencies on all workers
         if deps:
             try:
                 unique_deps = list(set(deps))
@@ -86,7 +84,6 @@ class DaskEngine(BaseEngine):
             except Exception:
                 pass
 
-        # Handle local code path for dev mode
         if is_dev_mode():
             src_path = os.path.abspath("src")
 
@@ -105,7 +102,6 @@ class DaskEngine(BaseEngine):
         self._reset_report()
         self._start_time = datetime.now()
 
-        # 1. Submit Workers as Actors
         # It is CRITICAL to use actor=True so they maintain state (live Pipe instance)
         actor_futures = [
             self.client.submit(DaskPipeWorker, pipe, i, actor=True)
@@ -116,7 +112,6 @@ class DaskEngine(BaseEngine):
             print(f"DEBUG: Worker type: {type(w)}")
             print(f"DEBUG: Worker dir: {dir(w)}")
 
-        # 2. Launch execution WITHOUT BLOCKING
         self._futures = [worker.run() for worker in self._workers]
 
         self._cached_report = None

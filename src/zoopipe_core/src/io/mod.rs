@@ -106,7 +106,6 @@ pub fn create_local_file(path: &str) -> std::io::Result<File> {
     File::create(path)
 }
 
-/// Unified reader abstraction for local files, in-memory cursors, and remote storage.
 pub enum BoxedReader {
     File(BufReader<File>),
     Cursor(std::io::Cursor<Vec<u8>>),
@@ -298,14 +297,11 @@ impl Seek for RemoteReader {
 
         let new_pos = new_pos as u64;
 
-        // If the new position is within the current buffer, we just slice it
         let current_start = self.pos - self.buffer.len() as u64;
         if new_pos >= current_start && new_pos < self.pos {
             let offset = (new_pos - current_start) as usize;
             self.buffer = self.buffer.slice(offset..);
-            // pos remains the same as it points to the end of the buffered chunk
         } else {
-            // Otherwise, we invalidate the buffer and seek
             self.buffer = Bytes::new();
             self.pos = std::cmp::min(new_pos, self.file_len);
         }
@@ -476,7 +472,6 @@ impl Read for BoxedReaderChild {
     }
 }
 
-/// Unified writer abstraction for local files and remote storage.
 pub enum BoxedWriter {
     File(std::io::BufWriter<File>),
     Remote(RemoteWriter),

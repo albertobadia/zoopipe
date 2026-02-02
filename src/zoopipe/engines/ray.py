@@ -64,11 +64,9 @@ class RayEngine(BaseEngine):
             # Silence the accelerator visible devices warning for future Ray versions
             os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
 
-            # Prepare default runtime_env and get dependencies
             runtime_env = kwargs.pop("runtime_env", {})
             deps = get_core_dependencies()
 
-            # Setup working_dir and PYTHONPATH for dev mode
             if "working_dir" not in runtime_env:
                 runtime_env["working_dir"] = "."
                 if is_dev_mode():
@@ -77,7 +75,6 @@ class RayEngine(BaseEngine):
                         env_vars["PYTHONPATH"] = "./src"
                     runtime_env["env_vars"] = env_vars
 
-            # Default to lean initialization
             ray_args = {
                 "address": address,
                 "num_cpus": kwargs.pop("num_cpus", None),
@@ -88,7 +85,6 @@ class RayEngine(BaseEngine):
             }
             ray.init(**ray_args)
 
-            # Manually install dependencies on all nodes using our agnostic strategy
             if deps:
                 self._install_deps_on_all_nodes(deps)
 

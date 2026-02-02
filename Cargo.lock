@@ -6447,7 +6447,7 @@ checksum = "bd8f3f50b848df28f887acb68e41201b5aea6bc8a8dacc00fb40635ff9a72fea"
 
 [[package]]
 name = "zoopipe_rust_core"
-version = "2026.1.27"
+version = "2026.2.2"
 dependencies = [
  "arrow",
  "bytes",
