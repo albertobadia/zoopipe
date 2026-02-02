@@ -116,7 +116,6 @@ def _run_pipe_zooparallel(
                 )
                 pipe.report.wait(timeout=1)
 
-            # Final update
             stats.write(
                 pipe.report.total_processed,
                 pipe.report.success_count,
@@ -197,10 +196,8 @@ class ZooParallelPoolEngine(BaseEngine):
         self._pool.__enter__()
 
         for i, pipe in enumerate(pipes):
-            # Create stats file
             stats_file = os.path.join(self._temp_dir.name, f"pipe_{i}.stats")
             with open(stats_file, "wb") as f:
-                # Initialize with zeros
                 f.write(STATS_STRUCT.pack(0, 0, 0, 0, 0, 0))
                 f.flush()
 
@@ -230,7 +227,6 @@ class ZooParallelPoolEngine(BaseEngine):
         return True
 
     def shutdown(self, timeout: float = 5.0) -> None:
-        # Cache report before clearing
         self._cached_report = self.report
 
         if self._pool:

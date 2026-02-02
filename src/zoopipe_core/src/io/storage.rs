@@ -6,9 +6,7 @@ use object_store::{ObjectStore, ObjectStoreExt, local::LocalFileSystem};
 use std::sync::Arc;
 use url::Url;
 
-/// Trait that defines how to build an ObjectStore for a specific scheme.
 trait StorageBuilder: Send + Sync {
-    /// Builds the store and returns the store and the relative path key within it.
     fn build(&self, url: &Url) -> Result<(Arc<dyn ObjectStore>, String), PipeError>;
 }
 
@@ -100,10 +98,6 @@ impl StorageBuilder for AzureStorageBuilder {
     }
 }
 
-/// Orchestrates access to different storage backends (Local vs S3/GCS/Azure).
-///
-/// It parses URI schemes and initializes the appropriate object-store
-/// implementation to provide uniform data access.
 pub struct StorageController {
     inner: Arc<dyn ObjectStore>,
     prefix: String,

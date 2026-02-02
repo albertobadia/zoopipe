@@ -296,7 +296,6 @@ class Pipe:
         """Serialize the pipe state, handling non-picklable Rust objects."""
         state = self.__dict__.copy()
 
-        # Handle executor serialization
         executor = state["executor"]
         exec_config = {
             "class_name": executor.__class__.__name__,
@@ -307,7 +306,6 @@ class Pipe:
                 else 1
             ),
         }
-        # MultiThreadExecutor specific configuration (batch_size)
         state["executor_config"] = exec_config
 
         del state["executor"]
@@ -335,7 +333,6 @@ class Pipe:
 
         self.__dict__.update(state)
 
-        # Reconstruct validators
         self._validator = TypeAdapter(self.schema_model) if self.schema_model else None
         self._batch_validator = (
             TypeAdapter(list[self.schema_model]) if self.schema_model else None
