@@ -13,6 +13,8 @@ class ArrowOutputAdapter(BaseOutputAdapter):
     optimized Rust code for fast serialization.
     """
 
+    supports_objects: bool = True
+
     def __init__(
         self,
         output: typing.Union[str, pathlib.Path],

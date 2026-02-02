@@ -71,7 +71,7 @@ def main():
         f"Total records: {TOTAL_RECORDS}, "
         f"Batch size per worker: {ANCHORS_PER_WORKER} anchors.\n"
     )
-    pipe.start(wait=True)
+    pipe.run()
 
     results = list(output_adapter)
     print(f"\nFinal record count: {len(results)}")

@@ -1,5 +1,5 @@
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 use crate::io::storage::StorageController;
 use crate::utils::wrap_py_err;
 use calamine::{Data, Reader, Xlsx};
@@ -27,14 +27,17 @@ pub struct ExcelReader {
     status_pending: Py<PyAny>,
     generate_ids: bool,
     keys: InternedKeys,
+    projection: Option<HashSet<String>>,
 }
+
+use std::collections::HashSet;
 
 use crate::utils::interning::InternedKeys;
 
 #[pymethods]
 impl ExcelReader {
     #[new]
-    #[pyo3(signature = (path, sheet=None, skip_rows=0, fieldnames=None, generate_ids=true))]
+    #[pyo3(signature = (path, sheet=None, skip_rows=0, fieldnames=None, generate_ids=true, projection=None))]
     fn new(
         py: Python<'_>,
         path: String,
@@ -42,10 +45,11 @@ impl ExcelReader {
         skip_rows: usize,
         fieldnames: Option<Vec<String>>,
         generate_ids: bool,
+        projection: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-            get_runtime()
+            get_runtime_handle()
                 .block_on(async {
                     controller
                         .store()
@@ -94,14 +98,14 @@ impl ExcelReader {
             range
                 .rows()
                 .nth(skip_rows)
-                .map(|row| row.iter().map(data_to_string).collect())
+                .map(|row: &[Data]| row.iter().map(data_to_string).collect())
                 .unwrap_or_default()
         };
 
         let all_rows: Vec<Vec<Data>> = range
             .rows()
             .skip(skip_rows + header_offset)
-            .map(|r| r.to_vec())
+            .map(|r: &[Data]| r.to_vec())
             .collect();
 
         let headers: Vec<Py<PyString>> = headers_str
@@ -109,7 +113,7 @@ impl ExcelReader {
             .map(|s: String| PyString::new(py, s.as_str()).unbind())
             .collect();
 
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
@@ -122,6 +126,7 @@ impl ExcelReader {
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
+            projection: projection.map(|v| v.into_iter().collect::<HashSet<String>>()),
         })
     }
 
@@ -160,7 +165,7 @@ impl ExcelReader {
     pub fn list_sheets(path: String) -> PyResult<Vec<String>> {
         let data = if path.starts_with("s3://") {
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-            get_runtime()
+            get_runtime_handle()
                 .block_on(async {
                     controller
                         .store()
@@ -191,6 +196,11 @@ impl ExcelReader {
             state.position += 1;
             let raw_data = PyDict::new(py);
             for (header_py, cell) in self.headers.iter().zip(row.iter()) {
+                if let Some(proj) = &self.projection
+                    && !proj.contains(header_py.bind(py).to_str()?)
+                {
+                    continue;
+                }
                 let value = data_to_py_value(py, cell)?;
                 raw_data.set_item(header_py.bind(py), value)?;
             }
@@ -256,10 +266,7 @@ struct ExcelWriterState {
     path: String,
 }
 
-/// optimized Excel writer for creating standard .xlsx workbooks.
-///
-/// It provides a clean API for producing formatted Excel files with
-/// automatic header generation and custom worksheet names.
+/// Excel writer for creating standard .xlsx workbooks.
 #[pyclass]
 pub struct ExcelWriter {
     state: Mutex<ExcelWriterState>,
@@ -330,7 +337,7 @@ impl ExcelWriter {
         if path.starts_with("s3://") {
             let buffer = state.workbook.save_to_buffer().map_err(wrap_py_err)?;
             let controller = StorageController::new(&path).map_err(wrap_py_err)?;
-            get_runtime().block_on(async {
+            get_runtime_handle().block_on(async {
                 controller
                     .store()
                     .put(

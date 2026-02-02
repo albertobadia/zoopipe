@@ -262,33 +262,6 @@ result = df.filter(pl.col("age") > 18)
 result.write_ipc("filtered.arrow")
 ```
 
-### With DuckDB
-
-```python
-import duckdb
-from zoopipe import ArrowOutputAdapter, CSVInputAdapter, Pipe
-
-pipe = Pipe(
-    input_adapter=CSVInputAdapter("sales.csv"),
-    output_adapter=ArrowOutputAdapter("sales.arrow"),
-)
-
-with pipe:
-    pipe.wait()
-
-con = duckdb.connect()
-result = con.execute("""
-    SELECT 
-        product_id,
-        SUM(revenue) as total_revenue
-    FROM 'sales.arrow'
-    GROUP BY product_id
-    ORDER BY total_revenue DESC
-    LIMIT 10
-""").fetchdf()
-
-print(result)
-```
 
 ## Best Practices
 
@@ -333,7 +306,7 @@ for table in tables:
 ### High-Performance ETL
 
 ```python
-from zoopipe import Pipe, MultiThreadExecutor, CSVInputAdapter, ArrowInputAdapter, ArrowOutputAdapter, DuckDBOutputAdapter
+from zoopipe import Pipe, MultiThreadExecutor, CSVInputAdapter, ArrowInputAdapter, ArrowOutputAdapter
 
 extract_pipe = Pipe(
     input_adapter=CSVInputAdapter("raw_data.csv"),
@@ -344,18 +317,6 @@ extract_pipe = Pipe(
 with extract_pipe:
     extract_pipe.wait()
 
-load_pipe = Pipe(
-    input_adapter=ArrowInputAdapter("staging.arrow"),
-    output_adapter=DuckDBOutputAdapter(
-        "warehouse.duckdb",
-        table_name="clean_data",
-        mode="replace"
-    ),
-    executor=MultiThreadExecutor(max_workers=4),
-)
-
-with load_pipe:
-    load_pipe.wait()
 ```
 
 ### Cross-Language Workflow

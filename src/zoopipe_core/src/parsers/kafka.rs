@@ -1,16 +1,15 @@
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 use crate::utils::interning::InternedKeys;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;
 
-use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::message::Message;
 use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
 
@@ -79,12 +78,10 @@ impl KafkaReader {
             config.set("auto.offset.reset", "earliest");
         }
 
-        let consumer: StreamConsumer = {
-            let _guard = get_runtime().enter();
-            config
-                .create()
-                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
-        };
+        let consumer: BaseConsumer = config
+            .create()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
         consumer
             .subscribe(&[&topic])
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
@@ -92,28 +89,29 @@ impl KafkaReader {
         let (tx, rx) = crossbeam_channel::bounded(1000);
 
         std::thread::spawn(move || {
-            let rt = get_runtime();
-            rt.block_on(async move {
-                let mut stream = consumer.stream();
-                while let Some(msg_res) = stream.next().await {
-                    match msg_res {
-                        Ok(msg) => {
-                            let value = msg.payload().unwrap_or_default().to_vec();
-                            let key = msg.key().map(|k| k.to_vec());
-                            if tx.send(KafkaData::Message(value, key)).is_err() {
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
+            loop {
+                match consumer.poll(Duration::from_millis(100)) {
+                    Some(Ok(msg)) => {
+                        let value = msg.payload().unwrap_or_default().to_vec();
+                        let key = msg.key().map(|k| k.to_vec());
+                        if tx.send(KafkaData::Message(value, key)).is_err() {
                             break;
                         }
                     }
+                    Some(Err(e)) => {
+                        let _ = tx.send(KafkaData::Error(format!("Kafka poll error: {}", e)));
+                        break;
+                    }
+                    None => {
+                        if tx.is_full() {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                    }
                 }
-            });
+            }
         });
 
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
@@ -134,14 +132,58 @@ impl KafkaReader {
         let py = slf.py();
         let receiver = slf.receiver.lock().map_err(|_| PipeError::MutexLock)?;
 
-        let result = py.detach(|| receiver.recv());
+        loop {
+            let result = py.detach(|| receiver.recv_timeout(Duration::from_millis(250)));
 
-        match result {
-            Ok(KafkaData::Message(value_bytes, key_bytes)) => {
-                slf.create_envelope(py, value_bytes, key_bytes)
+            match result {
+                Ok(KafkaData::Message(value_bytes, key_bytes)) => {
+                    return slf.create_envelope(py, value_bytes, key_bytes);
+                }
+                Ok(KafkaData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    py.check_signals()?;
+                    continue;
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Ok(None),
             }
-            Ok(KafkaData::Error(e)) => Err(PyRuntimeError::new_err(e)),
-            Err(_) => Ok(None),
+        }
+    }
+
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let receiver = self.receiver.lock().map_err(|_| PipeError::MutexLock)?;
+        let batch = PyList::empty(py);
+        let mut count = 0;
+
+        while count < batch_size {
+            let result = if count == 0 {
+                py.detach(|| receiver.recv_timeout(Duration::from_millis(250)))
+                    .map_err(|_| crossbeam_channel::RecvTimeoutError::Timeout)
+            } else {
+                receiver
+                    .try_recv()
+                    .map_err(|_| crossbeam_channel::RecvTimeoutError::Timeout)
+            };
+
+            match result {
+                Ok(KafkaData::Message(value_bytes, key_bytes)) => {
+                    if let Some(env) = self.create_envelope(py, value_bytes, key_bytes)? {
+                        batch.append(env)?;
+                        count += 1;
+                    }
+                }
+                Ok(KafkaData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
+                Err(_) => break,
+            }
+        }
+
+        if count == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
         }
     }
 }
@@ -227,7 +269,7 @@ impl KafkaWriter {
         };
 
         let producer: FutureProducer = {
-            let _guard = get_runtime().enter();
+            let _guard = get_runtime_handle().enter();
             ClientConfig::new()
                 .set("bootstrap.servers", &brokers)
                 .set("request.timeout.ms", format!("{}", timeout * 1000))
@@ -240,12 +282,12 @@ impl KafkaWriter {
     }
 
     pub fn write(&self, py: Python<'_>, data: Bound<'_, PyAny>) -> PyResult<()> {
-        let bytes = self.extract_bytes(py, data)?;
+        let bytes = self.extract_bytes_native(py, data)?;
         let topic = self.topic.clone();
         let producer = self.producer.clone();
 
         py.detach(|| {
-            get_runtime().block_on(async move {
+            get_runtime_handle().block_on(async move {
                 producer
                     .send(
                         FutureRecord::<(), [u8]>::to(&topic).payload(&bytes),
@@ -265,7 +307,7 @@ impl KafkaWriter {
 
         for entry in iterator {
             let entry = entry?;
-            let bytes = self.extract_bytes(py, entry)?;
+            let bytes = self.extract_bytes_native(py, entry)?;
             let topic = self.topic.clone();
             let producer = self.producer.clone();
 
@@ -280,7 +322,7 @@ impl KafkaWriter {
         }
 
         py.detach(|| {
-            get_runtime().block_on(async move {
+            get_runtime_handle().block_on(async move {
                 let results = futures_util::future::join_all(futures).await;
                 for res in results {
                     if let Err((e, _)) = res {
@@ -295,7 +337,7 @@ impl KafkaWriter {
     }
 
     pub fn flush(&self) -> PyResult<()> {
-        let _guard = get_runtime().enter();
+        let _guard = get_runtime_handle().enter();
         self.producer
             .flush(Duration::from_secs(10))
             .map_err(|e| PyRuntimeError::new_err(format!("Kafka flush error: {}", e)))?;
@@ -308,7 +350,11 @@ impl KafkaWriter {
 }
 
 impl KafkaWriter {
-    fn extract_bytes(&self, py: Python<'_>, entry: Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    fn extract_bytes_native<'py>(
+        &self,
+        _py: Python<'py>,
+        entry: Bound<'py, PyAny>,
+    ) -> PyResult<Vec<u8>> {
         let raw_data = if let Ok(dict) = entry.cast::<PyDict>() {
             if let Some(rd) = dict.get_item("raw_data")? {
                 rd
@@ -323,13 +369,10 @@ impl KafkaWriter {
             Ok(b.as_bytes().to_vec())
         } else if let Ok(s) = raw_data.cast::<PyString>() {
             Ok(s.to_str()?.as_bytes().to_vec())
-        } else if raw_data.is_instance_of::<PyDict>() {
-            let json = py.import("json")?;
-            let dumps = json.getattr("dumps")?;
-            let s: String = dumps.call1((&raw_data,))?.extract()?;
-            Ok(s.into_bytes())
         } else {
-            Ok(raw_data.to_string().into_bytes())
+            // Use native Rust serialization for speed and to avoid GIL contention
+            let serializable = crate::utils::PySerializable(raw_data);
+            serde_json::to_vec(&serializable).map_err(|e| PyRuntimeError::new_err(e.to_string()))
         }
     }
 }

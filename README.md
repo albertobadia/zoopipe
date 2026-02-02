@@ -12,7 +12,7 @@
   <a href="https://www.python.org/downloads/"><img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10+-blue.svg"></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
   <a href="https://pypi.org/project/zoopipe/"><img alt="PyPI" src="https://img.shields.io/pypi/v/zoopipe"></a>
-  <img alt="Downloads" src="https://img.shields.io/pypi/dm/zoopipe">
+  <a href="https://pepy.tech/project/zoopipe"><img alt="Downloads" src="https://static.pepy.tech/badge/zoopipe/month"></a>
   <a href="https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/albertobadia/zoopipe/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://zoopipe.readthedocs.io/"><img alt="ReadTheDocs" src="https://img.shields.io/readthedocs/zoopipe"></a>
 </p>
@@ -27,9 +27,9 @@ Read the [docs](https://zoopipe.readthedocs.io/) for more information.
 - 🔍 **Declarative Validation**: Use [Pydantic](https://docs.pydantic.dev/) models to define and validate your data structures naturally.
 - 🪝 **Python Hooks**: Transform and enrich data at any stage using standard Python functions or classes.
 - 🚨 **Automated Error Routing**: Native support for routing failed records to a dedicated error output.
-- 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, and SQL databases.
+- 📊 **Multiple Format Support**: Optimized readers/writers for CSV, JSONL, Parquet, and **Iceberg**.
 - 🔧 **Two-Tier Parallelism**: Orchestrate across processes or clusters with **Engines** (Local, Ray, Dask), and scale throughput at the node level with Rust **Executors**.
-- ☁️ **Cloud Native**: Native S3, GCS, and Azure support, plus zero-config distributed execution on **Ray** or **Dask** clusters.
+- ☁️ **Cloud Native**: Native S3, GCS, and Azure support, plus native **Iceberg Data Lake** integration.
 
 ---
 
@@ -68,16 +68,19 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 ### Installation
 
-```bash
-pip install zoopipe
-```
-Or using uv:
+Using [uv](https://github.com/astral-sh/uv) (recommended):
 ```bash
 uv add zoopipe
 ```
-Or from source (uv recommended):
+
+Or using pip:
 ```bash
-uv build
+pip install zoopipe
+```
+
+From source:
+```bash
+uv sync
 uv run maturin develop --release
 ```
 
@@ -102,11 +105,11 @@ pipe = Pipe(
     schema_model=UserSchema,
 )
 
-pipe.start()
-pipe.wait()
-
+# Run the pipe (streaming processing)
+pipe.run()
 
 print(f"Finished! Processed {pipe.report.total_processed} items.")
+```
 ```
 
 Automatically split large files or manage multiple independent workflows:
@@ -119,13 +122,16 @@ pipe = Pipe(...)
 
 # Automatically parallelize across 4 workers
 # MultiProcessEngine() for local, RayEngine() or DaskEngine() for clusters
+# Automatically parallelize across 4 workers
 manager = PipeManager.parallelize_pipe(
     pipe, 
     workers=4, 
     engine=MultiProcessEngine() 
 )
-manager.start()
-manager.wait()
+
+# Start, wait, and coordinate (e.g. merge files) automatically
+manager.run()
+```
 ```
 
 ---
@@ -172,13 +178,13 @@ Executors control how ZooPipe scales **up** within a single node using Rust-mana
 - [**JSON Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/json.md) - JSONL and JSON array format support
 - [**Excel Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/excel.md) - Read and write Excel (.xlsx) files
 - [**Parquet Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/parquet.md) - Columnar storage for analytics and data lakes
+- [**Iceberg Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/iceberg.md) - High-performance Iceberg table reading and writing
 - [**Arrow Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/arrow.md) - Apache Arrow IPC format for high-throughput interoperability
 
 #### Databases
 
 - [**SQL Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/sql.md) - Read from and write to SQL databases with batch optimization
 - [**SQL Pagination**](https://github.com/albertobadia/zoopipe/blob/main/docs/sql.md#sqlpaginationinputadapter) - High-performance cursor-style pagination for large tables
-- [**DuckDB Adapters**](https://github.com/albertobadia/zoopipe/blob/main/docs/duckdb.md) - Analytical database for OLAP workloads
 
 #### Messaging Systems
 

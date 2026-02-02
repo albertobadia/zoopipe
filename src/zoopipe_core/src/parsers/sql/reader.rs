@@ -8,16 +8,20 @@ use std::sync::Mutex;
 use super::types::SQLData;
 use super::utils::{ensure_parent_dir, init_drivers};
 use crate::error::PipeError;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 use crate::utils::interning::InternedKeys;
+
+struct SQLReaderState {
+    receiver: Option<crossbeam_channel::Receiver<SQLData>>,
+    column_names: Option<Vec<Py<PyString>>>,
+    position: usize,
+}
 
 #[pyclass]
 pub struct SQLReader {
     uri: String,
     query: String,
-    receiver: Mutex<Option<crossbeam_channel::Receiver<SQLData>>>,
-    column_names: Mutex<Option<Vec<Py<PyString>>>>,
-    position: Mutex<usize>,
+    state: Mutex<SQLReaderState>,
     status_pending: Py<PyAny>,
     generate_ids: bool,
     keys: InternedKeys,
@@ -29,16 +33,18 @@ impl SQLReader {
     #[pyo3(signature = (uri, query, generate_ids=true))]
     fn new(py: Python<'_>, uri: String, query: String, generate_ids: bool) -> PyResult<Self> {
         init_drivers();
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
         Ok(SQLReader {
             uri,
             query,
-            receiver: Mutex::new(None),
-            column_names: Mutex::new(None),
-            position: Mutex::new(0),
+            state: Mutex::new(SQLReaderState {
+                receiver: None,
+                column_names: None,
+                position: 0,
+            }),
             status_pending,
             generate_ids,
             keys: InternedKeys::new(py),
@@ -50,7 +56,9 @@ impl SQLReader {
     }
 
     pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
-        slf.next_internal(slf.py())
+        let py = slf.py();
+        let mut state = slf.state.lock().map_err(|_| PipeError::MutexLock)?;
+        slf.next_internal(py, &mut state)
     }
 
     pub fn read_batch<'py>(
@@ -58,10 +66,11 @@ impl SQLReader {
         py: Python<'py>,
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
         let batch = PyList::empty(py);
 
         for _ in 0..batch_size {
-            if let Some(item) = self.next_internal(py)? {
+            if let Some(item) = self.next_internal(py, &mut state)? {
                 batch.append(item)?;
             } else {
                 break;
@@ -77,10 +86,11 @@ impl SQLReader {
 }
 
 impl SQLReader {
-    fn ensure_receiver(&self) -> PyResult<crossbeam_channel::Receiver<SQLData>> {
-        let mut receiver_opt = self.receiver.lock().map_err(|_| PipeError::MutexLock)?;
-
-        if let Some(rx) = receiver_opt.as_ref() {
+    fn ensure_receiver(
+        &self,
+        state: &mut SQLReaderState,
+    ) -> PyResult<crossbeam_channel::Receiver<SQLData>> {
+        if let Some(rx) = state.receiver.as_ref() {
             return Ok(rx.clone());
         }
 
@@ -89,7 +99,7 @@ impl SQLReader {
         let query_str = self.query.clone();
 
         std::thread::spawn(move || {
-            let rt = get_runtime();
+            let rt = get_runtime_handle();
             rt.block_on(async {
                 if let Err(e) = Self::spawn_fetcher(uri, query_str, tx).await {
                     eprintln!("SQL fetcher thread error: {}", e);
@@ -98,7 +108,7 @@ impl SQLReader {
         });
 
         let rx_clone = rx.clone();
-        *receiver_opt = Some(rx);
+        state.receiver = Some(rx);
         Ok(rx_clone)
     }
 
@@ -142,44 +152,26 @@ impl SQLReader {
         Ok(())
     }
 
-    fn create_envelope<'py>(
+    fn next_internal<'py>(
         &self,
         py: Python<'py>,
-        raw_data: Bound<'py, PyDict>,
-        current_pos: usize,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let envelope = PyDict::new(py);
-        let id = if self.generate_ids {
-            crate::utils::generate_entry_id(py)?
-        } else {
-            py.None().into_bound(py)
-        };
-
-        envelope.set_item(self.keys.get_id(py), id)?;
-        envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-        envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-        envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-        envelope.set_item(self.keys.get_position(py), current_pos)?;
-        envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-        Ok(envelope.into_any())
-    }
-
-    fn next_internal<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
-        let rx = self.ensure_receiver()?;
+        state: &mut SQLReaderState,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let rx = self.ensure_receiver(state)?;
 
         loop {
-            match rx.recv() {
+            let result = py.detach(|| rx.recv_timeout(std::time::Duration::from_millis(250)));
+
+            match result {
                 Ok(SQLData::Metadata(cols)) => {
                     let py_cols: Vec<Py<PyString>> = cols
                         .into_iter()
                         .map(|s| PyString::new(py, &s).unbind())
                         .collect();
-                    *self.column_names.lock().map_err(|_| PipeError::MutexLock)? = Some(py_cols);
+                    state.column_names = Some(py_cols);
                 }
                 Ok(SQLData::Row(row_values)) => {
-                    let cols_lock = self.column_names.lock().map_err(|_| PipeError::MutexLock)?;
-                    let cols = match cols_lock.as_ref() {
+                    let cols = match state.column_names.as_ref() {
                         Some(c) => c,
                         None => {
                             return Err(PyRuntimeError::new_err(
@@ -188,9 +180,8 @@ impl SQLReader {
                         }
                     };
 
-                    let mut pos = self.position.lock().map_err(|_| PipeError::MutexLock)?;
-                    let current_pos = *pos;
-                    *pos += 1;
+                    let current_pos = state.position;
+                    state.position += 1;
 
                     let raw_data = PyDict::new(py);
                     for (i, value) in row_values.into_iter().enumerate() {
@@ -200,10 +191,21 @@ impl SQLReader {
                         raw_data.set_item(key.bind(py), value.into_pyobject(py)?)?;
                     }
 
-                    return Ok(Some(self.create_envelope(py, raw_data, current_pos)?));
+                    return Ok(Some(crate::utils::wrap_in_envelope(
+                        py,
+                        &self.keys,
+                        raw_data.into_any(),
+                        self.status_pending.bind(py).clone(),
+                        current_pos,
+                        self.generate_ids,
+                    )?));
                 }
                 Ok(SQLData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
-                Err(_) => return Ok(None),
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    py.check_signals()?;
+                    continue;
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Ok(None),
             }
         }
     }

@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from zooparallel import ZooPool
+
 from zoopipe.engines.base import BaseEngine
-from zoopipe.report import PipeReport, PipeStatus
+from zoopipe.report import PipeReport
+from zoopipe.structs import PipeStatus, WorkerResult
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -20,7 +23,7 @@ STATS_SIZE = STATS_STRUCT.size
 
 
 class MmapStats:
-    """Helper to manage stats via mmap for zoosync engine."""
+    """Helper to manage stats via mmap for zooparallel engine."""
 
     def __init__(self, filepath: str, mode: str = "r+b"):
         self.filepath = filepath
@@ -88,10 +91,17 @@ class MmapStats:
             return 0, 0, 0, 0, False, False
 
 
-def _run_pipe_zoosync(
+def _run_pipe_zooparallel(
     pipe: "Pipe",
     stats_filepath: str,
-) -> None:
+) -> dict[str, Any]:
+    result_data = {
+        "success": False,
+        "output_path": None,
+        "metrics": {},
+        "error": None,
+    }
+
     try:
         pipe.start(wait=False)
         with MmapStats(stats_filepath) as stats:
@@ -113,10 +123,29 @@ def _run_pipe_zoosync(
                 pipe.report.error_count,
                 pipe.report.ram_bytes,
                 True,
-                False,
+                pipe.report.has_error,
             )
-    except Exception:
+
+        # Ensure the pipeline thread has finished updating metadata
+        pipe.shutdown()
+
+        result_data["success"] = not pipe.report.has_error
+        result_data["output_path"] = getattr(
+            pipe.output_adapter,
+            "output_path",
+            getattr(pipe.output_adapter, "_metadata", None),
+        )
+        result_data["metrics"] = {
+            "total": pipe.report.total_processed,
+            "success": pipe.report.success_count,
+            "error": pipe.report.error_count,
+        }
+        if pipe.report.exception:
+            result_data["error"] = str(pipe.report.exception)
+
+    except Exception as e:
         # Error state
+        result_data["error"] = str(e)
         try:
             with MmapStats(stats_filepath) as stats:
                 stats.write(
@@ -130,45 +159,39 @@ def _run_pipe_zoosync(
         except Exception:
             pass
 
+    return result_data
+
 
 @dataclass
-class ZoosyncPipeHandle:
+class ZooParallelPipeHandle:
     future: Any
     stats_filepath: str
     pipe_index: int
 
 
-class ZoosyncPoolEngine(BaseEngine):
+class ZooParallelPoolEngine(BaseEngine):
     """
-    Engine that executes pipes using a zoosync process pool.
+    Engine that executes pipes using a zooparallel process pool.
     Uses shared memory for status reporting.
     """
 
     def __init__(self, n_workers: int | None = None):
+        super().__init__()
         self.n_workers = n_workers
         self._pool = None
-        self._handles: list[ZoosyncPipeHandle] = []
-        self._start_time: datetime | None = None
-        self._cached_report: PipeReport | None = None
+        self._handles: list[ZooParallelPipeHandle] = []
         self._temp_dir = None
 
     def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("Engine is already running")
 
-        try:
-            from zoosync import ZooPool
-        except ImportError:
-            raise ImportError(
-                "zoosync is not installed. Please install it with 'uv add zoosync'"
-            )
-
+        self._reset_report()
         self._start_time = datetime.now()
         self._handles.clear()
-        self._cached_report = None
 
         # Create a temp directory for stats files
-        self._temp_dir = tempfile.TemporaryDirectory(prefix="zoopipe_zoosync_")
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="zoopipe_zooparallel_")
         count = self.n_workers or len(pipes)
         self._pool = ZooPool(count)
         self._pool.__enter__()
@@ -182,13 +205,13 @@ class ZoosyncPoolEngine(BaseEngine):
                 f.flush()
 
             future = self._pool.submit(
-                _run_pipe_zoosync,
+                _run_pipe_zooparallel,
                 pipe,
                 stats_file,
             )
 
             self._handles.append(
-                ZoosyncPipeHandle(
+                ZooParallelPipeHandle(
                     future=future,
                     stats_filepath=stats_file,
                     pipe_index=i,
@@ -207,14 +230,42 @@ class ZoosyncPoolEngine(BaseEngine):
         return True
 
     def shutdown(self, timeout: float = 5.0) -> None:
+        # Cache report before clearing
+        self._cached_report = self.report
+
         if self._pool:
-            self._pool.shutdown(wait=False)
+            self._pool.__exit__(None, None, None)
             self._pool = None
 
         self._handles.clear()
         if self._temp_dir:
             self._temp_dir.cleanup()
             self._temp_dir = None
+
+    def get_results(self) -> list[WorkerResult]:
+        results = []
+        for i, handle in enumerate(self._handles):
+            try:
+                # Assuming ZooPool future has a result() method that waits/returns
+                res_dict = handle.future.result()
+                results.append(
+                    WorkerResult(
+                        worker_id=i,
+                        success=res_dict.get("success", False),
+                        output_path=res_dict.get("output_path"),
+                        metrics=res_dict.get("metrics", {}),
+                        error=res_dict.get("error"),
+                    )
+                )
+            except Exception as e:
+                results.append(
+                    WorkerResult(
+                        worker_id=i,
+                        success=False,
+                        error=str(e),
+                    )
+                )
+        return results
 
     @property
     def is_running(self) -> bool:
@@ -227,39 +278,6 @@ class ZoosyncPoolEngine(BaseEngine):
             if not is_finished:
                 return True
         return False
-
-    @property
-    def report(self) -> PipeReport:
-        if self._cached_report and self._cached_report.is_finished:
-            return self._cached_report
-
-        report = PipeReport()
-        report.start_time = self._start_time
-
-        all_finished = True
-        any_error = False
-
-        for h in self._handles:
-            proc, succ, err, ram, fin, has_err = MmapStats.read_file(h.stats_filepath)
-            report.total_processed += proc
-            report.success_count += succ
-            report.error_count += err
-            report.ram_bytes += ram
-
-            if not fin:
-                all_finished = False
-            if has_err:
-                any_error = True
-
-        if all_finished and self._handles:
-            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
-            report.end_time = datetime.now()
-            report._finished_event.set()
-            self._cached_report = report
-        else:
-            report.status = PipeStatus.RUNNING
-
-        return report
 
     @property
     def pipe_reports(self) -> list[PipeReport]:

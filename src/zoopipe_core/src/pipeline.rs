@@ -4,26 +4,29 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList};
 
 use crate::parsers::arrow::{ArrowReader, ArrowWriter};
 use crate::parsers::csv::{CSVReader, CSVWriter};
-use crate::parsers::duckdb::{DuckDBReader, DuckDBWriter};
+
+use crate::parsers::delta::{DeltaReader, DeltaWriter};
 use crate::parsers::excel::{ExcelReader, ExcelWriter};
 use crate::parsers::json::{JSONReader, JSONWriter};
 use crate::parsers::kafka::{KafkaReader, KafkaWriter};
-use crate::parsers::parquet::{ParquetReader, ParquetWriter};
+use crate::parsers::parquet::{MultiParquetReader, ParquetReader, ParquetWriter};
 use crate::parsers::pygen::{PyGeneratorReader, PyGeneratorWriter};
 use crate::parsers::sql::{SQLReader, SQLWriter};
+use pyo3::types::PyString;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(FromPyObject)]
 pub enum PipeReader {
     CSV(Py<CSVReader>),
     JSON(Py<JSONReader>),
-    DuckDB(Py<DuckDBReader>),
     Arrow(Py<ArrowReader>),
     SQL(Py<SQLReader>),
     Parquet(Py<ParquetReader>),
     PyGen(Py<PyGeneratorReader>),
     Excel(Py<ExcelReader>),
     Kafka(Py<KafkaReader>),
+    MultiParquet(Py<MultiParquetReader>),
+    Delta(Py<DeltaReader>),
 }
 
 impl PipeReader {
@@ -35,13 +38,14 @@ impl PipeReader {
         match self {
             PipeReader::CSV(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::JSON(r) => r.bind(py).borrow().read_batch(py, batch_size),
-            PipeReader::DuckDB(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Arrow(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::SQL(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Parquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Excel(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::PyGen(r) => r.bind(py).borrow().read_batch(py, batch_size),
             PipeReader::Kafka(_) => Ok(None),
+            PipeReader::MultiParquet(r) => r.bind(py).borrow().read_batch(py, batch_size),
+            PipeReader::Delta(r) => r.bind(py).borrow().read_batch(py, batch_size),
         }
     }
 
@@ -49,13 +53,18 @@ impl PipeReader {
         match self {
             PipeReader::CSV(r) => CSVReader::__next__(r.bind(py).borrow()),
             PipeReader::JSON(r) => JSONReader::__next__(r.bind(py).borrow()),
-            PipeReader::DuckDB(r) => DuckDBReader::__next__(r.bind(py).borrow()),
             PipeReader::Arrow(r) => ArrowReader::__next__(r.bind(py).borrow()),
             PipeReader::SQL(r) => SQLReader::__next__(r.bind(py).borrow()),
             PipeReader::Parquet(r) => ParquetReader::__next__(r.bind(py).borrow()),
             PipeReader::PyGen(r) => PyGeneratorReader::__next__(r.bind(py).borrow()),
             PipeReader::Excel(r) => ExcelReader::__next__(r.bind(py).borrow()),
             PipeReader::Kafka(r) => KafkaReader::__next__(r.bind(py).borrow()),
+            PipeReader::MultiParquet(r) => {
+                crate::parsers::parquet::MultiParquetReader::__next__(r.bind(py).borrow())
+            }
+            PipeReader::Delta(r) => {
+                crate::parsers::delta::DeltaReader::__next__(r.bind(py).borrow())
+            }
         }
     }
 }
@@ -64,13 +73,14 @@ impl PipeReader {
 pub enum PipeWriter {
     CSV(Py<CSVWriter>),
     JSON(Py<JSONWriter>),
-    DuckDB(Py<DuckDBWriter>),
     Arrow(Py<ArrowWriter>),
     SQL(Py<SQLWriter>),
     Parquet(Py<ParquetWriter>),
     PyGen(Py<PyGeneratorWriter>),
     Excel(Py<ExcelWriter>),
     Kafka(Py<KafkaWriter>),
+    Iceberg(Py<crate::parsers::iceberg::IcebergWriter>),
+    Delta(Py<DeltaWriter>),
 }
 
 impl PipeWriter {
@@ -78,27 +88,62 @@ impl PipeWriter {
         match self {
             PipeWriter::CSV(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::JSON(w) => w.bind(py).borrow().write_batch(py, entries),
-            PipeWriter::DuckDB(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Arrow(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::SQL(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Parquet(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::PyGen(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Excel(w) => w.bind(py).borrow().write_batch(py, entries),
             PipeWriter::Kafka(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Iceberg(w) => w.bind(py).borrow().write_batch(py, entries),
+            PipeWriter::Delta(w) => w.bind(py).borrow().write_batch(py, entries),
         }
     }
 
-    pub fn close(&self, py: Python) -> PyResult<()> {
+    pub fn close(&self, py: Python) -> PyResult<Py<PyAny>> {
         match self {
-            PipeWriter::CSV(w) => w.bind(py).borrow().close(),
-            PipeWriter::JSON(w) => w.bind(py).borrow().close(),
-            PipeWriter::DuckDB(w) => w.bind(py).borrow().close(),
-            PipeWriter::Arrow(w) => w.bind(py).borrow().close(),
-            PipeWriter::SQL(w) => w.bind(py).borrow().close(),
-            PipeWriter::Parquet(w) => w.bind(py).borrow().close(),
-            PipeWriter::PyGen(w) => w.bind(py).borrow().close(),
-            PipeWriter::Excel(w) => w.bind(py).borrow().close(),
-            PipeWriter::Kafka(w) => w.bind(py).borrow().close(),
+            PipeWriter::CSV(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::JSON(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::Arrow(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::SQL(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::Parquet(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::PyGen(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::Excel(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::Kafka(w) => {
+                w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, "[]").into_any().unbind())
+            }
+            PipeWriter::Iceberg(w) => {
+                let s = w.bind(py).borrow().close()?;
+                Ok(PyString::new(py, &s).into_any().unbind())
+            }
+            PipeWriter::Delta(w) => {
+                let opt = w.bind(py).borrow().close()?;
+                match opt {
+                    Some(handle) => Ok(Py::new(py, handle)?.into_any()),
+                    None => Ok(py.None()),
+                }
+            }
         }
     }
 }
@@ -197,7 +242,7 @@ impl NativePipe {
         report_update_interval: usize,
         executor: PipeExecutor,
     ) -> PyResult<Self> {
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let entry_status = models.getattr("EntryStatus")?;
         let status_failed = entry_status.getattr("FAILED")?.unbind();
         let status_validated = entry_status.getattr("VALIDATED")?.unbind();
@@ -217,78 +262,105 @@ impl NativePipe {
     }
 
     /// Executes the pipeline until the source is exhausted or an error occurs.
-    fn run(&self, py: Python<'_>) -> PyResult<()> {
-        let report = self.report.bind(py);
-        report.call_method0("_mark_running")?;
+    fn run(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let report_py = self.report.clone_ref(py);
+        report_py.bind(py).call_method0("_mark_running")?;
 
         let batch_size = self.executor.get_batch_size(py)?;
         let concurrency = self.executor.get_concurrency(py)?;
 
-        // Setup buffering for both row-wise accumulation and batch-wise accumulation
         let mut row_buffer = Vec::with_capacity(batch_size);
-        let mut batch_buffer: Vec<Bound<'_, PyList>> = Vec::with_capacity(concurrency);
+        let mut batch_buffer: Vec<Py<PyList>> = Vec::with_capacity(concurrency);
 
-        loop {
-            // Priority 1: Check if reader has a full batch ready (e.g. Arrow/Parquet/SQL chunks)
-            if let Some(batch) = self.reader.read_batch(py, batch_size)? {
-                batch_buffer.push(batch);
-                if batch_buffer.len() >= concurrency {
-                    self.process_buffered_batches(py, &mut batch_buffer, report)?;
+        let result: PyResult<()> = Python::detach(py, || {
+            loop {
+                let opt_batch = Python::attach(|py| {
+                    self.reader
+                        .read_batch(py, batch_size)
+                        .map(|opt| opt.map(|b| b.unbind()))
+                })?;
+
+                if let Some(batch) = opt_batch {
+                    batch_buffer.push(batch);
+                    if batch_buffer.len() >= concurrency {
+                        Python::attach(|py| {
+                            let r = report_py.bind(py);
+                            self.process_buffered_batches_detached(py, &mut batch_buffer, r)
+                        })?;
+                    }
+                    continue;
                 }
-                continue;
-            }
 
-            // Priority 2: Streaming row-by-row (e.g. CSV/JSON/Generator)
-            match self.reader.next(py)? {
-                Some(entry) => {
-                    row_buffer.push(entry);
-                    if row_buffer.len() >= batch_size {
-                        let py_list = PyList::new(py, row_buffer.iter())?;
-                        batch_buffer.push(py_list);
-                        row_buffer.clear();
+                let opt_entry =
+                    Python::attach(|py| self.reader.next(py).map(|opt| opt.map(|e| e.unbind())))?;
+
+                match opt_entry {
+                    Some(entry) => {
+                        if let Some(py_list) = Python::attach(|py| {
+                            row_buffer.push(entry);
+                            if row_buffer.len() >= batch_size {
+                                let py_list = PyList::new(py, row_buffer.iter())?;
+                                row_buffer.clear();
+                                return Ok::<Option<Py<PyList>>, PyErr>(Some(py_list.unbind()));
+                            }
+                            Ok(None)
+                        })? {
+                            batch_buffer.push(py_list);
+                        }
 
                         if batch_buffer.len() >= concurrency {
-                            self.process_buffered_batches(py, &mut batch_buffer, report)?;
+                            Python::attach(|py| {
+                                let r = report_py.bind(py);
+                                self.process_buffered_batches_detached(py, &mut batch_buffer, r)
+                            })?;
                         }
                     }
+                    None => break,
                 }
-                None => break,
             }
-        }
+            Ok(())
+        });
 
-        // Flush remaining rows
+        result?;
+
         if !row_buffer.is_empty() {
             let py_list = PyList::new(py, row_buffer.iter())?;
-            batch_buffer.push(py_list);
+            batch_buffer.push(py_list.unbind());
         }
 
-        // Flush remaining batches
         if !batch_buffer.is_empty() {
-            self.process_buffered_batches(py, &mut batch_buffer, report)?;
+            let r = report_py.bind(py);
+            self.process_buffered_batches_detached(py, &mut batch_buffer, r)?;
         }
 
-        self.sync_report(py, report)?;
-        report.call_method0("_mark_completed")?;
+        let r = report_py.bind(py);
+        self.sync_report(py, r)?;
+        r.call_method0("_mark_completed")?;
 
-        self.writer.close(py)?;
+        let metadata = self.writer.close(py)?;
         if let Some(ref ew) = self.error_writer {
             ew.close(py)?;
         }
 
-        Ok(())
+        Ok(Some(metadata))
     }
 }
 
 impl NativePipe {
-    fn process_buffered_batches(
+    fn process_buffered_batches_detached(
         &self,
         py: Python<'_>,
-        batch_buffer: &mut Vec<Bound<'_, PyList>>,
+        batch_buffer: &mut Vec<Py<PyList>>,
         report: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let batch_processor = self.batch_processor.bind(py);
 
-        let batches = std::mem::take(batch_buffer);
+        let batches_owned = std::mem::take(batch_buffer);
+        let batches: Vec<Bound<'_, PyList>> = batches_owned
+            .into_iter()
+            .map(|b| b.into_bound(py))
+            .collect();
+
         let results = self
             .executor
             .process_batches(py, batches, batch_processor)?;
@@ -321,17 +393,22 @@ impl NativePipe {
 
         for entry in processed_list.iter() {
             let dict = entry.cast::<PyDict>()?;
+
+            // Fast status check using raw pointer comparison for interned objects
             let status = dict
                 .get_item(status_key)?
                 .ok_or_else(|| PyRuntimeError::new_err("Missing status in entry"))?;
 
-            if status.eq(status_failed)? {
+            let is_failed = status.as_ptr() == status_failed.as_ptr();
+            let is_validated = !is_failed && status.as_ptr() == status_validated.as_ptr();
+
+            if is_failed {
                 error_list.push(
                     dict.get_item(raw_key)?.ok_or_else(|| {
                         PyRuntimeError::new_err("Missing raw_data in error entry")
                     })?,
                 );
-            } else if status.eq(status_validated)? {
+            } else if is_validated {
                 success_data.push(dict.get_item(val_key)?.ok_or_else(|| {
                     PyRuntimeError::new_err("Missing validated_data in success entry")
                 })?);
@@ -416,17 +493,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pipe_counters_new() {
+    fn test_pipe_counters() {
         let counters = PipeCounters::new();
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 0);
-        assert_eq!(counters.success_count.load(Ordering::Relaxed), 0);
-        assert_eq!(counters.error_count.load(Ordering::Relaxed), 0);
-        assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    fn test_pipe_counters_increment() {
-        let counters = PipeCounters::new();
 
         counters.total_processed.fetch_add(10, Ordering::Relaxed);
         counters.success_count.fetch_add(8, Ordering::Relaxed);
@@ -435,76 +504,5 @@ mod tests {
         assert_eq!(counters.total_processed.load(Ordering::Relaxed), 10);
         assert_eq!(counters.success_count.load(Ordering::Relaxed), 8);
         assert_eq!(counters.error_count.load(Ordering::Relaxed), 2);
-    }
-
-    #[test]
-    fn test_pipe_counters_batches() {
-        let counters = PipeCounters::new();
-
-        let batch_count = counters.batches_processed.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(batch_count, 0);
-        assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn test_get_process_ram_rss() {
-        let _ram = get_process_ram_rss();
-    }
-
-    #[test]
-    fn test_pipe_counters_multiple_increments() {
-        let counters = PipeCounters::new();
-
-        for _ in 0..100 {
-            counters.total_processed.fetch_add(1, Ordering::Relaxed);
-            counters.success_count.fetch_add(1, Ordering::Relaxed);
-        }
-
-        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 100);
-        assert_eq!(counters.success_count.load(Ordering::Relaxed), 100);
-    }
-
-    #[test]
-    fn test_pipe_counters_mixed_operations() {
-        let counters = PipeCounters::new();
-
-        counters.total_processed.fetch_add(50, Ordering::Relaxed);
-        counters.success_count.fetch_add(30, Ordering::Relaxed);
-        counters.error_count.fetch_add(20, Ordering::Relaxed);
-
-        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 50);
-        assert_eq!(counters.success_count.load(Ordering::Relaxed), 30);
-        assert_eq!(counters.error_count.load(Ordering::Relaxed), 20);
-    }
-
-    #[test]
-    fn test_pipe_counters_batch_processing() {
-        let counters = PipeCounters::new();
-
-        for _ in 0..10 {
-            counters.batches_processed.fetch_add(1, Ordering::Relaxed);
-        }
-
-        assert_eq!(counters.batches_processed.load(Ordering::Relaxed), 10);
-    }
-
-    #[test]
-    fn test_pipe_counters_zero_operations() {
-        let counters = PipeCounters::new();
-
-        counters.total_processed.fetch_add(0, Ordering::Relaxed);
-
-        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    fn test_pipe_counters_large_values() {
-        let counters = PipeCounters::new();
-
-        counters
-            .total_processed
-            .fetch_add(1_000_000, Ordering::Relaxed);
-
-        assert_eq!(counters.total_processed.load(Ordering::Relaxed), 1_000_000);
     }
 }

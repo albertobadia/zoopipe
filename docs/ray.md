@@ -7,7 +7,7 @@ The `RayEngine` allows ZooPipe to scale horizontally across a Ray cluster. It tr
 `RayEngine` is an optional dependency. Install it with:
 
 ```bash
-pip install "zoopipe[ray]"
+uv add "zoopipe[ray]"
 ```
 
 ## Basic Usage

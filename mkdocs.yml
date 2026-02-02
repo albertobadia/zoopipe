@@ -48,18 +48,21 @@ nav:
       - Pipe Manager: pipemanager.md
       - Executors: executors.md
       - Hooks: hooks.md
+      - Coordinators: coordinators.md
   - Formats & Integrations:
       - Arrow: arrow.md
       - Cloud Storage: cloud-storage.md
       - CSV: csv.md
       - Dask: dask.md
-      - DuckDB: duckdb.md
       - Excel: excel.md
       - JSON: json.md
       - Kafka: kafka.md
       - Parquet: parquet.md
+      - Iceberg: iceberg.md
+      - Delta Lake: delta.md
       - Ray: ray.md
       - SQL: sql.md
+      - ZooParallel: zooparallel.md
   - Advanced:
       - Code Generation: pygen.md
       - Architecture Decisions:

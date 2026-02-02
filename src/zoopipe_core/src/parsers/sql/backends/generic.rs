@@ -5,7 +5,7 @@ use sqlx::{AnyPool, query};
 use std::sync::Mutex;
 
 use super::super::backend::SqlBackend;
-use crate::io::get_runtime;
+use crate::io::get_runtime_handle;
 
 pub struct GenericInsertBackend {
     uri: String,
@@ -32,7 +32,7 @@ impl GenericInsertBackend {
             return Ok(pool.clone());
         }
 
-        let pool = get_runtime().block_on(async {
+        let pool = get_runtime_handle().block_on(async {
             AnyPool::connect(&self.uri)
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to connect: {}", e)))
@@ -68,7 +68,7 @@ impl SqlBackend for GenericInsertBackend {
         let fields = fields.to_vec();
         let batch_size = self.batch_size;
 
-        let rt = get_runtime();
+        let rt = get_runtime_handle();
         rt.block_on(async {
             let mut tx = pool.begin().await.map_err(|e| {
                 PyRuntimeError::new_err(format!("Failed to start transaction: {}", e))

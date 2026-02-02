@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import os
-import shutil
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
+from zoopipe.coordinators import (
+    CompositeCoordinator,
+    FileMergeCoordinator,
+)
 from zoopipe.engines import MultiProcessEngine
-from zoopipe.engines.local import PipeReport
 from zoopipe.zoopipe_rust_core import MultiThreadExecutor, SingleThreadExecutor
 
 if TYPE_CHECKING:
@@ -14,26 +15,34 @@ if TYPE_CHECKING:
     from zoopipe.report import PipeReport
 
 
+from zoopipe.utils.progress import default_progress_reporter
+
+
 class PipeManager:
     """
     Manages one or more Pipes using an execution Engine.
 
-    PipeManager acts as the high-level orchestrator. It handles the sharding
-    of data sources across multiple workers and coordinates their execution
+    Shards data sources across multiple workers and coordinates execution
     through a pluggable Engine (e.g., Local Multiprocessing, Ray, Dask).
     """
 
-    def __init__(self, pipes: list[Pipe], engine: BaseEngine | None = None):
+    def __init__(
+        self,
+        pipes: list["Pipe"],
+        engine: "BaseEngine" | None = None,
+        coordinator: Any | None = None,
+    ):
         """
         Initialize PipeManager with a list of Pipe instances.
 
         Args:
             pipes: List of Pipe objects to manage.
             engine: Optional execution engine. Defaults to MultiProcessEngine.
+            coordinator: Optional lifecycle coordinator.
         """
         self.pipes = pipes
         self.engine = engine or MultiProcessEngine()
-        self._merge_info: dict[str, Any] = {}
+        self.coordinator = coordinator
 
     @property
     def is_running(self) -> bool:
@@ -72,76 +81,122 @@ class PipeManager:
         self.engine.shutdown(timeout)
 
     @property
-    def report(self) -> PipeReport:
+    def report(self) -> "PipeReport":
         """Get an aggregated report of all running pipes."""
         return self.engine.report
 
     @property
-    def should_merge(self) -> bool:
-        if not self._merge_info.get("target"):
-            return False
-        sources = [s for s in self._merge_info.get("sources", []) if s]
-        return len(sources) > 1
-
-    @property
-    def pipe_reports(self) -> list[PipeReport]:
+    def pipe_reports(self) -> list["PipeReport"]:
         """Get reports for all managed pipes."""
         return self.engine.pipe_reports
 
-    def get_pipe_report(self, index: int) -> PipeReport:
+    def get_pipe_report(self, index: int) -> "PipeReport":
         """
         Get the current report for a specific pipe.
 
         Args:
             index: The index of the pipe in the original list.
         """
-        if not hasattr(self.engine, "get_pipe_report"):
-            raise AttributeError("Engine does not support per-pipe reports")
         return self.engine.get_pipe_report(index)
 
-    def __enter__(self) -> PipeManager:
+    def __enter__(self) -> "PipeManager":
         self.start()
         return self
 
+    def run(
+        self,
+        wait: bool = True,
+        merge: bool = True,
+        timeout: float | None = None,
+        on_report_update: Callable[["PipeReport"], None]
+        | None = default_progress_reporter,
+    ) -> bool:
+        """
+        Start execution, optionally wait for completion, and execute coordination hooks.
+
+        Args:
+            on_report_update: Callback to run periodically while waiting.
+                              Defaults to printing progress to stdout.
+                              Pass None to disable.
+        """
+        if self.coordinator:
+            self.coordinator.on_start(self)
+
+        try:
+            if not self.is_running:
+                self.start()
+            if not wait:
+                return True
+
+            from zoopipe.utils.progress import monitor_progress
+
+            finished = monitor_progress(
+                waitable=self,
+                report_source=self,
+                timeout=timeout,
+                on_report_update=on_report_update,
+            )
+
+            if finished and self.coordinator:
+                results = self.engine.get_results()
+                self.coordinator.on_finish(self, results)
+            return finished
+        except Exception as e:
+            if self.coordinator:
+                self.coordinator.on_error(self, e)
+            raise
+
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.is_running:
-            self.shutdown()
+        self.shutdown()
 
     @classmethod
     def parallelize_pipe(
         cls,
-        pipe: Pipe,
+        pipe: "Pipe",
         workers: int,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
-        engine: BaseEngine | None = None,
-    ) -> PipeManager:
+        engine: "BaseEngine" | None = None,
+        merge: bool = True,
+    ) -> "PipeManager":
         """
         Create a PipeManager that runs the given pipe in parallel across
         `workers` shards.
-
-        Automatically splits the input and output adapters to ensure safe
-        parallel execution.
-
-        Args:
-            pipe: The source pipe to parallelize.
-            workers: Number of shards to use.
-            executor: Internal batch executor for each shard.
-            engine: Optional execution engine.
-
-        Returns:
-            A configured PipeManager instance.
         """
-        if not pipe.input_adapter.can_split or not pipe.output_adapter.can_split:
-            workers = 1
+        coordinators = []
 
-        input_shards = pipe.input_adapter.split(workers)
-        output_shards = pipe.output_adapter.split(workers)
+        input_coord = pipe.input_adapter.get_coordinator()
+        if input_coord:
+            coordinators.append(input_coord)
 
-        if len(input_shards) != workers or len(output_shards) != workers:
-            raise ValueError(
-                f"Adapters failed to split into {workers} shards. "
-                f"Got {len(input_shards)} inputs and {len(output_shards)} outputs."
+        output_coord = pipe.output_adapter.get_coordinator()
+
+        target_path = getattr(pipe.output_adapter, "output_path", None)
+        if merge and target_path:
+            output_coord = FileMergeCoordinator(target_path)
+
+        if output_coord and output_coord not in coordinators:
+            coordinators.append(output_coord)
+
+        composite = CompositeCoordinator(coordinators)
+
+        input_shards = composite.prepare_shards(pipe.input_adapter, workers)
+        output_shards = composite.prepare_shards(pipe.output_adapter, workers)
+
+        if len(input_shards) != len(output_shards):
+            import logging
+
+            logging.getLogger("zoopipe").warning(
+                "Shard count mismatch: input=%d, output=%d. "
+                "Falling back to single worker.",
+                len(input_shards),
+                len(output_shards),
             )
+
+            workers = 1
+            input_shards = [pipe.input_adapter]
+            output_shards = [pipe.output_adapter]
+        else:
+            workers = len(input_shards)
 
         exec_strategy = executor or pipe.executor
 
@@ -155,49 +210,16 @@ class PipeManager:
                 post_validation_hooks=pipe.post_validation_hooks,
                 report_update_interval=pipe.report_update_interval,
                 executor=exec_strategy,
+                use_column_pruning=pipe.use_column_pruning,
+                _skip_adapter_hooks=True,
             )
             pipes.append(sharded_pipe)
 
-        manager = cls(pipes, engine=engine)
-        manager._merge_info = {
-            "target": getattr(pipe.output_adapter, "output_path", None),
-            "sources": [getattr(shard, "output_path", None) for shard in output_shards],
-        }
-        return manager
-
-    def merge(self, remove_parts: bool = True) -> None:
-        """
-        Merge the output files from all pipes into the final destination.
-        """
-        if not self.should_merge:
-            return
-
-        target = self._merge_info["target"]
-        sources = [s for s in self._merge_info["sources"] if s and os.path.exists(s)]
-
-        with open(target, "wb") as dest:
-            for src_path in sources:
-                with open(src_path, "rb") as src:
-                    self._append_file(dest, src)
-
-        if remove_parts:
-            for src_path in sources:
-                os.remove(src_path)
-
-    def _append_file(self, dest, src) -> None:
-        """Append file content using zero-copy where available."""
-        try:
-            offset, size = 0, os.fstat(src.fileno()).st_size
-            while offset < size:
-                sent = os.sendfile(dest.fileno(), src.fileno(), offset, size - offset)
-                if sent == 0:
-                    break
-                offset += sent
-        except (OSError, AttributeError):
-            src.seek(0)
-            shutil.copyfileobj(src, dest)
+        return cls(pipes, engine=engine, coordinator=composite)
 
     def __repr__(self) -> str:
         status = "running" if self.is_running else "stopped"
-        return f"<PipeManager pipes={self.pipe_count} status={status} "
-        f"engine={self.engine.__class__.__name__}>"
+        return (
+            f"<PipeManager pipes={self.pipe_count} status={status} "
+            f"engine={self.engine.__class__.__name__}>"
+        )

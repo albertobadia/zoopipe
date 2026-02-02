@@ -1,11 +1,16 @@
 import logging
 import threading
+from typing import Callable
 
 from pydantic import TypeAdapter, ValidationError
 
 from zoopipe.hooks.base import BaseHook, HookStore
-from zoopipe.protocols import InputAdapterProtocol, OutputAdapterProtocol
-from zoopipe.report import EntryStatus, PipeReport, get_logger
+from zoopipe.input_adapter.base import BaseInputAdapter
+from zoopipe.output_adapter.base import BaseOutputAdapter
+from zoopipe.report import PipeReport, get_logger
+from zoopipe.structs import EntryStatus
+from zoopipe.utils.progress import default_progress_reporter, monitor_progress
+from zoopipe.utils.telemetry import TelemetryController
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
@@ -26,15 +31,18 @@ class Pipe:
 
     def __init__(
         self,
-        input_adapter: InputAdapterProtocol | None = None,
-        output_adapter: OutputAdapterProtocol | None = None,
-        error_output_adapter: OutputAdapterProtocol | None = None,
+        input_adapter: BaseInputAdapter | None = None,
+        output_adapter: BaseOutputAdapter | None = None,
+        error_output_adapter: BaseOutputAdapter | None = None,
         schema_model: type | None = None,
         pre_validation_hooks: list[BaseHook] | None = None,
         post_validation_hooks: list[BaseHook] | None = None,
         logger: logging.Logger | None = None,
         report_update_interval: int = 1,
         executor: SingleThreadExecutor | MultiThreadExecutor | None = None,
+        telemetry_controller: TelemetryController | None = None,
+        use_column_pruning: bool = True,
+        _skip_adapter_hooks: bool = False,
     ) -> None:
         """
         Initialize a new Pipe.
@@ -51,28 +59,42 @@ class Pipe:
                 progress report.
             executor: Strategy for batch processing. Defaults to SingleThreadExecutor.
                 For advanced parallel execution, use `PipeManager`.
+            telemetry_controller: Controller for observability (tracing).
+            use_column_pruning: Use Pydantic field names to prune unused columns
+                in the input adapter.
+            _skip_adapter_hooks: Internal flag to skip automatic extraction of hooks
+                from adapters.
         """
         self.input_adapter = input_adapter
         self.output_adapter = output_adapter
         self.error_output_adapter = error_output_adapter
         self.schema_model = schema_model
+        self.use_column_pruning = use_column_pruning
+
+        if self.use_column_pruning and self.schema_model and self.input_adapter:
+            if hasattr(self.schema_model, "model_fields"):
+                fields = list(self.schema_model.model_fields.keys())
+                self.input_adapter.set_required_columns(fields)
 
         bundled_pre_hooks = []
-        if self.input_adapter and hasattr(self.input_adapter, "get_hooks"):
-            bundled_pre_hooks.extend(self.input_adapter.get_hooks())
-
         bundled_post_hooks = []
-        if self.output_adapter and hasattr(self.output_adapter, "get_hooks"):
-            bundled_post_hooks.extend(self.output_adapter.get_hooks())
-        if self.error_output_adapter and hasattr(
-            self.error_output_adapter, "get_hooks"
-        ):
-            bundled_post_hooks.extend(self.error_output_adapter.get_hooks())
+
+        if not _skip_adapter_hooks:
+            if self.input_adapter and hasattr(self.input_adapter, "get_hooks"):
+                bundled_pre_hooks.extend(self.input_adapter.get_hooks())
+
+            if self.output_adapter and hasattr(self.output_adapter, "get_hooks"):
+                bundled_post_hooks.extend(self.output_adapter.get_hooks())
+            if self.error_output_adapter and hasattr(
+                self.error_output_adapter, "get_hooks"
+            ):
+                bundled_post_hooks.extend(self.error_output_adapter.get_hooks())
 
         self.pre_validation_hooks = bundled_pre_hooks + (pre_validation_hooks or [])
         self.post_validation_hooks = bundled_post_hooks + (post_validation_hooks or [])
 
         self.logger = logger or get_logger()
+        self.telemetry = telemetry_controller or TelemetryController()
 
         self.report_update_interval = report_update_interval
         self.executor = executor or SingleThreadExecutor()
@@ -88,37 +110,77 @@ class Pipe:
         self._status_failed = EntryStatus.FAILED
 
     def _process_batch(self, entries: list[dict]) -> list[dict]:
-        local_store: HookStore = {}
+        with self.telemetry.trace_batch(len(entries)):
+            local_store: HookStore = {}
 
-        for hook in self.pre_validation_hooks:
-            entries = hook.execute(entries, local_store)
+            for hook in self.pre_validation_hooks:
+                entries = hook.execute(entries, local_store)
 
-        if self._validator:
-            self._validate_batch(entries)
+            if self._validator:
+                self._validate_batch(entries)
 
-        for hook in self.post_validation_hooks:
-            entries = hook.execute(entries, local_store)
+            for hook in self.post_validation_hooks:
+                entries = hook.execute(entries, local_store)
 
-        return entries
+            return entries
 
     def _validate_batch(self, entries: list[dict]) -> None:
         try:
             raw_data_list = [e["raw_data"] for e in entries]
-            validated_list = self._batch_validator.validate_python(raw_data_list)
+            validated_list = self._batch_validator.validate_python(raw_data_list)  # type: ignore
+
             for entry, processed in zip(entries, validated_list):
                 entry["validated_data"] = processed.model_dump()
                 entry["status"] = self._status_validated
+
         except ValidationError as e:
             for error in e.errors():
-                entry_index = error["loc"][0]
-                entry = entries[entry_index]
-                entry["status"] = self._status_failed
-                entry["errors"].append({"msg": str(error), "type": "validation_error"})
+                loc = error["loc"]
+                if loc and isinstance(loc[0], int) and 0 <= loc[0] < len(entries):
+                    entry = entries[loc[0]]
+                    entry["status"] = self._status_failed
+                    entry["errors"].append(
+                        {
+                            "msg": error["msg"],
+                            "type": "validation_error",
+                            "loc": error["loc"],
+                        }
+                    )
 
     @property
     def report(self) -> PipeReport:
         """Get the current progress report of the pipeline."""
         return self._report
+
+    def run(
+        self,
+        wait: bool = True,
+        timeout: float | None = None,
+        on_report_update: Callable[["PipeReport"], None]
+        | None = default_progress_reporter,
+    ) -> bool:
+        """
+        Start execution and optionally wait for completion.
+
+        Args:
+            wait: If True, blocks until finished.
+            timeout: Max time to wait.
+            on_report_update: Callback for progress updates.
+        """
+        try:
+            self.start()
+            if not wait:
+                return True
+
+            return monitor_progress(
+                waitable=self,
+                report_source=self,
+                timeout=timeout,
+                on_report_update=on_report_update,
+            )
+        except Exception as e:
+            self.logger.error(f"Pipe run failed: {e}")
+            raise
 
     def start(self, wait: bool = False) -> None:
         """
@@ -163,7 +225,10 @@ class Pipe:
             for hook in self.post_validation_hooks:
                 hook.setup(self._store)
 
-            native_pipe.run()
+            with self.telemetry.trace_span("rust_execution"):
+                metadata = native_pipe.run()
+            if metadata and hasattr(self.output_adapter, "_writer"):
+                self.output_adapter._metadata = metadata
         except Exception as e:
             self.logger.error(f"Pipeline execution failed: {e}")
             self._report._mark_failed(e)
@@ -188,6 +253,17 @@ class Pipe:
                 self.logger.warning(
                     "Pipeline thread did not finish cleanly within timeout"
                 )
+
+    @staticmethod
+    def shutdown_engine() -> None:
+        """
+        Shutdown the underlying Rust engine (Tokio runtime).
+        This is called automatically at exit, but can be
+        called manually to free resources.
+        """
+        from zoopipe.zoopipe_rust_core import shutdown
+
+        shutdown()
 
     def wait(self, timeout: float | None = None) -> bool:
         """
@@ -225,14 +301,17 @@ class Pipe:
         exec_config = {
             "class_name": executor.__class__.__name__,
             "batch_size": executor.get_batch_size(),
+            "max_workers": (
+                executor.get_concurrency()
+                if hasattr(executor, "get_concurrency")
+                else 1
+            ),
         }
-        # MultiThreadExecutor specific attribute (not directly exposed via property,
-        # so we rely on the constructor's default or we'd need to store it if we could)
-        # For now, we'll try to use a safe reconstruction.
+        # MultiThreadExecutor specific configuration (batch_size)
         state["executor_config"] = exec_config
+
         del state["executor"]
 
-        # Internal non-serializable objects
         state["_thread"] = None
         state["_validator"] = None
         state["_batch_validator"] = None
@@ -247,7 +326,10 @@ class Pipe:
         batch_size = exec_config["batch_size"]
 
         if class_name == "MultiThreadExecutor":
-            state["executor"] = MultiThreadExecutor(batch_size=batch_size)
+            state["executor"] = MultiThreadExecutor(
+                max_workers=exec_config.get("max_workers"),
+                batch_size=batch_size,
+            )
         else:
             state["executor"] = SingleThreadExecutor(batch_size=batch_size)
 

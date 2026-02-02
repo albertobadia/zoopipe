@@ -1,9 +1,5 @@
-from __future__ import annotations
-
 import os
-import re
 from datetime import datetime
-from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 import ray
@@ -11,6 +7,7 @@ import ray
 from zoopipe.engines.base import BaseEngine
 from zoopipe.report import PipeReport, PipeStatus
 from zoopipe.utils.dependency import install_dependencies
+from zoopipe.utils.engine import get_core_dependencies, is_dev_mode
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -22,7 +19,7 @@ class RayPipeWorker:
     Ray Actor that wraps a single Pipe execution.
     """
 
-    def __init__(self, pipe: Pipe, index: int):
+    def __init__(self, pipe: "Pipe", index: int):
         self.pipe = pipe
         self.index = index
         self.is_finished = False
@@ -68,7 +65,17 @@ class RayEngine(BaseEngine):
             os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
 
             # Prepare default runtime_env and get dependencies
-            runtime_env, deps = self._prepare_runtime_env(kwargs.pop("runtime_env", {}))
+            runtime_env = kwargs.pop("runtime_env", {})
+            deps = get_core_dependencies()
+
+            # Setup working_dir and PYTHONPATH for dev mode
+            if "working_dir" not in runtime_env:
+                runtime_env["working_dir"] = "."
+                if is_dev_mode():
+                    env_vars = runtime_env.get("env_vars", {})
+                    if "PYTHONPATH" not in env_vars:
+                        env_vars["PYTHONPATH"] = "./src"
+                    runtime_env["env_vars"] = env_vars
 
             # Default to lean initialization
             ray_args = {
@@ -85,10 +92,9 @@ class RayEngine(BaseEngine):
             if deps:
                 self._install_deps_on_all_nodes(deps)
 
+        super().__init__()
         self._workers: list[Any] = []
         self._futures: list[Any] = []
-        self._start_time: datetime | None = None
-        self._cached_report: PipeReport | None = None
 
     def _install_deps_on_all_nodes(self, deps: list[str]) -> None:
         """
@@ -114,80 +120,14 @@ class RayEngine(BaseEngine):
         if refs:
             ray.get(refs)
 
-    def _prepare_runtime_env(
-        self, runtime_env: dict[str, Any]
-    ) -> tuple[dict[str, Any], list[str]]:
-        """
-        Configure the Ray runtime environment based on whether we are in
-        development mode or being used as a library.
-        Returns modified runtime_env and a list of dependencies to install manually.
-        """
-        # 1. Detect environment and versions
-        is_dev_mode = False
-        try:
-            # heuristic: if we are in the zoopipe repo and have the ABI, it's dev mode
-            if (
-                os.path.exists("src/zoopipe")
-                and os.path.exists("pyproject.toml")
-                and any(f.endswith(".so") for f in os.listdir("src/zoopipe"))
-            ):
-                is_dev_mode = True
-        except Exception:
-            pass
-
-        # 2. Setup pip dependencies
-        deps = []
-        if "pip" not in runtime_env:
-            if is_dev_mode:
-                # Dev mode: Extract dependencies from pyproject.toml (Source of Truth)
-                try:
-                    with open("pyproject.toml", "r") as f:
-                        toml_content = f.read()
-                        # Find dependencies = [ ... ] block
-                        match = re.search(
-                            r"dependencies\s*=\s*\[(.*?)\]", toml_content, re.DOTALL
-                        )
-                        if match:
-                            dep_block = match.group(1)
-                            deps = re.findall(r'["\'](.*?)["\']', dep_block)
-                except Exception:
-                    pass
-            else:
-                # User mode: zoopipe package will pull its own dependencies
-                try:
-                    version = metadata.version("zoopipe")
-                    deps.append(f"zoopipe=={version}")
-                except metadata.PackageNotFoundError:
-                    # Fallback to hardcoded core if everything fails
-                    deps = ["pydantic>=2.0"]
-
-        # NOTE: We DO NOT set 'pip' in runtime_env because we want to use our
-        # agnostic installer.
-        # runtime_env["pip"] = deps  <-- REMOVED
-
-        # 3. Ship code and binaries
-        if "working_dir" not in runtime_env:
-            runtime_env["working_dir"] = "."
-
-            # In dev mode, we need src/ in PYTHONPATH to find the local zoopipe
-            if is_dev_mode:
-                env_vars = runtime_env.get("env_vars", {})
-                if "PYTHONPATH" not in env_vars:
-                    # Ray adds working_dir to sys.path,
-                    # but we need src/ for 'import zoopipe'
-                    env_vars["PYTHONPATH"] = "./src"
-                runtime_env["env_vars"] = env_vars
-
-        return runtime_env
-
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("RayEngine is already running")
 
+        self._reset_report()
         self._start_time = datetime.now()
         self._workers = [RayPipeWorker.remote(pipe, i) for i, pipe in enumerate(pipes)]
         self._futures = [w.run.remote() for w in self._workers]
-        self._cached_report = None
 
     def wait(self, timeout: float | None = None) -> bool:
         if not self._futures:
@@ -213,41 +153,8 @@ class RayEngine(BaseEngine):
         return len(ready) < len(self._futures)
 
     @property
-    def report(self) -> PipeReport:
-        if self._cached_report and self._cached_report.is_finished:
-            return self._cached_report
-
-        report = PipeReport()
-        report.start_time = self._start_time
-
-        p_reports = self.pipe_reports
-        for pr in p_reports:
-            report.total_processed += pr.total_processed
-            report.success_count += pr.success_count
-            report.error_count += pr.error_count
-            report.ram_bytes += pr.ram_bytes
-
-        all_finished = all(pr.is_finished for pr in p_reports)
-        any_error = any(pr.has_error for pr in p_reports)
-
-        if all_finished:
-            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
-            report.end_time = datetime.now()
-            report._finished_event.set()
-            self._cached_report = report
-        else:
-            report.status = PipeStatus.RUNNING
-
-        return report
-
-    @property
     def pipe_reports(self) -> list[PipeReport]:
         if not self._workers:
             return []
         # Centralized collection from all actors in one pass
         return ray.get([w.get_report.remote() for w in self._workers])
-
-    def get_pipe_report(self, index: int) -> PipeReport:
-        if not self._workers:
-            raise RuntimeError("Engine has not been started")
-        return ray.get(self._workers[index].get_report.remote())

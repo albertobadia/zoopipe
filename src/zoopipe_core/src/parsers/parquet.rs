@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString};
 use std::fs::File;
 use std::io::BufReader;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Mutex as StdMutex};
 
 struct ParquetReaderState {
@@ -26,7 +27,6 @@ struct ParquetReaderState {
 }
 
 impl ParquetReaderState {
-    // Returns (Batch, RowIndex, Position) or None
     fn next_record(&mut self) -> Option<Result<(RecordBatch, usize, usize), String>> {
         if let Some(limit) = self.rows_to_read
             && self.rows_read >= limit
@@ -77,10 +77,7 @@ impl ParquetReaderState {
     }
 }
 
-/// Fast Parquet reader that leverages the Arrow ecosystem for columnar I/O.
-///
-/// It supports streaming from both local paths and S3, performing
-/// efficient batch reads using native Rust kernels.
+/// Parquet reader that leverages the Arrow ecosystem for columnar I/O.
 #[pyclass]
 pub struct ParquetReader {
     state: Mutex<ParquetReaderState>,
@@ -95,7 +92,7 @@ use crate::utils::interning::InternedKeys;
 #[pymethods]
 impl ParquetReader {
     #[new]
-    #[pyo3(signature = (path, generate_ids=true, batch_size=1024, limit=None, offset=0, row_groups=None))]
+    #[pyo3(signature = (path, generate_ids=true, batch_size=1024, limit=None, offset=0, row_groups=None, projection=None))]
     fn new(
         py: Python<'_>,
         path: String,
@@ -104,6 +101,7 @@ impl ParquetReader {
         limit: Option<usize>,
         offset: usize,
         row_groups: Option<Vec<usize>>,
+        projection: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let controller = StorageController::new(&path).map_err(wrap_py_err)?;
         let boxed_reader = if path.starts_with("s3://") {
@@ -118,6 +116,21 @@ impl ParquetReader {
 
         let mut builder =
             ParquetRecordBatchReaderBuilder::try_new(boxed_reader).map_err(wrap_py_err)?;
+
+        if let Some(proj_cols) = projection {
+            let file_schema = builder.schema().clone();
+            let mut indices = Vec::new();
+            for col_name in proj_cols {
+                if let Ok(idx) = file_schema.index_of(&col_name) {
+                    indices.push(idx);
+                }
+            }
+            if !indices.is_empty() {
+                let mask = parquet::arrow::ProjectionMask::roots(builder.parquet_schema(), indices);
+                builder = builder.with_projection(mask);
+            }
+        }
+
         if let Some(groups) = row_groups {
             builder = builder.with_row_groups(groups);
         }
@@ -141,7 +154,7 @@ impl ParquetReader {
             }
         });
 
-        let models = py.import("zoopipe.report")?;
+        let models = py.import("zoopipe.structs")?;
         let status_enum = models.getattr("EntryStatus")?;
         let status_pending = status_enum.getattr("PENDING")?.into();
 
@@ -218,6 +231,55 @@ impl ParquetReader {
         batch_size: usize,
     ) -> PyResult<Option<Bound<'py, PyList>>> {
         let mut state = self.state.lock().map_err(|_| PipeError::MutexLock)?;
+
+        // Optimization: Fast-path for full batches
+        if state.current_batch.is_none() && state.rows_to_skip == 0 {
+            // Peek at limit check
+            let can_read_full_batch = if let Some(limit) = state.rows_to_read {
+                state.rows_read < limit
+            } else {
+                true
+            };
+
+            if can_read_full_batch {
+                match state.reader.next() {
+                    Some(Ok(batch)) => {
+                        let batch_len = batch.num_rows();
+
+                        // Check if batch fits in request AND within global limit
+                        let fits_in_request = batch_len <= batch_size;
+                        let fits_in_limit = if let Some(limit) = state.rows_to_read {
+                            state.rows_read + batch_len <= limit
+                        } else {
+                            true
+                        };
+
+                        if fits_in_request && fits_in_limit {
+                            let current_pos = state.position;
+                            state.position += batch_len;
+                            state.rows_read += batch_len;
+
+                            let envelopes =
+                                crate::parsers::arrow_utils::record_batch_to_py_envelopes(
+                                    py,
+                                    batch,
+                                    &self.keys,
+                                    self.status_pending.bind(py),
+                                    self.generate_ids,
+                                    current_pos,
+                                )?;
+                            return Ok(Some(envelopes));
+                        } else {
+                            // Too big or hits limit -> process row-by-row
+                            state.current_batch = Some((batch, 0));
+                        }
+                    }
+                    Some(Err(_e)) => return Ok(None), // Error handled in loop
+                    None => return Ok(None),
+                }
+            }
+        }
+
         let batch = PyList::empty(py);
 
         for _ in 0..batch_size {
@@ -251,38 +313,157 @@ impl ParquetReader {
                     raw_data.set_item(header.bind(py), val)?;
                 }
 
-                let envelope = PyDict::new(py);
-                let id = if self.generate_ids {
-                    crate::utils::generate_entry_id(py)?
-                } else {
-                    py.None().into_bound(py)
-                };
+                let env = crate::utils::wrap_in_envelope(
+                    py,
+                    &self.keys,
+                    raw_data.into_any(),
+                    self.status_pending.bind(py).clone(),
+                    pos,
+                    self.generate_ids,
+                )?;
 
-                envelope.set_item(self.keys.get_id(py), id)?;
-                envelope.set_item(self.keys.get_status(py), self.status_pending.bind(py))?;
-                envelope.set_item(self.keys.get_raw_data(py), raw_data)?;
-                envelope.set_item(self.keys.get_metadata(py), PyDict::new(py))?;
-                envelope.set_item(self.keys.get_position(py), pos)?;
-                envelope.set_item(self.keys.get_errors(py), PyList::empty(py))?;
-
-                Ok(Some(envelope.into_any()))
+                Ok(Some(env))
             }
-            Some(Err(_e)) => Ok(None),
+            Some(Err(e)) => Err(PipeError::Other(e).into()),
             None => Ok(None),
         }
     }
 }
 
-/// optimized Parquet writer for columnar data persistence.
-///
-/// It automatically infers the Arrow schema from processed batches and
-/// uses efficient compression and row-grouping strategies in Rust.
+#[pyclass]
+pub struct MultiParquetReader {
+    paths: Vec<String>,
+    current_reader: Mutex<Option<ParquetReader>>,
+    current_path_idx: Mutex<usize>,
+    generate_ids: bool,
+    batch_size: usize,
+    history_position: AtomicUsize,
+    projection: Option<Vec<String>>,
+}
+
+#[pymethods]
+impl MultiParquetReader {
+    #[new]
+    #[pyo3(signature = (paths, generate_ids=true, batch_size=1024, projection=None))]
+    pub fn new(
+        paths: Vec<String>,
+        generate_ids: bool,
+        batch_size: usize,
+        projection: Option<Vec<String>>,
+    ) -> Self {
+        MultiParquetReader {
+            paths,
+            current_reader: Mutex::new(None),
+            current_path_idx: Mutex::new(0),
+            generate_ids,
+            batch_size,
+            history_position: AtomicUsize::new(0),
+            projection,
+        }
+    }
+
+    pub fn __next__(slf: PyRef<'_, Self>) -> PyResult<Option<Bound<'_, PyAny>>> {
+        let py = slf.py();
+        slf.get_next_item(py)
+    }
+
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let batch = PyList::empty(py);
+        for _ in 0..batch_size {
+            if let Some(item) = self.get_next_item(py)? {
+                batch.append(item)?;
+            } else {
+                break;
+            }
+        }
+
+        if batch.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
+        }
+    }
+}
+
+impl MultiParquetReader {
+    pub(crate) fn get_next_item<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        loop {
+            let mut exhausted = false;
+            {
+                let mut reader_guard = self
+                    .current_reader
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+                if let Some(reader) = reader_guard.as_ref() {
+                    let mut state = reader.state.lock().map_err(|_| PipeError::MutexLock)?;
+                    match reader.next_internal(py, &mut state)? {
+                        Some(val) => {
+                            let pos = self.history_position.fetch_add(1, Ordering::Relaxed);
+                            if let Ok(dict) = val.cast::<PyDict>() {
+                                dict.set_item("_pos", pos)?;
+                            }
+                            return Ok(Some(val));
+                        }
+                        None => {
+                            exhausted = true;
+                        }
+                    }
+                }
+                if exhausted {
+                    *reader_guard = None;
+                }
+            }
+
+            let (path, _idx) = {
+                let mut idx_guard = self
+                    .current_path_idx
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+                let idx = *idx_guard;
+                if idx >= self.paths.len() {
+                    return Ok(None);
+                }
+                let path = self.paths[idx].clone();
+                *idx_guard += 1;
+                (path, idx)
+            };
+
+            let reader = ParquetReader::new(
+                py,
+                path,
+                self.generate_ids,
+                self.batch_size,
+                None,
+                0,
+                None,
+                self.projection.clone(),
+            )?;
+
+            let mut reader_guard = self
+                .current_reader
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
+            *reader_guard = Some(reader);
+        }
+    }
+}
+
+/// Parquet writer for columnar data persistence.
 #[pyclass]
 pub struct ParquetWriter {
     path: String,
-    writer: Mutex<Option<ArrowWriter<SharedWriter>>>,
+    // Wrapped in Arc for GIL release
+    writer: Arc<Mutex<Option<ArrowWriter<SharedWriter>>>>,
     inner_writer: Mutex<Option<Arc<StdMutex<BoxedWriter>>>>,
     schema: Mutex<Option<SchemaRef>>,
+    builder_cache: Mutex<Option<Vec<Box<dyn arrow::array::ArrayBuilder>>>>,
 }
 
 #[pymethods]
@@ -291,9 +472,10 @@ impl ParquetWriter {
     pub fn new(path: String) -> Self {
         ParquetWriter {
             path,
-            writer: Mutex::new(None),
+            writer: Arc::new(Mutex::new(None)),
             inner_writer: Mutex::new(None),
             schema: Mutex::new(None),
+            builder_cache: Mutex::new(Some(Vec::new())),
         }
     }
 
@@ -303,73 +485,117 @@ impl ParquetWriter {
             return Ok(());
         }
 
-        let mut writer_guard = self
-            .writer
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-        let mut schema_guard = self
-            .schema
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-
-        if writer_guard.is_none() {
-            let first = list.get_item(0)?;
-            let dict = first.cast::<PyDict>()?;
-            let mut fields = Vec::new();
-            let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
-            keys.sort();
-
-            for key in &keys {
-                if let Some(val) = dict.get_item(key)? {
-                    let dt = infer_type(&val);
-                    fields.push(Field::new(key.clone(), dt, true));
-                } else {
-                    fields.push(Field::new(key.clone(), DataType::Utf8, true));
-                }
-            }
-            let schema = SchemaRef::new(Schema::new(fields));
-
-            let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
-            let boxed_writer = if self.path.starts_with("s3://") {
-                BoxedWriter::Remote(RemoteWriter::new(
-                    controller.store(),
-                    ObjectPath::from(controller.path()),
-                ))
-            } else {
-                let file = crate::io::create_local_file(&self.path).map_err(wrap_py_err)?;
-                BoxedWriter::File(std::io::BufWriter::new(file))
-            };
-
-            let shared_writer = Arc::new(StdMutex::new(boxed_writer));
-            let props = WriterProperties::builder()
-                .set_max_row_group_size(8_192)
-                .build();
-
-            *writer_guard = Some(
-                ArrowWriter::try_new(
-                    SharedWriter(shared_writer.clone()),
-                    schema.clone(),
-                    Some(props),
-                )
-                .map_err(wrap_py_err)?,
-            );
-            *schema_guard = Some(schema);
-            let mut inner_guard = self
-                .inner_writer
+        // Init Phase (GIL held)
+        {
+            let mut writer_guard = self
+                .writer
                 .lock()
                 .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
-            *inner_guard = Some(shared_writer);
-        }
 
-        let writer = writer_guard
-            .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("ParquetWriter failed to initialize"))?;
-        let schema = schema_guard
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("ParquetWriter schema failed to initialize"))?;
+            if writer_guard.is_none() {
+                let mut schema_guard = self
+                    .schema
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
 
-        let batch = build_record_batch(py, schema, list)?;
-        writer.write(&batch).map_err(wrap_py_err)?;
+                let first = list.get_item(0)?;
+
+                // Adaptive Schema Inference
+                let dict_obj = if first.is_instance_of::<PyDict>() {
+                    first.into_any()
+                } else if first.hasattr("model_dump")? {
+                    first.call_method0("model_dump")?
+                } else {
+                    first.call_method0("__dict__").unwrap_or(first.into_any())
+                };
+
+                let dict = dict_obj.cast::<PyDict>().map_err(|_| {
+                    PyRuntimeError::new_err(
+                        "Could not infer schema: Item is not a dict and has no model_dump()",
+                    )
+                })?;
+
+                let mut fields = Vec::new();
+                let mut keys: Vec<String> = dict.keys().iter().map(|k| k.to_string()).collect();
+                keys.sort();
+
+                for key in &keys {
+                    if let Some(val) = dict.get_item(key)? {
+                        let dt = infer_type(&val);
+                        fields.push(Field::new(key.clone(), dt, true));
+                    } else {
+                        fields.push(Field::new(key.clone(), DataType::Utf8, true));
+                    }
+                }
+                let schema = SchemaRef::new(Schema::new(fields));
+
+                let controller = StorageController::new(&self.path).map_err(wrap_py_err)?;
+                let boxed_writer = if self.path.starts_with("s3://") {
+                    BoxedWriter::Remote(RemoteWriter::new(
+                        controller.store(),
+                        ObjectPath::from(controller.path()),
+                    ))
+                } else {
+                    let file = crate::io::create_local_file(&self.path).map_err(wrap_py_err)?;
+                    BoxedWriter::File(std::io::BufWriter::new(file))
+                };
+
+                let shared_writer = Arc::new(StdMutex::new(boxed_writer));
+                let props = WriterProperties::builder()
+                    .set_max_row_group_size(8_192)
+                    .build();
+
+                *writer_guard = Some(
+                    ArrowWriter::try_new(
+                        SharedWriter(shared_writer.clone()),
+                        schema.clone(),
+                        Some(props),
+                    )
+                    .map_err(wrap_py_err)?,
+                );
+                *schema_guard = Some(schema);
+                let mut inner_guard = self
+                    .inner_writer
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+                *inner_guard = Some(shared_writer);
+            }
+        } // Drop lock
+
+        // Conversion (GIL held)
+        let schema = {
+            let schema_guard = self
+                .schema
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+            schema_guard
+                .as_ref()
+                .ok_or_else(|| {
+                    PyRuntimeError::new_err("ParquetWriter schema failed to initialize")
+                })?
+                .clone()
+        };
+
+        let mut cache_guard = self
+            .builder_cache
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
+        let batch = build_record_batch(py, &schema, list, cache_guard.as_mut())?;
+
+        // Write (GIL Released)
+        let writer_arc = self.writer.clone();
+        Python::detach(py, move || {
+            let mut writer_guard = writer_arc
+                .lock()
+                .map_err(|e| PyRuntimeError::new_err(format!("Lock failed: {}", e)))?;
+
+            let writer = writer_guard
+                .as_mut()
+                .ok_or_else(|| PyRuntimeError::new_err("ParquetWriter failed to initialize"))?;
+
+            writer.write(&batch).map_err(wrap_py_err)
+        })?;
+
         Ok(())
     }
 
@@ -379,7 +605,7 @@ impl ParquetWriter {
             .lock()
             .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         if let Some(w) = writer_guard.take() {
-            let _: parquet::file::metadata::ParquetMetaData = w.close().map_err(wrap_py_err)?;
+            let _metadata = w.close().map_err(wrap_py_err)?;
         }
         let mut inner_guard = self
             .inner_writer

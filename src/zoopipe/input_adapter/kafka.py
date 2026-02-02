@@ -24,6 +24,7 @@ class KafkaInputAdapter(BaseInputAdapter):
             group_id: Optional consumer group ID.
             generate_ids: Whether to generate unique IDs for each message.
         """
+        super().__init__()
         self.uri = uri
         self.group_id = group_id
         self.generate_ids = generate_ids

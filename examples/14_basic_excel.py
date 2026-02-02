@@ -1,9 +1,8 @@
 import datetime
-import time
 
 from pydantic import BaseModel, ConfigDict
 
-from zoopipe import BaseHook, ExcelInputAdapter, ExcelOutputAdapter, HookStore, Pipe
+from zoopipe import BaseHook, CSVInputAdapter, ExcelOutputAdapter, HookStore, Pipe
 
 
 class TimeStampHook(BaseHook):
@@ -22,9 +21,9 @@ class UserSchema(BaseModel):
 
 def main():
     pipe = Pipe(
-        input_adapter=ExcelInputAdapter(
-            "examples/sample_data/users_data.xlsx",
-            sheet=0,
+        input_adapter=CSVInputAdapter(
+            "examples/sample_data/users_data.csv",
+            limit=1000,
         ),
         output_adapter=ExcelOutputAdapter(
             "examples/output_data/users_processed.xlsx",
@@ -32,18 +31,9 @@ def main():
         ),
         schema_model=UserSchema,
         post_validation_hooks=[TimeStampHook()],
-        report_update_interval=10,
     )
 
-    pipe.start()
-
-    while not pipe.report.is_finished:
-        print(
-            f"Processed: {pipe.report.total_processed} | "
-            f"Speed: {pipe.report.items_per_second:.2f} rows/s | "
-            f"Ram Usage: {pipe.report.ram_bytes / 1024 / 1024:.2f} MB"
-        )
-        time.sleep(0.5)
+    pipe.run()
 
     print("\nPipeline Finished!")
     print(pipe.report)

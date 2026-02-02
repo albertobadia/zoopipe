@@ -653,6 +653,46 @@ wheels = [
 ]
 
 [[package]]
+name = "opentelemetry-api"
+version = "1.39.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "importlib-metadata" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/97/b9/3161be15bb8e3ad01be8be5a968a9237c3027c5be504362ff800fca3e442/opentelemetry_api-1.39.1.tar.gz", hash = "sha256:fbde8c80e1b937a2c61f20347e91c0c18a1940cecf012d62e65a7caf08967c9c", size = 65767, upload-time = "2025-12-11T13:32:39.182Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/df/d3f1ddf4bb4cb50ed9b1139cc7b1c54c34a1e7ce8fd1b9a37c0d1551a6bd/opentelemetry_api-1.39.1-py3-none-any.whl", hash = "sha256:2edd8463432a7f8443edce90972169b195e7d6a05500cd29e6d13898187c9950", size = 66356, upload-time = "2025-12-11T13:32:17.304Z" },
+]
+
+[[package]]
+name = "opentelemetry-sdk"
+version = "1.39.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/fb/c76080c9ba07e1e8235d24cdcc4d125ef7aa3edf23eb4e497c2e50889adc/opentelemetry_sdk-1.39.1.tar.gz", hash = "sha256:cf4d4563caf7bff906c9f7967e2be22d0d6b349b908be0d90fb21c8e9c995cc6", size = 171460, upload-time = "2025-12-11T13:32:49.369Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/98/e91cf858f203d86f4eccdf763dcf01cf03f1dae80c3750f7e635bfa206b6/opentelemetry_sdk-1.39.1-py3-none-any.whl", hash = "sha256:4d5482c478513ecb0a5d938dcc61394e647066e0cc2676bee9f3af3f3f45f01c", size = 132565, upload-time = "2025-12-11T13:32:35.069Z" },
+]
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.60b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/df/553f93ed38bf22f4b999d9be9c185adb558982214f33eae539d3b5cd0858/opentelemetry_semantic_conventions-0.60b1.tar.gz", hash = "sha256:87c228b5a0669b748c76d76df6c364c369c28f1c465e50f661e39737e84bc953", size = 137935, upload-time = "2025-12-11T13:32:50.487Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/5e/5958555e09635d09b75de3c4f8b9cae7335ca545d77392ffe7331534c402/opentelemetry_semantic_conventions-0.60b1-py3-none-any.whl", hash = "sha256:9fa8c8b0c110da289809292b0591220d3a7b53c1526a23021e977d68597893fb", size = 219982, upload-time = "2025-12-11T13:32:36.955Z" },
+]
+
+[[package]]
 name = "packaging"
 version = "25.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1354,6 +1394,33 @@ wheels = [
 ]
 
 [[package]]
+name = "zooparallel"
+version = "2026.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "psutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/0e/699ca9bbb3bb2c76c17b3ed947114cf4a537e0a21c1d02ac02195897456d/zooparallel-2026.2.2.tar.gz", hash = "sha256:e3bc8ada4a83cfe771ed86022800d3248a67fdef7ed3261a8320e00774f13603", size = 42622, upload-time = "2026-02-02T14:31:45.932Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/3f/5c7073cba5aa0bd649cb0c01980e8d8fd74885685f9bcbbd42d723a15d4e/zooparallel-2026.2.2-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:c836470ddda3f956b4a04434b62c2633a5e1ecf2a0e05b5d8459c9f247739052", size = 210399, upload-time = "2026-02-02T14:31:26.7Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/47/49a2432a8a2301cf98555d770c08fd8ce5f79ff375bd77ec7bb542dcc1b0/zooparallel-2026.2.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:599848735518441d253793bc24fa33f5a302b7fc32aa11da85d1bfa5be72c3ba", size = 199273, upload-time = "2026-02-02T14:31:28.55Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/30/11b14778bff761a2dca79b3ea282a5b5e5e1cce88a94381d9918116fec1a/zooparallel-2026.2.2-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:752d17ccb0855818a4d94ed057dd0fcb6b16249056c2f1ec390d852d8978e67e", size = 217882, upload-time = "2026-02-02T14:31:29.81Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/66/fab60c4fb3a43cbc02c9c6ff76f99df6cc3024435fda17d460acbc9ef4c8/zooparallel-2026.2.2-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:fd6fa8a6ae9a0f85910b21f0fb1ae666c89bfb281add5f16b8b4a4ee627bd488", size = 224191, upload-time = "2026-02-02T14:31:30.905Z" },
+    { url = "https://files.pythonhosted.org/packages/76/00/accd4f742565dc620bf50afe013ebaebd9f0e18207f6d15f01c5aca32dd7/zooparallel-2026.2.2-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:bbb891f6201a654d897448d366ad8318c48a4a23e98c610d412d57acefbb25db", size = 210097, upload-time = "2026-02-02T14:31:31.945Z" },
+    { url = "https://files.pythonhosted.org/packages/95/51/309089b3b5c8ad9613e35caee98355043a99fc57cff7c82404c60f051c61/zooparallel-2026.2.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:37ece87233c270c2d06bb7c1f18d0de5b1815f10972f0f8ce39fe8cf76c594ef", size = 198888, upload-time = "2026-02-02T14:31:33.123Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/ca/4c1fd8f2000266babb711b2a58cac7435e9858ea1250173f1299e41fc2ff/zooparallel-2026.2.2-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:853f0f5d9ee36272b6d44935f11232a33a2a146b3a254b1f0801d51d3689226d", size = 217688, upload-time = "2026-02-02T14:31:34.396Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/31/5bedeedf799c2b7aa893792648dfb09971a844c3ce6dafbe660d6748ea2b/zooparallel-2026.2.2-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:7049d885ea64f23bc33d49adcb97284b88f555ca05ff17c28979f0654c6f8cff", size = 223995, upload-time = "2026-02-02T14:31:35.502Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/fe/9823e561cafd0f52503fcbda22f23e20302e3de6cdebaaafffc0e4940d86/zooparallel-2026.2.2-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:f2395980366168b651d559e4d3f57596710e41c1678c94269ad4839667489523", size = 210528, upload-time = "2026-02-02T14:31:36.669Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/97/7686c543eb5d87862ecc954bb2fc05c78c83579940e942cd33ba357c4f2d/zooparallel-2026.2.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:5a4e60f2e6931d4c4bf51d63288303177d1612bf430f18d9bc9ea5a506e4f686", size = 199043, upload-time = "2026-02-02T14:31:37.783Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/55/9606deecf0556a4ad454b70ca1a1083a5bae5f19a2d5694fe599bc2754fd/zooparallel-2026.2.2-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:c7dd9561c3823509956e46aa603f79260a1fc21c3512c7bfeb6b46eb65c3211d", size = 216856, upload-time = "2026-02-02T14:31:38.848Z" },
+    { url = "https://files.pythonhosted.org/packages/62/50/7bf14c02ce73a495159214805b12a66c043142973dc37a4e6e8de0ef0715/zooparallel-2026.2.2-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:27265fb02c649e5c34a3f3274b04c583d6978190b166ead515b95025498a4c58", size = 224095, upload-time = "2026-02-02T14:31:40.058Z" },
+    { url = "https://files.pythonhosted.org/packages/22/f1/fce1e74840bc232e51573a5df8874bca9fcf90f08fd74f9b7f9d7b7e1fb6/zooparallel-2026.2.2-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:ceedbd7ff8f79fd21e780ed0c8e80d1dc50c7ed46e9076be544c71c216838875", size = 210524, upload-time = "2026-02-02T14:31:41.56Z" },
+    { url = "https://files.pythonhosted.org/packages/19/aa/c54035c849a35d84b3be3b79dc0847076fb7044ee87a2abf133d7836f84b/zooparallel-2026.2.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:cb9da09ad9f829b27324049b264d2c1ce17d3cd99fda564abb4fd82b748d6123", size = 199038, upload-time = "2026-02-02T14:31:42.716Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/6e/c22d56094e420d70b55d0c36887f21efad9ad06cbad74ee9c4918ad76336/zooparallel-2026.2.2-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:f971031b2e367a563dde69d434607fd2142511d2d6ec8c4955a305b6c494776b", size = 216786, upload-time = "2026-02-02T14:31:43.805Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/a3/d045ee967abfc921618396bf7fc088a5c14e9c8d1eb762b70472eac9549b/zooparallel-2026.2.2-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:72ab7a7c27b41bd519309e56865ba0267bcdaedabd9591157f7574bc45b84cbc", size = 223918, upload-time = "2026-02-02T14:31:44.882Z" },
+]
+
+[[package]]
 name = "zoopipe"
 source = { editable = "." }
 dependencies = [
@@ -1369,11 +1436,15 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
 ]
+opentelemetry = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+]
 ray = [
     { name = "ray" },
 ]
-zoosyncmp = [
-    { name = "zoosyncmp" },
+zooparallel = [
+    { name = "zooparallel" },
 ]
 
 [package.dev-dependencies]
@@ -1381,16 +1452,13 @@ dev = [
     { name = "dask", extra = ["distributed"] },
     { name = "faker" },
     { name = "maturin" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "ray" },
     { name = "ruff" },
-    { name = "zoosyncmp" },
-]
-docs = [
-    { name = "mkdocs" },
-    { name = "mkdocs-material" },
-    { name = "mkdocstrings", extra = ["python"] },
+    { name = "zooparallel" },
 ]
 
 [package.metadata]
@@ -1399,52 +1467,24 @@ requires-dist = [
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.1" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.7.1" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=1.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'opentelemetry'", specifier = ">=1.39.1" },
+    { name = "opentelemetry-sdk", marker = "extra == 'opentelemetry'", specifier = ">=1.39.1" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "ray", marker = "extra == 'ray'", specifier = ">=2.53.0" },
-    { name = "zoosyncmp", marker = "extra == 'zoosyncmp'", specifier = ">=2026.1.24" },
+    { name = "zooparallel", marker = "extra == 'zooparallel'", specifier = ">=2026.2.2" },
 ]
-provides-extras = ["dask", "docs", "ray", "zoosyncmp"]
+provides-extras = ["dask", "docs", "opentelemetry", "ray", "zooparallel"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "dask", extras = ["distributed"], specifier = ">=2026.1.1" },
     { name = "faker", specifier = ">=40.1.0" },
     { name = "maturin", specifier = ">=1.11.5" },
+    { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ray", specifier = ">=2.53.0" },
     { name = "ruff", specifier = ">=0.14.10" },
-    { name = "zoosyncmp", specifier = ">=2026.1.24" },
-]
-docs = [
-    { name = "mkdocs", specifier = ">=1.6.1" },
-    { name = "mkdocs-material", specifier = ">=9.7.1" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.0" },
-]
-
-[[package]]
-name = "zoosyncmp"
-version = "2026.1.24"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "psutil" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/19/2b401a03a1969787299a788cf4a7ebb01d51b1cdf6590f1c7fff6d9f3d7e/zoosyncmp-2026.1.24.tar.gz", hash = "sha256:9cd941edd6d15a851b57bb2334798e9203f88bef6aee5959fd1db3211e745bb9", size = 39243, upload-time = "2026-01-24T23:57:09.611Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/c6/c32d7193e89854e98b4ca2c2129849aededb14e2d43dbf6eb082b64bc810/zoosyncmp-2026.1.24-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:df381087dce7e6830ce8493bfacb2b422e974b3759aa8439734ff5cd218ac5e1", size = 208494, upload-time = "2026-01-24T23:56:44.861Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/c8/17eaca322525ad46e8883c13432b2b00ca86e0a0000ee16cfbb4129714a6/zoosyncmp-2026.1.24-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:70553bb25c20c1f061d3f383e7edb25c79025d9a17f7b9a0d55c74adfe2c7389", size = 195368, upload-time = "2026-01-24T23:56:46.321Z" },
-    { url = "https://files.pythonhosted.org/packages/09/74/69298eb9b4c81d7779bd4a3c3d0528d91c47355773ce73129476ed6f1ba6/zoosyncmp-2026.1.24-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:2c6e5b20fb181965b6bf98034e7301985ad75818247c7d2e0e54352c0e8dfd2b", size = 212717, upload-time = "2026-01-24T23:56:47.698Z" },
-    { url = "https://files.pythonhosted.org/packages/54/d5/547aad348ff1cdb0a0d5442242adbc659f435d0b9951ca644631bbcec04e/zoosyncmp-2026.1.24-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:0b2eab6502021a72022721fe5d02fca6f96fceb69e5479f31f34195f86c22a50", size = 220173, upload-time = "2026-01-24T23:56:49.158Z" },
-    { url = "https://files.pythonhosted.org/packages/44/f5/7f0fa4d5758aa9c37d222eac62bb6a783bba97ad01b3b90e31bbc456320d/zoosyncmp-2026.1.24-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:fe106245d215041f239ce0c68efa99dfb10e5c14635c990da477161bd70adbe4", size = 205873, upload-time = "2026-01-24T23:56:50.776Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/28/961a8b99220ae6926471dfb8751f5ee642a26013f94ccaad84e3213095bf/zoosyncmp-2026.1.24-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7fb4b0311a524ce444e59f4ec4336405f31233fdff0f200f5ca3d796926d087f", size = 193331, upload-time = "2026-01-24T23:56:52.203Z" },
-    { url = "https://files.pythonhosted.org/packages/01/5b/3f2e8c6de5b2f758f8fc4ea7572668403aa56f73e34fbbf1d28d14a2acff/zoosyncmp-2026.1.24-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:b6bc76067fcd3457b45498a5f2a32b8a3919690631a42740365066e6c098d1a9", size = 210315, upload-time = "2026-01-24T23:56:53.642Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/51/ab74f1967833e198e6795a59b136ba693eec83bd57c29605545763131731/zoosyncmp-2026.1.24-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:9858599aac2a4ce3277f890da281bbb2dad6c75b3cfd37be2d5ccf6487f6aaeb", size = 217561, upload-time = "2026-01-24T23:56:54.905Z" },
-    { url = "https://files.pythonhosted.org/packages/2a/4e/219b2528884717e6886e7273236908b3138e11654ae415915138ecca68ec/zoosyncmp-2026.1.24-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:ff3bc80d6a3b9b226a5ab1004efe85fed4a9522af6511a8ad97f4d3588d1a4ea", size = 205791, upload-time = "2026-01-24T23:56:56.063Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/f5/24c79b0672ff250bd7f9ed78c34a0e724ec99265825320872e9f0f6f35b4/zoosyncmp-2026.1.24-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:f77e17155d40fccac187a5f3e9db0b161fa624b19eeed37f616bd4b15771f321", size = 193318, upload-time = "2026-01-24T23:56:57.446Z" },
-    { url = "https://files.pythonhosted.org/packages/58/c9/149e8d3164d6eaaaa986a877b9ff6a201cda311022a2a83fcd7c9e276be7/zoosyncmp-2026.1.24-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:437ba8670de24272e1ddc354440519a16f465ffc002a3510b38b2276e970afb9", size = 209005, upload-time = "2026-01-24T23:56:58.765Z" },
-    { url = "https://files.pythonhosted.org/packages/58/72/1416976ec3ad7b028486d835147b53dcb98b7422ca69c1d3a937636b599d/zoosyncmp-2026.1.24-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:318ba67f993acd5412ce67de374851843e894ad095bf39226d7bd0aae8f73d47", size = 216437, upload-time = "2026-01-24T23:57:00.12Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/fc/709aebc0f34da87e0270d3ac63f982b47a7e0cf5008f602874ab070efaa4/zoosyncmp-2026.1.24-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:e46dfba605c581f8067e8af28cabf378f21eb624f1ab81f68c3447b05175417d", size = 205964, upload-time = "2026-01-24T23:57:01.392Z" },
-    { url = "https://files.pythonhosted.org/packages/56/6f/fcf91205877cc5d50b2910e59cac2efedca77a3b28c5c610bb38ff5c0b97/zoosyncmp-2026.1.24-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:d5fe0fc1f5058cac2c3abf2e8d2e1c45ed43892a6e55478bd100f271417b0c9a", size = 193383, upload-time = "2026-01-24T23:57:05.783Z" },
-    { url = "https://files.pythonhosted.org/packages/8a/22/f3e563ed6307260287144709a3ca9f524f672f3181df1d6101125209b44b/zoosyncmp-2026.1.24-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:320b7f1bbae5cb8091e538f861873cebcd1e7fa4b67b74f246d7f2c86e66bf85", size = 209126, upload-time = "2026-01-24T23:57:07.121Z" },
-    { url = "https://files.pythonhosted.org/packages/30/39/2935dcb0f428c93c66025bc3cf00b28a763b22bc80e16aa119287b1d86a1/zoosyncmp-2026.1.24-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:1f44d3085e581f834c2722ef0441a84c129a6e902b63b9b3e890440013128779", size = 216409, upload-time = "2026-01-24T23:57:08.387Z" },
+    { name = "zooparallel", specifier = ">=2026.2.2" },
 ]

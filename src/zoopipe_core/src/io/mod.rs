@@ -8,6 +8,8 @@ use parquet::file::reader::{ChunkReader, Length};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use tokio::runtime::Runtime;
 
 use flate2::bufread::GzDecoder;
@@ -104,10 +106,7 @@ pub fn create_local_file(path: &str) -> std::io::Result<File> {
     File::create(path)
 }
 
-/// Unified reader that abstracts over local files, in-memory cursors, and remote storage.
-///
-/// It implements standard I/O traits and provides transparent access to
-/// different backends, enabling the parsers to work with any source.
+/// Unified reader abstraction for local files, in-memory cursors, and remote storage.
 pub enum BoxedReader {
     File(BufReader<File>),
     Cursor(std::io::Cursor<Vec<u8>>),
@@ -163,16 +162,38 @@ impl<R: std::io::Seek> std::io::Seek for CountingReader<R> {
     }
 }
 
-use std::sync::OnceLock;
+static RUNTIME_INSTANCE: OnceLock<Mutex<Option<Runtime>>> = OnceLock::new();
 
-pub fn get_runtime() -> &'static Runtime {
-    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
+fn get_runtime_mutex() -> &'static Mutex<Option<Runtime>> {
+    RUNTIME_INSTANCE.get_or_init(|| Mutex::new(None))
+}
+
+pub fn get_runtime_handle() -> tokio::runtime::Handle {
+    let mutex = get_runtime_mutex();
+    let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
+
+    if guard.is_none() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .expect("Failed to create Tokio runtime")
-    })
+            .expect("Failed to create Tokio runtime");
+        *guard = Some(rt);
+    }
+
+    guard
+        .as_ref()
+        .expect("Runtime was just initialized")
+        .handle()
+        .clone()
+}
+
+pub fn shutdown_runtime() {
+    let mutex = get_runtime_mutex();
+    let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
+
+    if let Some(rt) = guard.take() {
+        rt.shutdown_timeout(std::time::Duration::from_secs(5));
+    }
 }
 
 const READ_BUFFER_SIZE: usize = 8 * 1024 * 1024; // 8MB
@@ -188,8 +209,8 @@ pub struct RemoteReader {
 
 impl RemoteReader {
     pub fn new(store: Arc<dyn ObjectStore>, path: Path) -> Self {
-        let file_len =
-            get_runtime().block_on(async { store.head(&path).await.map(|m| m.size).unwrap_or(0) });
+        let file_len = get_runtime_handle()
+            .block_on(async { store.head(&path).await.map(|m| m.size).unwrap_or(0) });
 
         Self::new_with_len(store, path, file_len)
     }
@@ -215,7 +236,7 @@ impl RemoteReader {
         let path = self.path.clone();
         let store = self.store.clone();
 
-        let bytes = get_runtime().block_on(async move {
+        let bytes = get_runtime_handle().block_on(async move {
             store
                 .get_range(&path, range)
                 .await
@@ -265,7 +286,7 @@ impl Seek for RemoteReader {
         let new_pos = match pos {
             SeekFrom::Start(p) => p as i64,
             SeekFrom::End(p) => self.file_len as i64 + p,
-            SeekFrom::Current(p) => (self.pos - self.buffer.len() as u64) as i64 + p,
+            SeekFrom::Current(p) => self.pos as i64 + (p - self.buffer.len() as i64),
         };
 
         if new_pos < 0 {
@@ -346,7 +367,7 @@ impl Length for BoxedReader {
             BoxedReader::File(f) => f.get_ref().metadata().map(|m| m.len()).unwrap_or(0),
             BoxedReader::Cursor(c) => c.get_ref().len() as u64,
             BoxedReader::Remote(r) => {
-                let mut tmp = get_runtime()
+                let mut tmp = get_runtime_handle()
                     .block_on(async { r.store.head(&r.path).await.map(|m| m.size).unwrap_or(0) });
                 if tmp == 0 && !r.buffer.is_empty() {
                     tmp = r.buffer.len() as u64;
@@ -416,7 +437,7 @@ impl ChunkReader for BoxedReader {
             BoxedReader::Remote(r) => {
                 let path = r.path.clone();
                 let store = r.store.clone();
-                let bytes = get_runtime().block_on(async move {
+                let bytes = get_runtime_handle().block_on(async move {
                     let range = start..(start + length as u64);
                     store
                         .get_range(&path, range)
@@ -455,10 +476,7 @@ impl Read for BoxedReaderChild {
     }
 }
 
-/// Unified writer that abstracts over local files and remote storage.
-///
-/// Provides a consistent interface for persistent storage, allowing
-/// the pipeline to save results across different environments.
+/// Unified writer abstraction for local files and remote storage.
 pub enum BoxedWriter {
     File(std::io::BufWriter<File>),
     Remote(RemoteWriter),
@@ -513,7 +531,7 @@ impl RemoteWriter {
         let data = std::mem::take(&mut self.buffer);
         let mut m_opt = self.multipart.take();
 
-        m_opt = get_runtime().block_on(async move {
+        m_opt = get_runtime_handle().block_on(async move {
             let mut m = match m_opt {
                 Some(m) => m,
                 None => store
@@ -534,7 +552,7 @@ impl RemoteWriter {
     pub fn close(&mut self) -> std::io::Result<()> {
         self.force_flush()?;
         if let Some(mut m) = self.multipart.take() {
-            get_runtime()
+            get_runtime_handle()
                 .block_on(async move { m.complete().await.map_err(std::io::Error::other) })?;
         }
         Ok(())

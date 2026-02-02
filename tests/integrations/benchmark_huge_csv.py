@@ -45,7 +45,7 @@ def main():
             time.sleep(0.5)
     except KeyboardInterrupt:
         print("\n\nStopping pipeline...")
-        # En una implementación real llamaríamos a pipe.stop() si existiera
+        # In a real implementation we would call pipe.stop() if it existed
 
     total_time = time.perf_counter() - start_time
     print("\n\n=== Benchmark Finished ===")

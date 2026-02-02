@@ -1,10 +1,11 @@
 import typing
 
 from zoopipe.hooks.base import BaseHook, HookStore
-from zoopipe.report import EntryStatus, get_logger
+from zoopipe.report import get_logger
+from zoopipe.structs import EntryStatus
 
 if typing.TYPE_CHECKING:
-    from zoopipe.report import EntryTypedDict
+    from zoopipe.structs import EntryTypedDict
 
 
 class SQLExpansionHook(BaseHook):

@@ -1,8 +1,9 @@
 pub mod arrow;
 pub mod arrow_utils;
 pub mod csv;
-pub mod duckdb;
+pub mod delta;
 pub mod excel;
+pub mod iceberg;
 pub mod json;
 pub mod kafka;
 pub mod parquet;
@@ -13,7 +14,6 @@ pub use sql::{SQLReader, SQLWriter};
 
 pub use arrow::{ArrowReader, ArrowWriter};
 pub use csv::{CSVReader, CSVWriter};
-pub use duckdb::{DuckDBReader, DuckDBWriter};
 pub use excel::{ExcelReader, ExcelWriter};
 pub use json::{JSONReader, JSONWriter};
 pub use kafka::{KafkaReader, KafkaWriter};

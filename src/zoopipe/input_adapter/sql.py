@@ -30,6 +30,7 @@ class SQLInputAdapter(BaseInputAdapter):
             table_name: Or name of the table to read (equiv to SELECT * FROM table).
             generate_ids: Whether to generate unique IDs for each record.
         """
+        super().__init__()
         self.uri = uri
         self.generate_ids = generate_ids
 
@@ -45,9 +46,14 @@ class SQLInputAdapter(BaseInputAdapter):
             self.query = f"SELECT * FROM {table_name}"
 
     def get_native_reader(self) -> SQLReader:
+        query = self.query
+        if self.required_columns and "SELECT *" in query.upper():
+            cols = ", ".join(self.required_columns)
+            query = query.upper().replace("SELECT *", f"SELECT {cols}")
+
         return SQLReader(
             self.uri,
-            self.query,
+            query,
             generate_ids=self.generate_ids,
         )
 

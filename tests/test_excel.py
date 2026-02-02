@@ -1,7 +1,6 @@
 import json
 
 from pydantic import BaseModel, ConfigDict
-from zoopipe.zoopipe_rust_core import ExcelReader
 
 from zoopipe import (
     CSVInputAdapter,
@@ -10,6 +9,7 @@ from zoopipe import (
     JSONOutputAdapter,
     Pipe,
 )
+from zoopipe.zoopipe_rust_core import ExcelReader
 
 
 class UserSchema(BaseModel):

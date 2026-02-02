@@ -1,6 +1,9 @@
 import abc
 import typing
 
+if typing.TYPE_CHECKING:
+    from zoopipe.coordinators.base import BaseCoordinator
+
 
 class BaseOutputAdapter(abc.ABC):
     """
@@ -9,6 +12,8 @@ class BaseOutputAdapter(abc.ABC):
     Output adapters bridge the pipeline results to external destinations.
     They provide the native Rust writer used by the execution core.
     """
+
+    supports_objects: bool = False
 
     @property
     def can_split(self) -> bool:
@@ -39,3 +44,12 @@ class BaseOutputAdapter(abc.ABC):
         Split the output adapter into `workers` partitions for parallel writing.
         """
         return [self]
+
+    def get_coordinator(self) -> "BaseCoordinator":
+        """
+        Return the coordinator for this adapter.
+        Default is the sharding coordinator that uses split().
+        """
+        from zoopipe.coordinators.default import DefaultShardingCoordinator
+
+        return DefaultShardingCoordinator()

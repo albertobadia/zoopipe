@@ -4,7 +4,8 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import CSVInputAdapter, CSVOutputAdapter, JSONOutputAdapter, Pipe
-from zoopipe.manager import PipeManager, PipeReport
+from zoopipe.manager import PipeManager
+from zoopipe.report import PipeReport
 
 
 class UserSchema(BaseModel):
@@ -556,13 +557,9 @@ def test_pipemanager_parallelize_pipe_csv(tmp_path):
     assert "part_1" in out0.output_path
     assert "part_2" in out1.output_path
 
-    manager.start()
-    manager.wait(timeout=10.0)
+    manager.run(wait=True, merge=True, timeout=10.0, on_report_update=None)
 
-    assert manager.report.is_finished
     assert manager.report.total_processed == count
-
-    manager.merge()
 
     assert output_base.exists()
     with open(output_base, "r") as f:

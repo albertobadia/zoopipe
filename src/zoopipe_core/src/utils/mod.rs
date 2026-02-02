@@ -10,6 +10,28 @@ pub fn wrap_py_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
 
+pub fn parse_uri(uri: &str) -> PyResult<url::Url> {
+    match url::Url::parse(uri) {
+        Ok(u) => Ok(u),
+        Err(e) => {
+            if e == url::ParseError::RelativeUrlWithoutBase {
+                let path = std::path::Path::new(uri);
+                if path.is_absolute() {
+                    return url::Url::from_file_path(path).map_err(|_| {
+                        PyRuntimeError::new_err(format!("Invalid file path: {}", uri))
+                    });
+                } else {
+                    return Err(PyRuntimeError::new_err(format!(
+                        "Relative path without scheme: {}",
+                        uri
+                    )));
+                }
+            }
+            Err(PyRuntimeError::new_err(e.to_string()))
+        }
+    }
+}
+
 pub fn generate_entry_id(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
     let mut buf = [0u8; 32];
     uuid::Uuid::new_v4().simple().encode_lower(&mut buf);
@@ -17,6 +39,32 @@ pub fn generate_entry_id(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
         Ok(s) => Ok(PyString::new(py, s).into_any()),
         Err(e) => Err(wrap_py_err(e)),
     }
+}
+
+pub fn wrap_in_envelope<'py>(
+    py: Python<'py>,
+    keys: &interning::InternedKeys,
+    raw_data: Bound<'py, PyAny>,
+    status: Bound<'py, PyAny>,
+    position: usize,
+    generate_ids: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let envelope = PyDict::new(py);
+
+    let id = if generate_ids {
+        generate_entry_id(py)?
+    } else {
+        py.None().into_bound(py)
+    };
+
+    envelope.set_item(keys.get_id(py), id)?;
+    envelope.set_item(keys.get_status(py), status)?;
+    envelope.set_item(keys.get_raw_data(py), raw_data)?;
+    envelope.set_item(keys.get_metadata(py), PyDict::new(py))?;
+    envelope.set_item(keys.get_position(py), position)?;
+    envelope.set_item(keys.get_errors(py), PyList::empty(py))?;
+
+    Ok(envelope.into_any())
 }
 
 pub fn serde_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, PyAny>> {

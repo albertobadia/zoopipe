@@ -10,7 +10,7 @@ Apache Parquet is a columnar storage file format optimized for use with big data
 - **Excellent Compression**: Typically 2-10x smaller than CSV or JSON formats
 - **Predicate Pushdown**: Read only the columns you need, skipping irrelevant data
 - **Type Safety**: Rich type system with nested and complex types
-- **Industry Standard**: Widely supported across Spark, Pandas, Polars, DuckDB, BigQuery, Snowflake, etc.
+- **Industry Standard**: Widely supported across Spark, Pandas, Polars, BigQuery, Snowflake, etc.
 - **Cloud Optimized**: Perfect for S3, GCS, and other cloud storage systems
 
 ## ParquetInputAdapter
@@ -290,33 +290,6 @@ result = df.filter(pl.col("age") > 18)
 result.write_parquet("filtered.parquet")
 ```
 
-### With DuckDB
-
-```python
-import duckdb
-from zoopipe import CSVInputAdapter, ParquetOutputAdapter, Pipe
-
-pipe = Pipe(
-    input_adapter=CSVInputAdapter("sales.csv"),
-    output_adapter=ParquetOutputAdapter("sales.parquet"),
-)
-
-with pipe:
-    pipe.wait()
-
-con = duckdb.connect()
-result = con.execute("""
-    SELECT 
-        product_id,
-        SUM(revenue) as total_revenue
-    FROM 'sales.parquet'
-    GROUP BY product_id
-    ORDER BY total_revenue DESC
-    LIMIT 10
-""").fetchdf()
-
-print(result)
-```
 
 ## Best Practices
 
@@ -385,7 +358,7 @@ print(f"Compression ratio: {compression_ratio:.1f}x smaller")
 ### Multi-Stage Processing
 
 ```python
-from zoopipe import CSVInputAdapter, DuckDBOutputAdapter, MultiThreadExecutor, ParquetInputAdapter, ParquetOutputAdapter, Pipe
+from zoopipe import CSVInputAdapter, MultiThreadExecutor, ParquetInputAdapter, ParquetOutputAdapter, Pipe
 
 extract_pipe = Pipe(
     input_adapter=CSVInputAdapter("raw_data.csv"),
@@ -396,18 +369,6 @@ extract_pipe = Pipe(
 with extract_pipe:
     extract_pipe.wait()
 
-load_pipe = Pipe(
-    input_adapter=ParquetInputAdapter("staging.parquet"),
-    output_adapter=DuckDBOutputAdapter(
-        "warehouse.duckdb",
-        table_name="clean_data",
-        mode="replace"
-    ),
-    executor=MultiThreadExecutor(max_workers=4),
-)
-
-with load_pipe:
-    load_pipe.wait()
 ```
 
 ## Error Handling

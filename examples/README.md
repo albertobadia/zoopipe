@@ -41,29 +41,6 @@ This example demonstrates:
 - Using `MultiThreadExecutor` with different worker counts
 - Performance comparison and throughput metrics
 
-### 04_csv_to_duckdb.py
-Write CSV data to a DuckDB analytical database.
-
-```bash
-uv run python examples/04_csv_to_duckdb.py
-```
-
-This example demonstrates:
-- Using `DuckDBOutputAdapter` for columnar storage
-- Optimized for analytical queries and aggregations
-- Fast batch loading into DuckDB
-
-### 05_duckdb_to_jsonl.py
-Export data from DuckDB to JSONL format.
-
-```bash
-uv run python examples/05_duckdb_to_jsonl.py
-```
-
-This example demonstrates:
-- Using `DuckDBInputAdapter` to read from analytical databases
-- Executing analytical queries with DuckDB SQL
-- Exporting query results to JSONL
 
 ### 06_csv_to_arrow.py
 Convert CSV data to Apache Arrow IPC format.
@@ -137,7 +114,7 @@ This example demonstrates:
 - Using `ParquetOutputAdapter` for columnar storage
 - Excellent compression (5-10x smaller than CSV)
 - Optimized for analytical queries and data warehousing
-- Compatible with Pandas, Polars, Spark, and DuckDB
+- Compatible with Pandas, Polars, and Spark
 
 ### 12_parquet_to_jsonl.py
 Read Parquet files and export to JSONL format.
@@ -190,6 +167,41 @@ This example demonstrates:
 - Transparent Zstd decompression for input files
 - Writing results directly to Parquet format in S3
 - Optimized multi-threaded execution for cloud storage latency
+
+### 19_zooparallel_engine.py
+Direct usage of `ZooParallelPoolEngine` for low-latency status reporting.
+
+```bash
+uv run python examples/19_zooparallel_engine.py
+```
+
+### 20_csv_to_iceberg.py
+Write CSV data directly to an Apache Iceberg table using ZooParallel.
+
+```bash
+uv run python examples/20_csv_to_iceberg.py
+```
+
+### 21_iceberg_to_jsonl.py
+Read from Apache Iceberg and export to JSONLines.
+
+```bash
+uv run python examples/21_iceberg_to_jsonl.py
+```
+
+### 22_csv_to_delta.py
+Write CSV data to a Delta Lake table using ZooParallel.
+
+```bash
+uv run python examples/22_csv_to_delta.py
+```
+
+### 23_delta_to_jsonl.py
+Read from Delta Lake and export to JSONLines.
+
+```bash
+uv run python examples/23_delta_to_jsonl.py
+```
 
 ## Sample Data
 

@@ -1,9 +1,5 @@
-from __future__ import annotations
-
 import os
-import re
 from datetime import datetime
-from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 from dask.distributed import Client, get_client
@@ -11,6 +7,7 @@ from dask.distributed import Client, get_client
 from zoopipe.engines.base import BaseEngine
 from zoopipe.report import PipeReport, PipeStatus
 from zoopipe.utils.dependency import install_dependencies as _install_dependencies
+from zoopipe.utils.engine import get_core_dependencies, is_dev_mode
 
 if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
@@ -22,7 +19,7 @@ class DaskPipeWorker:
     Can be used as a Dask Actor for stateful reporting.
     """
 
-    def __init__(self, pipe: Pipe, index: int):
+    def __init__(self, pipe: "Pipe", index: int):
         self.pipe = pipe
         self.index = index
         self.is_finished = False
@@ -69,51 +66,16 @@ class DaskEngine(BaseEngine):
         # Prepare environment
         self._prepare_runtime_env()
 
+        super().__init__()
         self._workers: list[Any] = []
         self._futures: list[Any] = []
-        self._start_time: datetime | None = None
-        self._cached_report: PipeReport | None = None
 
     def _prepare_runtime_env(self) -> None:
         """
         Configure the Dask workers based on whether we are in
         development mode or being used as a library.
         """
-        # 1. Detect environment and versions
-        is_dev_mode = False
-        try:
-            # heuristic: if we are in the zoopipe repo and have the ABI, it's dev mode
-            if (
-                os.path.exists("src/zoopipe")
-                and os.path.exists("pyproject.toml")
-                and any(f.endswith(".so") for f in os.listdir("src/zoopipe"))
-            ):
-                is_dev_mode = True
-        except Exception:
-            pass
-
-        # 2. Setup dependencies
-        deps = []
-        if is_dev_mode:
-            # Dev mode: Extract dependencies from pyproject.toml
-            try:
-                with open("pyproject.toml", "r") as f:
-                    toml_content = f.read()
-                    match = re.search(
-                        r"dependencies\s*=\s*\[(.*?)\]", toml_content, re.DOTALL
-                    )
-                    if match:
-                        dep_block = match.group(1)
-                        deps = re.findall(r'["\'](.*?)["\']', dep_block)
-            except Exception:
-                pass
-        else:
-            # User mode: install current zoopipe version
-            try:
-                version = metadata.version("zoopipe")
-                deps.append(f"zoopipe=={version}")
-            except metadata.PackageNotFoundError:
-                deps = ["pydantic>=2.0"]
+        deps = get_core_dependencies()
 
         # Install dependencies on all workers
         if deps:
@@ -124,8 +86,8 @@ class DaskEngine(BaseEngine):
             except Exception:
                 pass
 
-        # 3. Handle local code path for dev mode
-        if is_dev_mode:
+        # Handle local code path for dev mode
+        if is_dev_mode():
             src_path = os.path.abspath("src")
 
             def append_path(path: str):
@@ -136,10 +98,11 @@ class DaskEngine(BaseEngine):
 
             self.client.run(append_path, src_path)
 
-    def start(self, pipes: list[Pipe]) -> None:
+    def start(self, pipes: list["Pipe"]) -> None:
         if self.is_running:
             raise RuntimeError("DaskEngine is already running")
 
+        self._reset_report()
         self._start_time = datetime.now()
 
         # 1. Submit Workers as Actors
@@ -188,42 +151,9 @@ class DaskEngine(BaseEngine):
         return any(not f.done() for f in self._futures)
 
     @property
-    def report(self) -> PipeReport:
-        if self._cached_report and self._cached_report.is_finished:
-            return self._cached_report
-
-        report = PipeReport()
-        report.start_time = self._start_time
-
-        p_reports = self.pipe_reports
-        for pr in p_reports:
-            report.total_processed += pr.total_processed
-            report.success_count += pr.success_count
-            report.error_count += pr.error_count
-            report.ram_bytes += pr.ram_bytes
-
-        all_finished = not self.is_running
-        any_error = any(pr.has_error for pr in p_reports)
-
-        if all_finished:
-            report.status = PipeStatus.FAILED if any_error else PipeStatus.COMPLETED
-            report.end_time = datetime.now()
-            report._finished_event.set()
-            self._cached_report = report
-        else:
-            report.status = PipeStatus.RUNNING
-
-        return report
-
-    @property
     def pipe_reports(self) -> list[PipeReport]:
         if not self._workers:
             return []
 
         # Get reports from actors
         return [w.get_report().result() for w in self._workers]
-
-    def get_pipe_report(self, index: int) -> PipeReport:
-        if not self._workers:
-            raise RuntimeError("Engine has not been started")
-        return self._workers[index].get_report().result()
