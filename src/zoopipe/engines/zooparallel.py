@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from zoosync import ZooPool
+from zooparallel import ZooPool
 
 from zoopipe.engines.base import BaseEngine
 from zoopipe.report import PipeReport
@@ -23,7 +23,7 @@ STATS_SIZE = STATS_STRUCT.size
 
 
 class MmapStats:
-    """Helper to manage stats via mmap for zoosync engine."""
+    """Helper to manage stats via mmap for zooparallel engine."""
 
     def __init__(self, filepath: str, mode: str = "r+b"):
         self.filepath = filepath
@@ -91,7 +91,7 @@ class MmapStats:
             return 0, 0, 0, 0, False, False
 
 
-def _run_pipe_zoosync(
+def _run_pipe_zooparallel(
     pipe: "Pipe",
     stats_filepath: str,
 ) -> dict[str, Any]:
@@ -163,15 +163,15 @@ def _run_pipe_zoosync(
 
 
 @dataclass
-class ZoosyncPipeHandle:
+class ZooParallelPipeHandle:
     future: Any
     stats_filepath: str
     pipe_index: int
 
 
-class ZoosyncPoolEngine(BaseEngine):
+class ZooParallelPoolEngine(BaseEngine):
     """
-    Engine that executes pipes using a zoosync process pool.
+    Engine that executes pipes using a zooparallel process pool.
     Uses shared memory for status reporting.
     """
 
@@ -179,7 +179,7 @@ class ZoosyncPoolEngine(BaseEngine):
         super().__init__()
         self.n_workers = n_workers
         self._pool = None
-        self._handles: list[ZoosyncPipeHandle] = []
+        self._handles: list[ZooParallelPipeHandle] = []
         self._temp_dir = None
 
     def start(self, pipes: list["Pipe"]) -> None:
@@ -191,7 +191,7 @@ class ZoosyncPoolEngine(BaseEngine):
         self._handles.clear()
 
         # Create a temp directory for stats files
-        self._temp_dir = tempfile.TemporaryDirectory(prefix="zoopipe_zoosync_")
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="zoopipe_zooparallel_")
         count = self.n_workers or len(pipes)
         self._pool = ZooPool(count)
         self._pool.__enter__()
@@ -205,13 +205,13 @@ class ZoosyncPoolEngine(BaseEngine):
                 f.flush()
 
             future = self._pool.submit(
-                _run_pipe_zoosync,
+                _run_pipe_zooparallel,
                 pipe,
                 stats_file,
             )
 
             self._handles.append(
-                ZoosyncPipeHandle(
+                ZooParallelPipeHandle(
                     future=future,
                     stats_filepath=stats_file,
                     pipe_index=i,

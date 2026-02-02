@@ -3,7 +3,7 @@ import os
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import CSVInputAdapter, DeltaOutputAdapter, Pipe, PipeManager
-from zoopipe.engines.zoosync import ZoosyncPoolEngine
+from zoopipe.engines.zooparallel import ZooParallelPoolEngine
 
 
 class UserSchema(BaseModel):
@@ -49,7 +49,7 @@ def main():
     # Use parallelize_pipe for maximum performance (450k+ items/s)
     print("Parallelizing CSV to Delta Pipeline...")
     with PipeManager.parallelize_pipe(
-        pipe, workers=4, engine=ZoosyncPoolEngine()
+        pipe, workers=4, engine=ZooParallelPoolEngine()
     ) as manager:
         print("Starting Delta Pipeline with Coordinator...")
         success = manager.run()

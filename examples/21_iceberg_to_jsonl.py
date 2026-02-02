@@ -3,7 +3,7 @@ import os
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import IcebergInputAdapter, JSONOutputAdapter, Pipe, PipeManager
-from zoopipe.engines.zoosync import ZoosyncPoolEngine
+from zoopipe.engines.zooparallel import ZooParallelPoolEngine
 
 
 class UserSchema(BaseModel):
@@ -42,7 +42,7 @@ def main():
 
     # Use parallelize_pipe
     with PipeManager.parallelize_pipe(
-        pipe, workers=4, engine=ZoosyncPoolEngine()
+        pipe, workers=4, engine=ZooParallelPoolEngine()
     ) as manager:
         success = manager.run()
 

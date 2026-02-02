@@ -62,7 +62,7 @@ nav:
       - Delta Lake: delta.md
       - Ray: ray.md
       - SQL: sql.md
-      - ZooSync: zoosync.md
+      - ZooParallel: zooparallel.md
   - Advanced:
       - Code Generation: pygen.md
       - Architecture Decisions:

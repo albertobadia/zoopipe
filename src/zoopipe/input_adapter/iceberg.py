@@ -28,9 +28,6 @@ class IcebergInputAdapter(BaseInputAdapter):
         self.batch_size = batch_size
 
     def split(self, workers: int) -> typing.List["IcebergInputAdapter"]:
-        """
-        Split the data files among workers.
-        """
         if not self.files:
             return [self]
 

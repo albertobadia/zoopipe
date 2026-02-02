@@ -1,4 +1,6 @@
 use crossbeam_channel::Receiver;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 pub enum SmartReaderIter<T> {
@@ -13,6 +15,7 @@ pub enum SmartReaderIter<T> {
 /// to overlap execution, maximizing multicore throughput.
 pub struct SmartReader<T> {
     iter: SmartReaderIter<T>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl<T: Send + 'static> SmartReader<T> {
@@ -26,11 +29,13 @@ impl<T: Send + 'static> SmartReader<T> {
         // Using a small buffer (8) to keep pipeline fed without consuming too much RAM
         // (especially for RecordBatches).
         let (tx, rx) = crossbeam_channel::bounded(8);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_thread = shutdown.clone();
 
         thread::spawn(move || {
             let iter = parser(source);
             for item in iter {
-                if tx.send(item).is_err() {
+                if shutdown_thread.load(Ordering::Relaxed) || tx.send(item).is_err() {
                     return;
                 }
             }
@@ -38,7 +43,14 @@ impl<T: Send + 'static> SmartReader<T> {
 
         SmartReader {
             iter: SmartReaderIter::Threaded(rx),
+            shutdown,
         }
+    }
+}
+
+impl<T> Drop for SmartReader<T> {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
     }
 }
 

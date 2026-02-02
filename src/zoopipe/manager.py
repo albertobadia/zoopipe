@@ -183,7 +183,15 @@ class PipeManager:
         output_shards = composite.prepare_shards(pipe.output_adapter, workers)
 
         if len(input_shards) != len(output_shards):
-            # Fallback to single worker if splitting is inconsistent
+            import logging
+
+            logging.getLogger("zoopipe").warning(
+                "Shard count mismatch: input=%d, output=%d. "
+                "Falling back to single worker.",
+                len(input_shards),
+                len(output_shards),
+            )
+
             workers = 1
             input_shards = [pipe.input_adapter]
             output_shards = [pipe.output_adapter]

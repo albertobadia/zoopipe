@@ -8,7 +8,7 @@ from zoopipe import (
     Pipe,
     PipeManager,
 )
-from zoopipe.engines.zoosync import ZoosyncPoolEngine
+from zoopipe.engines.zooparallel import ZooParallelPoolEngine
 
 
 class UserSchema(BaseModel):
@@ -25,18 +25,18 @@ def main():
             os.path.abspath("examples/sample_data/users_data.csv")
         ),
         output_adapter=JSONOutputAdapter(
-            "examples/output_data/users_processed_zoosync.jsonl", format="jsonl"
+            "examples/output_data/users_processed_zooparallel.jsonl", format="jsonl"
         ),
         schema_model=UserSchema,
     )
 
-    print("Starting Zoosync Engine...")
+    print("Starting ZooParallel Engine...")
     manager = PipeManager.parallelize_pipe(
         pipe,
-        engine=ZoosyncPoolEngine(),
+        engine=ZooParallelPoolEngine(),
         workers=8,
     )
-    print("Running with Zoosync Engine (handling sharding and merging)...")
+    print("Running with ZooParallel Engine (handling sharding and merging)...")
     success = manager.run(wait=True, merge=True)
 
     if success:

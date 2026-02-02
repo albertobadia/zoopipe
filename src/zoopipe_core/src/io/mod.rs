@@ -192,7 +192,7 @@ pub fn shutdown_runtime() {
     let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
 
     if let Some(rt) = guard.take() {
-        rt.shutdown_background();
+        rt.shutdown_timeout(std::time::Duration::from_secs(5));
     }
 }
 
@@ -286,7 +286,7 @@ impl Seek for RemoteReader {
         let new_pos = match pos {
             SeekFrom::Start(p) => p as i64,
             SeekFrom::End(p) => self.file_len as i64 + p,
-            SeekFrom::Current(p) => (self.pos - self.buffer.len() as u64) as i64 + p,
+            SeekFrom::Current(p) => self.pos as i64 + (p - self.buffer.len() as i64),
         };
 
         if new_pos < 0 {

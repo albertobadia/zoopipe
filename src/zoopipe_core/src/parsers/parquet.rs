@@ -324,7 +324,7 @@ impl ParquetReader {
 
                 Ok(Some(env))
             }
-            Some(Err(_e)) => Ok(None),
+            Some(Err(e)) => Err(PipeError::Other(e).into()),
             None => Ok(None),
         }
     }
@@ -421,16 +421,8 @@ impl MultiParquetReader {
                 }
             }
 
-            if exhausted {
-                *self
-                    .current_path_idx
-                    .lock()
-                    .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))? += 1;
-                continue;
-            }
-
             let (path, _idx) = {
-                let idx_guard = self
+                let mut idx_guard = self
                     .current_path_idx
                     .lock()
                     .map_err(|_| PyRuntimeError::new_err("Lock poisoned"))?;
@@ -438,7 +430,9 @@ impl MultiParquetReader {
                 if idx >= self.paths.len() {
                     return Ok(None);
                 }
-                (self.paths[idx].clone(), idx)
+                let path = self.paths[idx].clone();
+                *idx_guard += 1;
+                (path, idx)
             };
 
             let reader = ParquetReader::new(

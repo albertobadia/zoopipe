@@ -1,10 +1,10 @@
-# ZooSync Engine
+# ZooParallel Engine
 
-The `ZoosyncPoolEngine` is a specialized execution engine designed for **"Heavy ETL"** workloads where keeping track of granular progress (rows/sec, memory usage) across multiple processes is critical but typically expensive.
+The `ZooParallelPoolEngine` is a specialized execution engine designed for **"Heavy ETL"** workloads where keeping track of granular progress (rows/sec, memory usage) across multiple processes is critical but typically expensive.
 
-Unlike the default `MultiProcessEngine` which relies on standard Python `multiprocessing.Queue` (and thus Pickle serialization) for status reporting, **ZooSync uses shared memory (`mmap`)** to provide zero-latency, zero-serialization observability.
+Unlike the default `MultiProcessEngine` which relies on standard Python `multiprocessing.Queue` (and thus Pickle serialization) for status reporting, **ZooParallel uses shared memory (`mmap`)** to provide zero-latency, zero-serialization observability.
 
-## When to use ZooSync?
+## When to use ZooParallel?
 
 - **High-Frequency Reporting**: You want real-time progress bars without slowing down the workers.
 - **Chaos Engineering**: You are running complex "chaotic" pipelines where you expect frequent failures and need immediate visibility.
@@ -12,28 +12,28 @@ Unlike the default `MultiProcessEngine` which relies on standard Python `multipr
 
 ## Installation
 
-ZooSync is an optional dependency. Install it with:
+ZooParallel is an optional dependency. Install it with:
 
 ```bash
-uv add "zoopipe[zoosyncmp]"
+uv add "zoopipe[zooparallel]"
 ```
 
 ## Usage
 
 ```python
 from zoopipe import CSVInputAdapter, JSONOutputAdapter, Pipe, PipeManager
-from zoopipe.engines.zoosync import ZoosyncPoolEngine
+from zoopipe.engines.zooparallel import ZooParallelPoolEngine
 
 pipe = Pipe(
     input_adapter=CSVInputAdapter("large_dataset.csv"),
     output_adapter=JSONOutputAdapter("output.jsonl")
 )
 
-# Run with 4 workers using ZooSync
+# Run with 4 workers using ZooParallel
 with PipeManager.parallelize_pipe(
     pipe, 
     workers=4, 
-    engine=ZoosyncPoolEngine()
+    engine=ZooParallelPoolEngine()
 ) as manager:
     manager.run()
 ```
@@ -55,10 +55,10 @@ with PipeManager.parallelize_pipe(
 
 ## API Reference
 
-### `ZoosyncPoolEngine`
+### `ZooParallelPoolEngine`
 
 ```python
-class ZoosyncPoolEngine(n_workers: int | None = None)
+class ZooParallelPoolEngine(n_workers: int | None = None)
 ```
 
 **Parameters:**

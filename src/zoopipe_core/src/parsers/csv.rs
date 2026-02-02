@@ -532,11 +532,7 @@ fn write_record_to_csv(
                 record_keys.push(k.cast::<PyString>()?.clone());
             }
 
-            record_keys.sort_by(|a, b| {
-                let s1 = a.to_str().unwrap_or("");
-                let s2 = b.to_str().unwrap_or("");
-                s1.cmp(s2)
-            });
+            // No longer sorting alphabetically to preserve insertion order (Python 3.7+)
             let interned: Vec<Py<PyString>> = record_keys.into_iter().map(|s| s.unbind()).collect();
             state.fieldnames = Some(interned);
         }

@@ -1,4 +1,7 @@
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
+
+if TYPE_CHECKING:
+    pass
 
 from zoopipe.coordinators.base import BaseCoordinator
 from zoopipe.structs import WorkerResult
@@ -16,18 +19,26 @@ class IcebergCoordinator(BaseCoordinator):
         self.catalog_properties = catalog_properties
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
-        return []
+        # Deferred import to avoid circular dependency with output_adapter.iceberg
+        from zoopipe.output_adapter.iceberg import IcebergOutputAdapter
+
+        if not isinstance(adapter, IcebergOutputAdapter):
+            return []
+
+        shards = []
+        for _ in range(workers):
+            shard = IcebergOutputAdapter(
+                table_location=adapter.table_location,
+                catalog_properties=adapter.catalog_properties,
+            )
+            shards.append(shard)
+
+        return shards
 
     def on_start(self, manager: Any) -> None:
-        """
-        Validate table existence or prepare transaction state.
-        """
         pass
 
     def on_finish(self, manager: Any, results: List[WorkerResult]) -> None:
-        """
-        Collect data files from workers and commit transaction.
-        """
         data_files = []
         for res in results:
             if res.success and res.output_path:
@@ -41,7 +52,4 @@ class IcebergCoordinator(BaseCoordinator):
             print("Iceberg commit successful.")
 
     def on_error(self, manager: Any, error: Exception) -> None:
-        """
-        Clean up orphaned files if necessary.
-        """
         print(f"IcebergCoordinator caught error: {error}. Transaction aborted.")

@@ -168,6 +168,41 @@ This example demonstrates:
 - Writing results directly to Parquet format in S3
 - Optimized multi-threaded execution for cloud storage latency
 
+### 19_zooparallel_engine.py
+Direct usage of `ZooParallelPoolEngine` for low-latency status reporting.
+
+```bash
+uv run python examples/19_zooparallel_engine.py
+```
+
+### 20_csv_to_iceberg.py
+Write CSV data directly to an Apache Iceberg table using ZooParallel.
+
+```bash
+uv run python examples/20_csv_to_iceberg.py
+```
+
+### 21_iceberg_to_jsonl.py
+Read from Apache Iceberg and export to JSONLines.
+
+```bash
+uv run python examples/21_iceberg_to_jsonl.py
+```
+
+### 22_csv_to_delta.py
+Write CSV data to a Delta Lake table using ZooParallel.
+
+```bash
+uv run python examples/22_csv_to_delta.py
+```
+
+### 23_delta_to_jsonl.py
+Read from Delta Lake and export to JSONLines.
+
+```bash
+uv run python examples/23_delta_to_jsonl.py
+```
+
 ## Sample Data
 
 The `sample_data/` directory contains example CSV and JSONL files for testing.

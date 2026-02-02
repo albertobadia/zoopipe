@@ -5,7 +5,7 @@ from zoopipe import (
     CSVOutputAdapter,
     Pipe,
 )
-from zoopipe.engines.zoosync import ZoosyncPoolEngine
+from zoopipe.engines.zooparallel import ZooParallelPoolEngine
 from zoopipe.report import PipeStatus
 
 
@@ -15,7 +15,7 @@ class UserSchema(BaseModel):
     username: str
 
 
-def test_zoosync_engine_basic_flow(tmp_path):
+def test_zooparallel_engine_basic_flow(tmp_path):
     input_csv = tmp_path / "input.csv"
     output_csv = tmp_path / "output.csv"
     input_csv.write_text("user_id,username\n1,alice\n2,bob")
@@ -26,7 +26,7 @@ def test_zoosync_engine_basic_flow(tmp_path):
         schema_model=UserSchema,
     )
 
-    engine = ZoosyncPoolEngine(n_workers=2)
+    engine = ZooParallelPoolEngine(n_workers=2)
     engine.start([pipe])
 
     assert engine.is_running
@@ -39,7 +39,7 @@ def test_zoosync_engine_basic_flow(tmp_path):
     assert not engine.is_running
 
 
-def test_zoosync_engine_reports(tmp_path):
+def test_zooparallel_engine_reports(tmp_path):
     input_csv = tmp_path / "input.csv"
     output_csv = tmp_path / "output.csv"
     input_csv.write_text("user_id,username\n1,alice")
@@ -50,7 +50,7 @@ def test_zoosync_engine_reports(tmp_path):
         schema_model=UserSchema,
     )
 
-    engine = ZoosyncPoolEngine(n_workers=1)
+    engine = ZooParallelPoolEngine(n_workers=1)
     engine.start([pipe])
     engine.wait(timeout=5.0)
 
@@ -62,7 +62,7 @@ def test_zoosync_engine_reports(tmp_path):
     engine.shutdown()
 
 
-def test_zoosync_multiple_pipes(tmp_path):
+def test_zooparallel_multiple_pipes(tmp_path):
     pipe1_in = tmp_path / "in1.csv"
     pipe1_out = tmp_path / "out1.csv"
     pipe1_in.write_text("user_id,username\n1,a")
@@ -82,7 +82,7 @@ def test_zoosync_multiple_pipes(tmp_path):
         schema_model=UserSchema,
     )
 
-    engine = ZoosyncPoolEngine(n_workers=2)
+    engine = ZooParallelPoolEngine(n_workers=2)
     engine.start([pipe1, pipe2])
     engine.wait(timeout=10.0)
 

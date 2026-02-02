@@ -135,15 +135,17 @@ class Pipe:
 
         except ValidationError as e:
             for error in e.errors():
-                entry = entries[error["loc"][0]]  # type: ignore
-                entry["status"] = self._status_failed
-                entry["errors"].append(
-                    {
-                        "msg": error["msg"],
-                        "type": "validation_error",
-                        "loc": error["loc"],
-                    }
-                )
+                loc = error["loc"]
+                if loc and isinstance(loc[0], int) and 0 <= loc[0] < len(entries):
+                    entry = entries[loc[0]]
+                    entry["status"] = self._status_failed
+                    entry["errors"].append(
+                        {
+                            "msg": error["msg"],
+                            "type": "validation_error",
+                            "loc": error["loc"],
+                        }
+                    )
 
     @property
     def report(self) -> PipeReport:
@@ -299,9 +301,15 @@ class Pipe:
         exec_config = {
             "class_name": executor.__class__.__name__,
             "batch_size": executor.get_batch_size(),
+            "max_workers": (
+                executor.get_concurrency()
+                if hasattr(executor, "get_concurrency")
+                else 1
+            ),
         }
         # MultiThreadExecutor specific configuration (batch_size)
         state["executor_config"] = exec_config
+
         del state["executor"]
 
         state["_thread"] = None
@@ -318,7 +326,10 @@ class Pipe:
         batch_size = exec_config["batch_size"]
 
         if class_name == "MultiThreadExecutor":
-            state["executor"] = MultiThreadExecutor(batch_size=batch_size)
+            state["executor"] = MultiThreadExecutor(
+                max_workers=exec_config.get("max_workers"),
+                batch_size=batch_size,
+            )
         else:
             state["executor"] = SingleThreadExecutor(batch_size=batch_size)
 

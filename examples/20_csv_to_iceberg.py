@@ -3,7 +3,7 @@ import os
 from pydantic import BaseModel, ConfigDict
 
 from zoopipe import CSVInputAdapter, Pipe, PipeManager
-from zoopipe.engines.zoosync import ZoosyncPoolEngine
+from zoopipe.engines.zooparallel import ZooParallelPoolEngine
 from zoopipe.output_adapter.iceberg import IcebergOutputAdapter
 
 
@@ -40,7 +40,7 @@ def main():
     # Use parallelize_pipe for maximum performance (450k+ items/s)
     print("Parallelizing CSV to Iceberg Pipeline...")
     with PipeManager.parallelize_pipe(
-        pipe, workers=4, engine=ZoosyncPoolEngine()
+        pipe, workers=4, engine=ZooParallelPoolEngine()
     ) as manager:
         print("Starting Iceberg Pipeline with Coordinator...")
         success = manager.run()

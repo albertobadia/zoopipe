@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::PipeError;
 use crate::utils::interning::InternedKeys;
-use pyo3::types::{PyAnyMethods, PyDict, PyList};
+use pyo3::Borrowed;
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::types::{PyDict, PyList};
 use std::collections::HashSet;
 
 struct JSONReaderState {
@@ -296,23 +298,50 @@ impl JSONReader {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JSONFormat {
+    Array,
+    JsonLines,
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for JSONFormat {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let s = ob.extract::<String>()?;
+        match s.as_str() {
+            "array" => Ok(JSONFormat::Array),
+            "jsonl" => Ok(JSONFormat::JsonLines),
+            _ => Err(PyRuntimeError::new_err(format!(
+                "Invalid JSON format: {}",
+                s
+            ))),
+        }
+    }
+}
+
 /// JSON writer that supports standard arrays and JSONLines output.
 #[pyclass]
 pub struct JSONWriter {
     writer: Mutex<crate::io::BoxedWriter>,
     is_first_item: Mutex<bool>,
-    format: String,
+    format: JSONFormat,
     indent: Option<usize>,
 }
 
 #[pymethods]
 impl JSONWriter {
     #[new]
-    #[pyo3(signature = (path, format="array".to_string(), indent=None))]
-    fn new(_py: Python<'_>, path: String, format: String, indent: Option<usize>) -> PyResult<Self> {
+    #[pyo3(signature = (path, format = None, indent = None))]
+    fn new(
+        _py: Python<'_>,
+        path: String,
+        format: Option<JSONFormat>,
+        indent: Option<usize>,
+    ) -> PyResult<Self> {
+        let format = format.unwrap_or(JSONFormat::Array);
         let mut boxed_writer = crate::io::get_writer(&path).map_err(wrap_py_err)?;
 
-        if format == "array" {
+        if format == JSONFormat::Array {
             boxed_writer.write_all(b"[").map_err(wrap_py_err)?;
             if indent.is_some() {
                 boxed_writer.write_all(b"\n").map_err(wrap_py_err)?;
@@ -359,7 +388,7 @@ impl JSONWriter {
 
     pub fn close(&self) -> PyResult<()> {
         let mut writer = self.writer.lock().map_err(|_| PipeError::MutexLock)?;
-        if self.format == "array" {
+        if self.format == JSONFormat::Array {
             if self.indent.is_some() {
                 writer.write_all(b"\n").map_err(wrap_py_err)?;
             }
@@ -378,7 +407,7 @@ impl JSONWriter {
         writer: &mut crate::io::BoxedWriter,
         is_first: &mut bool,
     ) -> PyResult<()> {
-        if !*is_first && self.format != "jsonl" {
+        if !*is_first && self.format != JSONFormat::JsonLines {
             writer.write_all(b",").map_err(wrap_py_err)?;
             if self.indent.is_some() {
                 writer.write_all(b"\n").map_err(wrap_py_err)?;
@@ -396,7 +425,7 @@ impl JSONWriter {
             serde_json::to_writer(&mut *writer, &wrapper).map_err(wrap_py_err)?;
         }
 
-        if self.format == "jsonl" {
+        if self.format == JSONFormat::JsonLines {
             writer.write_all(b"\n").map_err(wrap_py_err)?;
         }
 

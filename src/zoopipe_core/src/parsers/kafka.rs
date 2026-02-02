@@ -3,7 +3,7 @@ use crate::io::get_runtime_handle;
 use crate::utils::interning::InternedKeys;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;
@@ -146,6 +146,44 @@ impl KafkaReader {
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return Ok(None),
             }
+        }
+    }
+
+    pub fn read_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch_size: usize,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
+        let receiver = self.receiver.lock().map_err(|_| PipeError::MutexLock)?;
+        let batch = PyList::empty(py);
+        let mut count = 0;
+
+        while count < batch_size {
+            let result = if count == 0 {
+                py.detach(|| receiver.recv_timeout(Duration::from_millis(250)))
+                    .map_err(|_| crossbeam_channel::RecvTimeoutError::Timeout)
+            } else {
+                receiver
+                    .try_recv()
+                    .map_err(|_| crossbeam_channel::RecvTimeoutError::Timeout)
+            };
+
+            match result {
+                Ok(KafkaData::Message(value_bytes, key_bytes)) => {
+                    if let Some(env) = self.create_envelope(py, value_bytes, key_bytes)? {
+                        batch.append(env)?;
+                        count += 1;
+                    }
+                }
+                Ok(KafkaData::Error(e)) => return Err(PyRuntimeError::new_err(e)),
+                Err(_) => break,
+            }
+        }
+
+        if count == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(batch))
         }
     }
 }
