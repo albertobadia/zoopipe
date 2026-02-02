@@ -14,13 +14,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        # Ejecutar tests puede ser lento, pero el usuario lo pidió explícitamente en el pre-commit
       
       - id: rust-lint
         name: Rust Lint
         entry: cargo clippy --all-targets --all-features -- -D warnings
         language: system
-        types_or: [rust, toml] # Correr si cambian archivos rust o Cargo.toml
+        types_or: [rust, toml]
         pass_filenames: false
       
       - id: rust-tests
