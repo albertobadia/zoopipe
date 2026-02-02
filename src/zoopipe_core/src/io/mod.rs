@@ -106,10 +106,7 @@ pub fn create_local_file(path: &str) -> std::io::Result<File> {
     File::create(path)
 }
 
-/// Unified reader that abstracts over local files, in-memory cursors, and remote storage.
-///
-/// It implements standard I/O traits and provides transparent access to
-/// different backends, enabling the parsers to work with any source.
+/// Unified reader abstraction for local files, in-memory cursors, and remote storage.
 pub enum BoxedReader {
     File(BufReader<File>),
     Cursor(std::io::Cursor<Vec<u8>>),
@@ -479,10 +476,7 @@ impl Read for BoxedReaderChild {
     }
 }
 
-/// Unified writer that abstracts over local files and remote storage.
-///
-/// Provides a consistent interface for persistent storage, allowing
-/// the pipeline to save results across different environments.
+/// Unified writer abstraction for local files and remote storage.
 pub enum BoxedWriter {
     File(std::io::BufWriter<File>),
     Remote(RemoteWriter),

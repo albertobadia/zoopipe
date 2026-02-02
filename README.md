@@ -68,8 +68,6 @@ Tools like **Pandas** and **Polars** are incredible for analytical workloads (gr
 
 ### Installation
 
-### Installation
-
 Using [uv](https://github.com/astral-sh/uv) (recommended):
 ```bash
 uv add zoopipe

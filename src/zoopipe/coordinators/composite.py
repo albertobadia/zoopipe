@@ -20,8 +20,6 @@ class CompositeCoordinator(BaseCoordinator):
         return 0
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
-        # Typically only one coordinator handles sharding
-        # We use the first one that provides shards (usually DefaultShardingCoordinator)
         for coord in self.coordinators:
             shards = coord.prepare_shards(adapter, workers)
             if shards:

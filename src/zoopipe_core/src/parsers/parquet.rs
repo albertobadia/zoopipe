@@ -491,7 +491,7 @@ impl ParquetWriter {
             return Ok(());
         }
 
-        // 1. Init Phase (GIL held)
+        // Init Phase (GIL held)
         {
             let mut writer_guard = self
                 .writer
@@ -568,7 +568,7 @@ impl ParquetWriter {
             }
         } // Drop lock
 
-        // 2. Conversion (GIL held)
+        // Conversion (GIL held)
         let schema = {
             let schema_guard = self
                 .schema
@@ -588,7 +588,7 @@ impl ParquetWriter {
             .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         let batch = build_record_batch(py, &schema, list, cache_guard.as_mut())?;
 
-        // 3. Write (GIL Released)
+        // Write (GIL Released)
         let writer_arc = self.writer.clone();
         Python::detach(py, move || {
             let mut writer_guard = writer_arc

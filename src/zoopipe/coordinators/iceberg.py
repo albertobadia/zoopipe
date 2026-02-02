@@ -16,9 +16,6 @@ class IcebergCoordinator(BaseCoordinator):
         self.catalog_properties = catalog_properties
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
-        # Iceberg coordinator focuses on OUTPUT coordination (commits).
-        # Sharding logic is delegated to the input adapter's specific
-        # coordinator or the DefaultShardingCoordinator.
         return []
 
     def on_start(self, manager: Any) -> None:
@@ -34,8 +31,6 @@ class IcebergCoordinator(BaseCoordinator):
         data_files = []
         for res in results:
             if res.success and res.output_path:
-                # In IcebergWriter, output_path is a JSON serialization
-                # of the DataFile metadata list from that worker.
                 data_files.append(res.output_path)
 
         if data_files:

@@ -15,21 +15,14 @@ if TYPE_CHECKING:
     from zoopipe.report import PipeReport
 
 
-def _default_progress_reporter(report: "PipeReport") -> None:
-    print(
-        f"Processed: {report.total_processed} | "
-        f"Speed: {report.items_per_second:.2f} items/s | "
-        f"RAM: {report.ram_bytes / 1024 / 1024:.2f} MB",
-        end="\r",
-    )
+from zoopipe.utils.progress import default_progress_reporter
 
 
 class PipeManager:
     """
     Manages one or more Pipes using an execution Engine.
 
-    PipeManager acts as the high-level orchestrator. It handles the sharding
-    of data sources across multiple workers and coordinates their execution
+    Shards data sources across multiple workers and coordinates execution
     through a pluggable Engine (e.g., Local Multiprocessing, Ray, Dask).
     """
 
@@ -116,7 +109,7 @@ class PipeManager:
         merge: bool = True,
         timeout: float | None = None,
         on_report_update: Callable[["PipeReport"], None]
-        | None = _default_progress_reporter,
+        | None = default_progress_reporter,
     ) -> bool:
         """
         Start execution, optionally wait for completion, and execute coordination hooks.

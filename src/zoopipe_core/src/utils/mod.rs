@@ -14,7 +14,6 @@ pub fn parse_uri(uri: &str) -> PyResult<url::Url> {
     match url::Url::parse(uri) {
         Ok(u) => Ok(u),
         Err(e) => {
-            // Check if it's a relative URL error, regardless of match arm weirdness
             if e == url::ParseError::RelativeUrlWithoutBase {
                 let path = std::path::Path::new(uri);
                 if path.is_absolute() {

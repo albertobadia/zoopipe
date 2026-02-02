@@ -22,7 +22,6 @@ class DefaultShardingCoordinator(BaseCoordinator):
         is_input = hasattr(adapter, "get_native_reader")
         is_output = hasattr(adapter, "get_native_writer")
 
-        # Handle splitting based on adapter type
         if hasattr(adapter, "can_split") and not adapter.can_split:
             if is_input:
                 return [adapter]

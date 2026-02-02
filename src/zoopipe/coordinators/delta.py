@@ -28,7 +28,6 @@ class DeltaCoordinator(BaseCoordinator):
         self.schema = schema
 
     def prepare_shards(self, adapter: Any, workers: int) -> List[Any]:
-        # Sharding logic is delegated to DefaultShardingCoordinator
         return []
 
     def on_start(self, manager: Any) -> None:
@@ -38,14 +37,11 @@ class DeltaCoordinator(BaseCoordinator):
         """
         log_dir = f"{self.table_uri.rstrip('/')}/_delta_log"
 
-        # Auto-creation logic is only safe for local files currently without fsspec
         is_local = self.table_uri.startswith("/") or self.table_uri.startswith(
             "file://"
         )
 
         if not is_local:
-            # For remote URIs, we rely on the native writer to handle
-            # directory/log creation or fail if the bucket is not accessible.
             return
 
         path_str = self.table_uri.replace("file://", "")
@@ -59,8 +55,6 @@ class DeltaCoordinator(BaseCoordinator):
 
         if not has_log:
             if self.mode == "error" or self.mode == "append":
-                # For append mode, we don't auto-create if it doesn't exist
-                # unless we have a schema
                 if not self.schema:
                     print(
                         f"Warning: Table {self.table_uri} does not exist "
@@ -104,7 +98,6 @@ class DeltaCoordinator(BaseCoordinator):
         handles = []
         for res in results:
             if res.success and res.output_path:
-                # The output_path is now the opaque DeltaTransactionHandle object
                 handles.append(res.output_path)
 
         if handles:

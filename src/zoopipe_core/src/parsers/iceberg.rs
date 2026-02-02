@@ -57,7 +57,7 @@ impl IcebergWriter {
             return Ok(());
         }
 
-        // 1. Initialization Phase (Needs GIL for infer_type and object creation)
+        // Initialization Phase (Needs GIL for infer_type and object creation)
         {
             let mut writer_guard = self
                 .writer
@@ -133,7 +133,7 @@ impl IcebergWriter {
             }
         } // Drop writer lock here so we can re-acquire it inside allow_threads
 
-        // 2. Data Conversion Phase (Needs GIL to read Python objects)
+        // Data Conversion Phase (Needs GIL to read Python objects)
         let arrow_schema = {
             let schema_guard = self
                 .schema
@@ -151,7 +151,7 @@ impl IcebergWriter {
             .map_err(|_| PyRuntimeError::new_err("Lock failed"))?;
         let batch = build_record_batch(py, &arrow_schema, list, cache_guard.as_mut())?;
 
-        // 3. Write Phases (Release GIL -> Heavy Compression/IO)
+        // Write Phases (Release GIL -> Heavy Compression/IO)
         let writer_arc = self.writer.clone();
         let count = list.len() as u64;
 
@@ -318,7 +318,7 @@ pub fn commit_iceberg_transaction(
         return Ok(());
     }
 
-    // 1. Infer schema and fields
+    // Infer schema and fields
     let first_file = &all_data_files[0];
     let schema_json = first_file
         .schema_json
@@ -377,7 +377,7 @@ pub fn commit_iceberg_transaction(
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
 
-    // 3. Write Manifest File
+    // Write Manifest File
     let manifest_file_id = uuid::Uuid::new_v4();
     let manifest_path = format!("{}/metadata/{}-m0.avro", table_location, manifest_file_id);
 

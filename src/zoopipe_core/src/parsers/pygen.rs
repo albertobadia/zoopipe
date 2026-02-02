@@ -5,10 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyList};
 use std::sync::Mutex;
 
-/// Adapter that allows any Python iterable to be used as a source.
-///
-/// It bridges Python's iteration protocol with Rust's pipeline logic,
-/// automatically handling envelope creation and metadata tracking.
+/// Adapter that allows any Python iterable to be used as a pipeline source.
 #[pyclass]
 pub struct PyGeneratorReader {
     iterable: Py<PyAny>,

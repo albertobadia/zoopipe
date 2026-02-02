@@ -58,9 +58,7 @@ HookStore = dict[str, typing.Any]
 
 @dataclass
 class WorkerResult:
-    """
-    Metadata returned by a single worker (Pipe) execution.
-    """
+    """Metadata returned by a single worker (Pipe) execution."""
 
     worker_id: int
     success: bool = True

@@ -9,22 +9,13 @@ from zoopipe.input_adapter.base import BaseInputAdapter
 from zoopipe.output_adapter.base import BaseOutputAdapter
 from zoopipe.report import PipeReport, get_logger
 from zoopipe.structs import EntryStatus
-from zoopipe.utils.progress import monitor_progress
+from zoopipe.utils.progress import default_progress_reporter, monitor_progress
 from zoopipe.utils.telemetry import TelemetryController
 from zoopipe.zoopipe_rust_core import (
     MultiThreadExecutor,
     NativePipe,
     SingleThreadExecutor,
 )
-
-
-def _default_progress_reporter(report: "PipeReport") -> None:
-    print(
-        f"Processed: {report.total_processed} | "
-        f"Speed: {report.items_per_second:.2f} items/s | "
-        f"RAM: {report.ram_bytes / 1024 / 1024:.2f} MB",
-        end="\r",
-    )
 
 
 class Pipe:
@@ -144,8 +135,7 @@ class Pipe:
 
         except ValidationError as e:
             for error in e.errors():
-                entry_index = error["loc"][0]  # type: ignore
-                entry = entries[entry_index]
+                entry = entries[error["loc"][0]]  # type: ignore
                 entry["status"] = self._status_failed
                 entry["errors"].append(
                     {
@@ -165,7 +155,7 @@ class Pipe:
         wait: bool = True,
         timeout: float | None = None,
         on_report_update: Callable[["PipeReport"], None]
-        | None = _default_progress_reporter,
+        | None = default_progress_reporter,
     ) -> bool:
         """
         Start execution and optionally wait for completion.
@@ -236,8 +226,6 @@ class Pipe:
             with self.telemetry.trace_span("rust_execution"):
                 metadata = native_pipe.run()
             if metadata and hasattr(self.output_adapter, "_writer"):
-                # We can store the metadata on the adapter
-                # for later retrieval by the coordinator
                 self.output_adapter._metadata = metadata
         except Exception as e:
             self.logger.error(f"Pipeline execution failed: {e}")
@@ -312,13 +300,10 @@ class Pipe:
             "class_name": executor.__class__.__name__,
             "batch_size": executor.get_batch_size(),
         }
-        # MultiThreadExecutor specific attribute (not directly exposed via property,
-        # so we rely on the constructor's default or we'd need to store it if we could)
-        # For now, we'll try to use a safe reconstruction.
+        # MultiThreadExecutor specific configuration (batch_size)
         state["executor_config"] = exec_config
         del state["executor"]
 
-        # Internal non-serializable objects
         state["_thread"] = None
         state["_validator"] = None
         state["_batch_validator"] = None

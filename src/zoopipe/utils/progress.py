@@ -4,7 +4,7 @@ from typing import Any, Callable
 from zoopipe.report import PipeReport
 
 
-def _default_progress_reporter(report: "PipeReport") -> None:
+def default_progress_reporter(report: "PipeReport") -> None:
     print(
         f"Processed: {report.total_processed} | "
         f"Speed: {report.items_per_second:.2f} items/s | "
@@ -17,7 +17,7 @@ def monitor_progress(
     waitable: Any,
     report_source: Any,
     timeout: float | None = None,
-    on_report_update: Callable[[PipeReport], None] | None = _default_progress_reporter,
+    on_report_update: Callable[[PipeReport], None] | None = default_progress_reporter,
 ) -> bool:
     """
     Monitor progress of a waitable object (Pipe or PipeManager).
@@ -37,7 +37,6 @@ def monitor_progress(
     while not finished:
         on_report_update(report_source.report)
 
-        # Calculate remaining time if timeout is set
         wait_time = 0.5
         if timeout:
             remaining = timeout - (time.time() - start_time)
@@ -50,6 +49,6 @@ def monitor_progress(
 
     # Final update
     on_report_update(report_source.report)
-    print("")  # Newline
+    print("")
 
     return finished

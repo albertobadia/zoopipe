@@ -46,7 +46,6 @@ def _run_pipe(
         pipe.start(wait=False)
 
         while not pipe.report.is_finished:
-            # Live update of stats
             total_processed.value = pipe.report.total_processed
             success_count.value = pipe.report.success_count
             error_count.value = pipe.report.error_count
@@ -54,13 +53,11 @@ def _run_pipe(
 
             pipe.report.wait(timeout=0.5)
 
-        # Final update
         total_processed.value = pipe.report.total_processed
         success_count.value = pipe.report.success_count
         error_count.value = pipe.report.error_count
         ram_bytes.value = pipe.report.ram_bytes
 
-        # Store result metadata
         results_dict[pipe_index] = {
             "success": not pipe.report.has_error,
             "output_path": getattr(pipe.output_adapter, "output_path", None),
@@ -153,7 +150,6 @@ class MultiProcessEngine(BaseEngine):
         return all(not pp.process.is_alive() for pp in self._pipe_processes)
 
     def shutdown(self, timeout: float = 5.0) -> None:
-        # Cache report before clearing
         self._cached_report = self.report
 
         for pp in self._pipe_processes:

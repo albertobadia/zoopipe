@@ -95,7 +95,6 @@ impl CSVReader {
             0
         };
 
-        // 2a. If start_byte > 0, we perform the Heuristic Scan
         if start_byte > 0 {
             if expected_count == 0 {
                 return Err(
@@ -129,7 +128,7 @@ impl CSVReader {
                 };
 
                 if is_valid {
-                    // Found it. Seek back to `start_pos` so the REAL reader starts here.
+                    // Seek back to `start_pos` so the reader starts here.
                     boxed_reader
                         .seek(SeekFrom::Start(start_pos))
                         .map_err(wrap_py_err)?;
@@ -566,17 +565,21 @@ fn write_record_to_csv(
         let mut ryu_buf = ryu::Buffer::new();
         for opt_val in &row_bounds {
             if let Some(v) = opt_val {
-                if let Ok(s) = v.cast::<PyString>() {
-                    row_out.push(Cow::Borrowed(s.to_str().unwrap_or("")));
-                } else if let Ok(i) = v.extract::<i64>() {
-                    row_out.push(Cow::Owned(itoa_buf.format(i).to_owned()));
-                } else if let Ok(f) = v.extract::<f64>() {
-                    row_out.push(Cow::Owned(ryu_buf.format(f).to_owned()));
-                } else if let Ok(b) = v.extract::<bool>() {
-                    row_out.push(Cow::Borrowed(if b { "true" } else { "false" }));
-                } else {
-                    row_out.push(Cow::Owned(v.to_string()));
-                }
+                let val = match v.cast::<PyString>() {
+                    Ok(s) => Cow::Borrowed(s.to_str().unwrap_or("")),
+                    Err(_) => {
+                        if let Ok(i) = v.extract::<i64>() {
+                            Cow::Owned(itoa_buf.format(i).to_owned())
+                        } else if let Ok(f) = v.extract::<f64>() {
+                            Cow::Owned(ryu_buf.format(f).to_owned())
+                        } else if let Ok(b) = v.extract::<bool>() {
+                            Cow::Borrowed(if b { "true" } else { "false" })
+                        } else {
+                            Cow::Owned(v.to_string())
+                        }
+                    }
+                };
+                row_out.push(val);
             } else {
                 row_out.push(Cow::Borrowed(""));
             }
