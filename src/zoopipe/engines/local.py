@@ -100,20 +100,12 @@ class MultiProcessEngine(BaseEngine):
         self._pipe_processes.clear()
 
         for i, pipe in enumerate(pipes):
-            total_processed: Synchronized[c_longlong] = multiprocessing.Value(
-                "q", 0, lock=False
-            )
-            success_count: Synchronized[c_longlong] = multiprocessing.Value(
-                "q", 0, lock=False
-            )
-            error_count: Synchronized[c_longlong] = multiprocessing.Value(
-                "q", 0, lock=False
-            )
-            ram_bytes: Synchronized[c_longlong] = multiprocessing.Value(
-                "q", 0, lock=False
-            )
-            is_finished: Synchronized[c_int] = multiprocessing.Value("i", 0, lock=False)
-            has_error: Synchronized[c_int] = multiprocessing.Value("i", 0, lock=False)
+            total_processed: Synchronized[c_longlong] = multiprocessing.Value("q", 0)
+            success_count: Synchronized[c_longlong] = multiprocessing.Value("q", 0)
+            error_count: Synchronized[c_longlong] = multiprocessing.Value("q", 0)
+            ram_bytes: Synchronized[c_longlong] = multiprocessing.Value("q", 0)
+            is_finished: Synchronized[c_int] = multiprocessing.Value("i", 0)
+            has_error: Synchronized[c_int] = multiprocessing.Value("i", 0)
 
             process = multiprocessing.Process(
                 target=_run_pipe,

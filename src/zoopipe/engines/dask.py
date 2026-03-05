@@ -108,9 +108,6 @@ class DaskEngine(BaseEngine):
             for i, pipe in enumerate(pipes)
         ]
         self._workers = [f.result() for f in actor_futures]
-        for w in self._workers:
-            print(f"DEBUG: Worker type: {type(w)}")
-            print(f"DEBUG: Worker dir: {dir(w)}")
 
         self._futures = [worker.run() for worker in self._workers]
 
