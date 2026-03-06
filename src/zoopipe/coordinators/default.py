@@ -24,18 +24,18 @@ class DefaultShardingCoordinator(BaseCoordinator):
 
         if hasattr(adapter, "can_split") and not adapter.can_split:
             if is_input:
-                return [adapter]
+                return [adapter.clone()]
             elif is_output:
-                return [adapter] * workers
+                return [adapter.clone() for _ in range(workers)]
 
         if hasattr(adapter, "split"):
             res = adapter.split(workers)
             if not res or len(res) == 1 and is_output and workers > 1:
-                return [adapter] * workers
+                return [adapter.clone() for _ in range(workers)]
             return res
 
         if is_output:
-            return [adapter] * workers
+            return [adapter.clone() for _ in range(workers)]
 
         return [adapter]
 
