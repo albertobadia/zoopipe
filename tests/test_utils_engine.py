@@ -1,3 +1,4 @@
+import os
 from importlib import metadata
 from unittest.mock import mock_open, patch
 
@@ -5,12 +6,29 @@ from zoopipe.utils.engine import get_core_dependencies, is_dev_mode
 
 
 def test_is_dev_mode_returns_true_in_dev_environment():
-    with patch("os.path.exists") as mock_exists, patch("os.listdir") as mock_listdir:
-        mock_exists.side_effect = lambda path: path in [
-            "src/zoopipe",
-            "pyproject.toml",
+    test_module_dir = "/fake/project/src/zoopipe/utils"
+    test_project_root = "/fake/project"
+    zoopipe_dir = os.path.join(test_project_root, "src", "zoopipe")
+    with (
+        patch("zoopipe.utils.engine.os.path.abspath") as mock_abspath,
+        patch("zoopipe.utils.engine.os.path.dirname") as mock_dirname,
+        patch("zoopipe.utils.engine.os.path.exists") as mock_exists,
+        patch("zoopipe.utils.engine.os.listdir") as mock_listdir,
+    ):
+        mock_abspath.return_value = test_module_dir
+        mock_dirname.side_effect = [
+            test_module_dir,
+            os.path.dirname(test_module_dir),
+            os.path.dirname(os.path.dirname(test_module_dir)),
+            test_project_root,
         ]
-        mock_listdir.return_value = ["__init__.py", "zoopipe_rust_core.so"]
+        mock_exists.side_effect = lambda path: path in [
+            os.path.join(test_project_root, "src", "zoopipe"),
+            os.path.join(test_project_root, "pyproject.toml"),
+        ]
+        mock_listdir.side_effect = lambda path: (
+            ["__init__.py", "zoopipe_rust_core.so"] if path == zoopipe_dir else []
+        )
 
         result = is_dev_mode()
 
@@ -18,8 +36,21 @@ def test_is_dev_mode_returns_true_in_dev_environment():
 
 
 def test_is_dev_mode_returns_false_when_src_missing():
-    with patch("os.path.exists") as mock_exists:
-        mock_exists.side_effect = lambda path: path == "pyproject.toml"
+    test_module_dir = "/fake/project/src/zoopipe"
+    test_project_root = "/fake/project"
+    with (
+        patch("os.path.abspath") as mock_abspath,
+        patch("os.path.dirname") as mock_dirname,
+        patch("os.path.exists") as mock_exists,
+    ):
+        mock_abspath.return_value = test_module_dir
+        mock_dirname.side_effect = [
+            test_module_dir,
+            test_project_root,
+        ]
+        mock_exists.side_effect = lambda path: path == os.path.join(
+            test_project_root, "pyproject.toml"
+        )
 
         result = is_dev_mode()
 
@@ -27,8 +58,21 @@ def test_is_dev_mode_returns_false_when_src_missing():
 
 
 def test_is_dev_mode_returns_false_when_pyproject_missing():
-    with patch("os.path.exists") as mock_exists:
-        mock_exists.side_effect = lambda path: path == "src/zoopipe"
+    test_module_dir = "/fake/project/src/zoopipe"
+    test_project_root = "/fake/project"
+    with (
+        patch("os.path.abspath") as mock_abspath,
+        patch("os.path.dirname") as mock_dirname,
+        patch("os.path.exists") as mock_exists,
+    ):
+        mock_abspath.return_value = test_module_dir
+        mock_dirname.side_effect = [
+            test_module_dir,
+            test_project_root,
+        ]
+        mock_exists.side_effect = lambda path: path == os.path.join(
+            test_project_root, "src", "zoopipe"
+        )
 
         result = is_dev_mode()
 

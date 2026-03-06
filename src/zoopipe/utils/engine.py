@@ -9,12 +9,16 @@ def is_dev_mode() -> bool:
     (e.g., being in the zoopipe repo with source files and pyproject.toml).
     """
     try:
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(module_dir)))
+        src_zoopipe_path = os.path.join(project_root, "src", "zoopipe")
+        pyproject_path = os.path.join(project_root, "pyproject.toml")
         return (
-            os.path.exists("src/zoopipe")
-            and os.path.exists("pyproject.toml")
+            os.path.exists(src_zoopipe_path)
+            and os.path.exists(pyproject_path)
             and any(
                 f.endswith(".so") or f.endswith(".py")
-                for f in os.listdir("src/zoopipe")
+                for f in os.listdir(src_zoopipe_path)
             )
         )
     except Exception:
@@ -29,7 +33,10 @@ def get_core_dependencies() -> list[str]:
     deps = []
     if is_dev_mode():
         try:
-            with open("pyproject.toml", "r") as f:
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(module_dir)))
+            pyproject_path = os.path.join(project_root, "pyproject.toml")
+            with open(pyproject_path, "r") as f:
                 toml_content = f.read()
                 # Find dependencies = [ ... ] block
                 match = re.search(
