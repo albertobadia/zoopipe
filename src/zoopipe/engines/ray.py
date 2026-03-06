@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from zoopipe.pipe import Pipe
 
 
-@ray.remote(memory=512 * 1024 * 1024)  # Limit actor memory to 512MB
+@ray.remote
 class RayPipeWorker:
     """
     Ray Actor that wraps a single Pipe execution.
@@ -59,7 +59,12 @@ class RayEngine(BaseEngine):
     Distributed execution engine using Ray.
     """
 
-    def __init__(self, address: str | None = None, **kwargs: Any):
+    def __init__(
+        self,
+        address: str | None = None,
+        memory: int | None = None,
+        **kwargs: Any,
+    ):
         if not ray.is_initialized():
             # Silence the accelerator visible devices warning for future Ray versions
             os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
@@ -91,6 +96,7 @@ class RayEngine(BaseEngine):
         super().__init__()
         self._workers: list[Any] = []
         self._futures: list[Any] = []
+        self._memory = memory
 
     def _install_deps_on_all_nodes(self, deps: list[str]) -> None:
         """
@@ -122,7 +128,13 @@ class RayEngine(BaseEngine):
 
         self._reset_report()
         self._start_time = datetime.now()
-        self._workers = [RayPipeWorker.remote(pipe, i) for i, pipe in enumerate(pipes)]
+        worker_options = {}
+        if self._memory is not None:
+            worker_options["memory"] = self._memory
+        worker_cls = (
+            RayPipeWorker.options(**worker_options) if worker_options else RayPipeWorker
+        )
+        self._workers = [worker_cls.remote(pipe, i) for i, pipe in enumerate(pipes)]
         self._futures = [w.run.remote() for w in self._workers]
 
     def wait(self, timeout: float | None = None) -> bool:

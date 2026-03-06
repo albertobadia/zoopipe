@@ -1,4 +1,5 @@
 import abc
+import copy
 import typing
 
 if typing.TYPE_CHECKING:
@@ -44,6 +45,12 @@ class BaseOutputAdapter(abc.ABC):
         Split the output adapter into `workers` partitions for parallel writing.
         """
         return [self]
+
+    def clone(self) -> "BaseOutputAdapter":
+        """
+        Create a deep copy of this adapter.
+        """
+        return copy.deepcopy(self)
 
     def get_coordinator(self) -> "BaseCoordinator":
         """

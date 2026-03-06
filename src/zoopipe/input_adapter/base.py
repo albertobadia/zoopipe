@@ -1,4 +1,5 @@
 import abc
+import copy
 import typing
 
 if typing.TYPE_CHECKING:
@@ -52,6 +53,12 @@ class BaseInputAdapter(abc.ABC):
         Split the input adapter into `workers` shards for parallel processing.
         """
         return [self]
+
+    def clone(self) -> "BaseInputAdapter":
+        """
+        Create a deep copy of this adapter.
+        """
+        return copy.deepcopy(self)
 
     def get_coordinator(self) -> "BaseCoordinator":
         """
